@@ -1,6 +1,6 @@
 # Azure Hosting Migration Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Execute tasks in order (Task 1 → Task 7); within a task, execute steps in order. Each step names the exact command to run and the exact output to expect before moving to the next step — treat a mismatch as a stop-and-report condition, not something to work around silently. Steps use checkbox (`- [ ]`) syntax for tracking; check one off only after its "Expected" condition is actually confirmed, not just after running the command. If running inside Claude Code, prefer superpowers:subagent-driven-development or superpowers:executing-plans; any other agent can execute this plan directly from the checkboxes below, no special tooling required beyond `az`, `gh`, `docker`, and shell access.
 
 **Goal:** Move F1_Predictor and PL_Predictor off Render onto Azure Container Apps, and `predictor-hub` onto an Azure Static Web App, with zero behavior change to either app (PL_Predictor keeps its existing snapshot-serving mode as-is — converting it to live compute is a separate, follow-up plan).
 
@@ -197,14 +197,23 @@ Build and push the image once by hand (proves the Dockerfile/GHCR path works bef
 ```bash
 cd F1_Predictor
 docker build -t ghcr.io/kevocado/f1-predictor:latest .
-echo $GITHUB_TOKEN | docker login ghcr.io -u Kevocado --password-stdin
+gh auth token | docker login ghcr.io -u Kevocado --password-stdin
 docker push ghcr.io/kevocado/f1-predictor:latest
 ```
-(`$GITHUB_TOKEN` here is a GitHub personal access token with `write:packages` scope — create one at github.com/settings/tokens if you don't have one, and export it in your shell first: `export GITHUB_TOKEN=ghp_...`.)
+(Requires `gh`'s token to already include the `write:packages` scope: `gh auth status` should list it; if not, run `gh auth refresh -h github.com -s write:packages` first — one-time interactive browser approval.)
 
 - [ ] **Step 2: Make the GHCR package public**
 
-By default a newly-pushed GHCR image is private. Go to `https://github.com/users/Kevocado/packages/container/f1-predictor/settings`, scroll to "Danger Zone," and change visibility to Public. This lets Azure pull it without any registry credentials at all.
+By default a newly-pushed GHCR image is private — Azure needs to pull it with no credentials at all, so it must be public. Do this via the API rather than the web UI (agentic, no manual toggle needed):
+
+```bash
+gh api --method PATCH /user/packages/container/f1-predictor -f visibility=public
+```
+Expected: no error output (a 204 No Content success prints nothing). Verify with:
+```bash
+gh api /user/packages/container/f1-predictor --jq .visibility
+```
+Expected: prints `public`.
 
 - [ ] **Step 3: Create the Container App**
 
@@ -322,10 +331,15 @@ This is Task 4's exact structure, repeated for PL_Predictor — same reasoning, 
 ```bash
 cd Prem_Predictor/PL_Predictor
 docker build -t ghcr.io/kevocado/pl-predictor:latest .
-echo $GITHUB_TOKEN | docker login ghcr.io -u Kevocado --password-stdin
+gh auth token | docker login ghcr.io -u Kevocado --password-stdin
 docker push ghcr.io/kevocado/pl-predictor:latest
 ```
-Then make it public at `https://github.com/users/Kevocado/packages/container/pl-predictor/settings` (Danger Zone → visibility → Public).
+Then make it public via the API (same as Task 4 Step 2):
+```bash
+gh api --method PATCH /user/packages/container/pl-predictor -f visibility=public
+gh api /user/packages/container/pl-predictor --jq .visibility
+```
+Expected: the second command prints `public`.
 
 - [ ] **Step 2: Create the Container App**
 
@@ -499,7 +513,7 @@ git commit -m "feat: point hub links at Azure, add NFL coming-soon card"
 
 - [ ] **Step 4: Create the Static Web App, wired to auto-deploy from this repo**
 
-Needs a GitHub personal access token with `repo` scope (the same kind used elsewhere in this plan, or reuse `$GITHUB_TOKEN` from Task 4 if it has `repo` scope too):
+Needs a GitHub token with `repo` scope — `gh`'s own token already has it (`gh auth status` lists `repo`):
 
 ```bash
 az staticwebapp create \
@@ -511,7 +525,7 @@ az staticwebapp create \
   --app-location "/" \
   --output-location "" \
   --sku Free \
-  --token $GITHUB_TOKEN
+  --token $(gh auth token)
 ```
 This both creates the Static Web App **and** commits a GitHub Actions workflow file into `predictor-hub` for you (`.github/workflows/azure-static-web-apps-*.yml`) — no manual CI wiring needed here, unlike Tasks 4/5.
 
