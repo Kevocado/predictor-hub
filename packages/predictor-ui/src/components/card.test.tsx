@@ -108,3 +108,10 @@ describe("MatchCard pick placeholder", () => {
     expect(screen.queryByText("No pick yet")).toBeNull();
   });
 });
+
+describe("long team names", () => {
+  it("wrap instead of being cut off", () => {
+    render(<MatchCard left={{ code: "SM", name: "Southern Miss" }} right={{ code: "JS", name: "Jacksonville State" }} centre="12:00 AM" onOpen={() => {}} />);
+    expect(screen.getByText("Jacksonville State").className).not.toMatch(/truncate/);
+  });
+});

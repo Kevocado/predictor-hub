@@ -33,7 +33,7 @@ function Team({ side }: { side: Side }) {
   return (
     <span className="flex min-w-0 flex-1 flex-col items-center gap-1.5 text-center">
       <span aria-hidden="true">{side.badge ?? <TeamChip code={side.code} color={side.color} />}</span>
-      <span className="block w-full truncate text-sm font-semibold text-pr-text">{side.name ?? side.code}</span>
+      <span className="block w-full break-words text-sm font-semibold leading-tight text-pr-text [text-wrap:balance]">{side.name ?? side.code}</span>
     </span>
   );
 }
