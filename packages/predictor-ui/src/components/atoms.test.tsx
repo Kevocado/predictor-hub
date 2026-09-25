@@ -72,3 +72,10 @@ describe("TeamChip outline", () => {
     expect(screen.getByLabelText("Cleveland Browns").className).toMatch(/ring-1/);
   });
 });
+
+describe("StatusBadge in F1", () => {
+  it("words a rebuilt pick around the session", () => {
+    render(<StatusBadge status="rebuilt" moment="the session" />);
+    expect(screen.getByText("Rebuilt after the session")).toBeInTheDocument();
+  });
+});
