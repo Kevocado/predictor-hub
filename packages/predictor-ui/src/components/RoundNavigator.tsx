@@ -29,11 +29,11 @@ export function RoundNavigator({ label, unit = "week", canPrev, canNext, onPrev,
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" aria-label="Previous" disabled={!canPrev} onClick={onPrev} className={stepClass}>
+        <button type="button" aria-label={`Previous ${unit}`} disabled={!canPrev} onClick={onPrev} className={stepClass}>
           ←
         </button>
         <h2 className="whitespace-nowrap font-pr-display text-2xl font-bold uppercase tracking-wide text-pr-text">{label}</h2>
-        <button type="button" aria-label="Next" disabled={!canNext} onClick={onNext} className={stepClass}>
+        <button type="button" aria-label={`Next ${unit}`} disabled={!canNext} onClick={onNext} className={stepClass}>
           →
         </button>
         {onJumpToCurrent && (

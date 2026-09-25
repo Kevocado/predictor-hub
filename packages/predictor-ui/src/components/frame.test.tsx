@@ -43,9 +43,9 @@ describe("RoundNavigator", () => {
     const onNext = vi.fn();
     render(<RoundNavigator label="Gameweek 5" canPrev canNext={false} onPrev={onPrev} onNext={onNext} />);
     expect(screen.getByRole("heading", { name: "Gameweek 5" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+    fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
     expect(onPrev).toHaveBeenCalledOnce();
-    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Next week" })).toBeDisabled();
   });
   it("offers a jump back to the current round", () => {
     const jump = vi.fn();

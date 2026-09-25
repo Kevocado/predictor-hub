@@ -100,3 +100,11 @@ describe("MatchCard without a status", () => {
     expect(screen.getByText("No pick yet")).toBeInTheDocument();
   });
 });
+
+describe("MatchCard pick placeholder", () => {
+  it("can say the pick is still loading instead of 'No pick yet'", () => {
+    render(<MatchCard left={base.left} right={base.right} centre="15:00" pickPlaceholder="Loading pick…" onOpen={() => {}} />);
+    expect(screen.getByText("Loading pick…")).toBeInTheDocument();
+    expect(screen.queryByText("No pick yet")).toBeNull();
+  });
+});

@@ -19,6 +19,8 @@ type Props = {
   /** Sport-specific line under the pick: a spread, a total, a venue. */
   meta?: string;
   bar?: Segment[];
+  /** Shown instead of a pick when there is none yet (default "No pick yet"). */
+  pickPlaceholder?: string;
   onOpen: () => void;
 };
 
@@ -37,10 +39,10 @@ function Team({ side }: { side: Side }) {
 }
 
 /** The family match card: one pick, one status, a labelled bar. */
-export function MatchCard({ left, right, centre, status, pick, when, meta, bar, onOpen }: Props) {
+export function MatchCard({ left, right, centre, status, pick, when, meta, bar, pickPlaceholder = "No pick yet", onOpen }: Props) {
   // A missing pick is always said out loud; the status badge only covers it
   // when the badge itself reads "No pick yet".
-  const pickLine = pick ? `Pick: ${pick.label} · ${pct(pick.prob)}` : status === "nopick" ? undefined : "No pick yet";
+  const pickLine = pick ? `Pick: ${pick.label} · ${pct(pick.prob)}` : status === "nopick" ? undefined : pickPlaceholder;
 
   return (
     <button
