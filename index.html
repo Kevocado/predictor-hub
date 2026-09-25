@@ -109,7 +109,7 @@
 
   .card p {
     font-size: 0.85rem;
-    color: var(--color-pl-text-faint);
+    color: var(--color-pl-text-dim);
     margin: 0;
     line-height: 1.4;
   }
@@ -118,7 +118,7 @@
     position: absolute;
     top: 1rem;
     right: 1rem;
-    font-size: 0.65rem;
+    font-size: 0.75rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -133,52 +133,46 @@
 
   .badge.soon {
     background: rgba(133, 119, 163, 0.2);
-    color: var(--color-pl-text-faint);
+    color: var(--color-pl-text-dim);
   }
 
-  footer {
-    margin-top: 3rem;
-    font-size: 0.75rem;
-    color: var(--color-pl-text-faint);
-  }
 </style>
 </head>
 <body>
   <header>
     <h1>Predictor Hub</h1>
-    <p>Data-driven sports prediction models, each with its own live dashboard. Pick one below.</p>
+    <p>Model picks for Premier League, Formula 1, NFL, college football and NBA.</p>
   </header>
 
   <div class="grid">
-    <a class="card" href="https://pl-predictor.proudbay-f56b8dfa.eastus2.azurecontainerapps.io" target="_blank" rel="noopener">
+    <a class="card" href="https://pl.40-160-91-131.sslip.io">
       <span class="badge live">Live</span>
       <span class="card-icon">⚽</span>
       <h2>PL Predictor</h2>
-      <p>Premier League match outcomes, scorelines, and player predictions built on a walk-forward-validated scoreline model.</p>
+      <p>Match picks and likely scores for every Premier League fixture, with a running record of how often the model is right.</p>
     </a>
 
-    <a class="card" href="https://f1-predictor.proudbay-f56b8dfa.eastus2.azurecontainerapps.io" target="_blank" rel="noopener">
+    <a class="card" href="https://f1.40-160-91-131.sslip.io">
       <span class="badge live">Live</span>
       <span class="card-icon">🏎️</span>
       <h2>F1 Predictor</h2>
-      <p>Formula 1 race outcome, championship projection, and live in-race predictions, updated during live sessions.</p>
+      <p>Win, podium and points chances for every driver, before each race and during live sessions.</p>
     </a>
 
-    <a class="card" href="https://sports-predictor.proudbay-f56b8dfa.eastus2.azurecontainerapps.io" target="_blank" rel="noopener">
+    <a class="card" href="https://sports.40-160-91-131.sslip.io">
       <span class="badge live">Live</span>
       <span class="card-icon">🏈</span>
-      <h2>American Football Predictor</h2>
-      <p>Weekly NFL game predictions, CFB bowl projections, and player props — both leagues in one unified dashboard.</p>
+      <h2>NFL + CFB Predictor</h2>
+      <p>Weekly NFL and college football picks with confidence, spreads and player props.</p>
     </a>
 
-    <a class="card" href="https://nba-predictor.proudbay-f56b8dfa.eastus2.azurecontainerapps.io" target="_blank" rel="noopener">
-      <span class="badge live">Live</span>
+    <a class="card" href="https://nba.40-160-91-131.sslip.io">
+      <span class="badge soon">Preseason</span>
       <span class="card-icon">🏀</span>
       <h2>NBA Predictor</h2>
-      <p>NBA game outcomes, spreads, totals, and player props, with conference standings projections. Work in progress.</p>
+      <p>Game picks, projected margins and totals. Picks start with the regular season.</p>
     </a>
   </div>
 
-  <footer>All sites are free to browse — no login required.</footer>
 </body>
 </html>
