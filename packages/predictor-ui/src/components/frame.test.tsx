@@ -57,8 +57,20 @@ describe("RoundNavigator", () => {
     const { rerender } = render(<RoundNavigator label="Week 4" unit="week" canPrev canNext onPrev={() => {}} onNext={() => {}} record={{ hits: 4, settled: 7, rebuilt: 1 }} />);
     expect(screen.getByText("4/7 picks made before kickoff correct")).toBeInTheDocument();
     rerender(<RoundNavigator label="Week 4" unit="week" canPrev canNext onPrev={() => {}} onNext={() => {}} record={{ hits: 0, settled: 0, rebuilt: 3 }} />);
-    expect(screen.getByText("No pre-kickoff picks this week")).toBeInTheDocument();
+    expect(screen.getByText("No picks made before kickoff this week")).toBeInTheDocument();
     rerender(<RoundNavigator label="Week 4" unit="week" canPrev canNext onPrev={() => {}} onNext={() => {}} record={{ hits: 0, settled: 0, rebuilt: 0 }} />);
     expect(screen.queryByText(/picks/)).not.toBeInTheDocument();
+  });
+});
+
+describe("RoundNavigator in basketball", () => {
+  it("words the record around tip-off", () => {
+    const noop = () => {};
+    const { rerender } = render(
+      <RoundNavigator label="Oct 19 – 25" moment="tip-off" canPrev canNext onPrev={noop} onNext={noop} record={{ hits: 3, settled: 5, rebuilt: 1 }} />,
+    );
+    expect(screen.getByText("3/5 picks made before tip-off correct")).toBeInTheDocument();
+    rerender(<RoundNavigator label="Oct 19 – 25" moment="tip-off" canPrev canNext onPrev={noop} onNext={noop} record={{ hits: 0, settled: 0, rebuilt: 4 }} />);
+    expect(screen.getByText("No picks made before tip-off this week")).toBeInTheDocument();
   });
 });

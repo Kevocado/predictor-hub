@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { pct } from "../fmt";
 import { ProbabilityBar, type Segment } from "./ProbabilityBar";
-import { StatusBadge, type Status } from "./StatusBadge";
+import { StatusBadge, type Moment, type Status } from "./StatusBadge";
 import { TeamChip } from "./TeamChip";
 
 export type Side = { code: string; name?: string; color?: string; badge?: ReactNode };
@@ -21,6 +21,10 @@ type Props = {
   bar?: Segment[];
   /** Shown instead of a pick when there is none yet (default "No pick yet"). */
   pickPlaceholder?: string;
+  /** Status wording: "Rebuilt after kickoff" or "… tip-off". */
+  moment?: Moment;
+  /** Tighter card for nights with many games (NBA). Same content. */
+  compact?: boolean;
   onOpen: () => void;
 };
 
@@ -39,7 +43,7 @@ function Team({ side }: { side: Side }) {
 }
 
 /** The family match card: one pick, one status, a labelled bar. */
-export function MatchCard({ left, right, centre, status, pick, when, meta, bar, pickPlaceholder = "No pick yet", onOpen }: Props) {
+export function MatchCard({ left, right, centre, status, pick, when, meta, bar, pickPlaceholder = "No pick yet", moment = "kickoff", compact = false, onOpen }: Props) {
   // A missing pick is always said out loud; the status badge only covers it
   // when the badge itself reads "No pick yet".
   const pickLine = pick ? `Pick: ${pick.label} · ${pct(pick.prob)}` : status === "nopick" ? undefined : pickPlaceholder;
@@ -48,14 +52,17 @@ export function MatchCard({ left, right, centre, status, pick, when, meta, bar, 
     <button
       type="button"
       onClick={onOpen}
-      className="pr-notch flex w-full flex-col gap-3 rounded-pr border border-pr-rule bg-pr-panel p-4 text-left transition-colors hover:border-pr-accent"
+      data-compact={compact || undefined}
+      className={`pr-notch flex w-full flex-col rounded-pr border border-pr-rule bg-pr-panel text-left transition-colors hover:border-pr-accent ${
+        compact ? "gap-2 p-3" : "gap-3 p-4"
+      }`}
     >
       <span className="flex w-full items-center justify-between gap-2">
         <span className="text-xs uppercase tracking-wide text-pr-text-dim">{when}</span>
         {status && (
           <>
             <Sep />
-            <StatusBadge status={status} />
+            <StatusBadge status={status} moment={moment} />
           </>
         )}
       </span>
@@ -63,7 +70,11 @@ export function MatchCard({ left, right, centre, status, pick, when, meta, bar, 
       <span className="flex w-full items-center gap-2">
         <Team side={left} />
         <Sep />
-        <span className="shrink-0 rounded-pr bg-pr-panel-2 px-2.5 py-1 font-pr-display text-xl font-semibold tracking-wide text-pr-text">
+        <span
+          className={`shrink-0 rounded-pr bg-pr-panel-2 px-2.5 py-1 font-pr-display font-semibold tracking-wide text-pr-text ${
+            compact ? "text-lg" : "text-xl"
+          }`}
+        >
           {centre}
         </span>
         <Sep />

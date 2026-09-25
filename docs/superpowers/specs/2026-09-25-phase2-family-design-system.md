@@ -43,7 +43,7 @@ Built from PL's structure, with PL's template tells removed.
 | **Type** | One family: **Barlow Condensed** for display (scores, numbers, headers, set in caps like TV graphics) and **Barlow** for body. Tabular figures on every number. | Condensed display for scores | Inter, Oswald, Titillium, Big Shoulders, Manrope |
 | **Stage** | A flat near-black ground, one raised panel step, one 1 px rule colour. Dark is chosen for the scene: phones at kickoff, evenings, next to a TV. | Dark ground | Radial purple glow, gradients, neon cyan, glass |
 | **Shape** | Radius 6 px. **One clipped corner** (a single notch, like a broadcast graphic) is the family mark, on the hero and match cards only. | `clip-corner` | Clip on every surface |
-| **Status** | At most **one** status badge per card, 12 px or larger: *Next up* · *Live* · *Final ✓ Called it* · *Final ✗ Missed* · *No pick yet* · *Rebuilt after kickoff*. Colour always sits next to words. | Called it / Missed | Stacked Backfilled + Leaned draw + Final + verdict |
+| **Status** | At most **one** status badge per card, 12 px or larger: *Next up* · *Live* · *Final ✓ Called it* · *Final ✗ Missed* · *No pick yet* · *Rebuilt after kickoff*. Basketball says *tip-off* instead of *kickoff* (the `moment` prop). Colour always sits next to words. | Called it / Missed | Stacked Backfilled + Leaned draw + Final + verdict |
 | **States** | `Skeleton` (named: "Loading picks…"), `EmptyState` with a next step, `ErrorState` with Try again. All carry `aria-live`. | Phase 1 states | — |
 | **Numbers** | Every number on screen goes through `fmt` (§5) | — | Raw floats, ISO dates, version ids |
 | **Spacing** | 4 / 8 / 12 / 16 / 24 / 32 | — | — |

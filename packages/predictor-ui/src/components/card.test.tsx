@@ -115,3 +115,18 @@ describe("long team names", () => {
     expect(screen.getByText("Jacksonville State").className).not.toMatch(/truncate/);
   });
 });
+
+describe("MatchCard in basketball", () => {
+  it("says tip-off instead of kickoff when told the sport's moment", () => {
+    render(<MatchCard {...base} status="rebuilt" moment="tip-off" pick={{ label: "AVL", prob: 0.6 }} />);
+    expect(screen.getByText("Rebuilt after tip-off")).toBeInTheDocument();
+    expect(screen.queryByText(/kickoff/i)).not.toBeInTheDocument();
+  });
+
+  it("has a compact form for busy nights, with the same content", () => {
+    render(<MatchCard {...base} compact pick={{ label: "AVL", prob: 0.6 }} />);
+    const card = screen.getByRole("button");
+    expect(card).toHaveAttribute("data-compact", "true");
+    expect(card).toHaveTextContent("Pick: AVL · 60%");
+  });
+});
