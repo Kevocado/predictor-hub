@@ -130,3 +130,12 @@ describe("MatchCard in basketball", () => {
     expect(card).toHaveTextContent("Pick: AVL · 60%");
   });
 });
+
+describe("MatchCard top row", () => {
+  it("keeps the status badge on one line, and lets it drop below the date on a narrow card", () => {
+    render(<MatchCard {...base} status="rebuilt" moment="tip-off" when="Mon 2 Mar · Final" compact />);
+    const badge = screen.getByText("Rebuilt after tip-off");
+    expect(badge.className).toMatch(/whitespace-nowrap/);
+    expect(badge.parentElement!.className).toMatch(/flex-wrap/);
+  });
+});

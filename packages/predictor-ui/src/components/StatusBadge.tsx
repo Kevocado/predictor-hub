@@ -19,7 +19,7 @@ export function StatusBadge({ status, moment = "kickoff" }: { status: Status; mo
   const { tone } = LOOK[status];
   const words = statusWords(status, moment);
   return (
-    <span className={`inline-flex items-center rounded-pr px-1.5 py-0.5 font-pr-display text-xs font-semibold uppercase tracking-wide ${tone}`}>
+    <span className={`inline-flex items-center whitespace-nowrap rounded-pr px-1.5 py-0.5 font-pr-display text-xs font-semibold uppercase tracking-wide ${tone}`}>
       {words}
     </span>
   );

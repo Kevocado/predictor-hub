@@ -57,7 +57,7 @@ export function MatchCard({ left, right, centre, status, pick, when, meta, bar, 
         compact ? "gap-2 p-3" : "gap-3 p-4"
       }`}
     >
-      <span className="flex w-full items-center justify-between gap-2">
+      <span className="flex w-full flex-wrap items-center justify-between gap-x-2 gap-y-1">
         <span className="text-xs uppercase tracking-wide text-pr-text-dim">{when}</span>
         {status && (
           <>
