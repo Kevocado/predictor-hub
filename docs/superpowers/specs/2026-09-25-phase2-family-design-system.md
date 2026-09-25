@@ -54,7 +54,7 @@ Built from PL's structure, with PL's template tells removed.
 |---|---|---|---|
 | **PL** | PL magenta | **Match cards**: crest · score or kickoff · crest, pick line, labelled H/D/A bar | FPL tab, value bets, player picks |
 | **F1** | Signal red | **Timing tower**: ranked driver rows, position, team colour chip, win % large, podium/points/DNF small, one-hue intensity | Qualifying / Race / Sprint toggle, Championship, live session |
-| **NFL** | Field green | **Match cards** with spread and total written with a team ("KC −3.5") | Props, power rankings, standings |
+| **NFL** | Field blue (was "field green": green is the *Called it ✓* status colour, so NFL uses blue to keep status unambiguous) | **Match cards** with spread and total written with a team ("KC −3.5") | Props, power rankings, standings |
 | **CFB** | Collegiate gold | NFL's cards; conference filter as one select | Conference filter |
 | **NBA** | Court orange | **Match cards**, compact (many games a night), grouped by day, favourite-first | Props, calibration |
 | **Hub** | Neutral (white on stage) | A "This weekend" stack: each sport's next-up pick and pre-kickoff record, then the switcher | — |
@@ -85,7 +85,7 @@ Built from PL's structure, with PL's template tells removed.
 | `stat(x)` | one decimal: `16.51` → `16.5` |
 | `signed(x)` | `1.5` → `+1.5`; `-1.5` → `−1.5` (true minus sign) |
 | `streak(n)` | `-1` → `L1`; `3` → `W3` |
-| `margin(team, x)` | `("MIA", 4.8)` → `MIA by 4.8`; `\|x\| < 0.5` → `Toss-up` |
+| `margin(home, away, x)` | x = home − away: `("TOR","MIA",−4.8)` → `MIA by 4.8`; `\|x\| < 0.5` → `Toss-up` |
 | `spread(team, line)` | `("KC", -3.5)` → `KC −3.5`; `0` → `KC PK` |
 | `record(hits, n)` | `(4, 7)` → `4/7`; `n = 0` → `—` |
 | `kickoff(iso, tz?)` | → `Sat 3 Oct · 7:30 PM CDT` (always shows the zone) |

@@ -14,7 +14,7 @@ export function Skeleton({ label }: { label: string }) {
 /** Empty is never a dead end: it says why and offers the next step. */
 export function EmptyState({ message, action }: { message: string; action?: { label: string; onClick: () => void } }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 py-4 text-sm text-pr-text-dim">
+    <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-3 py-4 text-sm text-pr-text-dim">
       <span>{message}</span>
       {action && (
         <button type="button" onClick={action.onClick} className={actionClass}>

@@ -53,6 +53,7 @@ describe("States", () => {
   it("EmptyState offers a next step", () => {
     const go = vi.fn();
     render(<EmptyState message="No games this week." action={{ label: "Go to next week", onClick: go }} />);
+    expect(screen.getByRole("status")).toHaveTextContent("No games this week.");
     fireEvent.click(screen.getByRole("button", { name: "Go to next week" }));
     expect(go).toHaveBeenCalledOnce();
   });

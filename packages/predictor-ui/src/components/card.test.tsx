@@ -41,7 +41,10 @@ describe("MatchCard", () => {
     const onOpen = vi.fn();
     render(<MatchCard {...base} pick={{ label: "Aston Villa win", prob: 0.38 }} onOpen={onOpen} />);
     const card = screen.getByRole("button");
-    expect(card).toHaveAccessibleName("Tottenham v Aston Villa, 2–3. Pick: Aston Villa win · 38%. Called it ✓");
+    // Named from its visible content (WCAG 2.5.3), so nothing on the card is hidden from screen readers.
+    expect(card).not.toHaveAttribute("aria-label");
+    expect(card).toHaveAccessibleName(/Tottenham.*2–3.*Aston Villa.*Pick: Aston Villa win · 38%/);
+    expect(card.querySelector("div")).toBeNull();
     card.focus();
     await userEvent.keyboard("{Enter}");
     await userEvent.keyboard(" ");
@@ -68,5 +71,24 @@ describe("MatchCard without a pick", () => {
     expect(container.querySelector("[data-testid='pick-section']")).toBeNull();
     rerender(<MatchCard {...base} pick={{ label: "Aston Villa win", prob: 0.38 }} />);
     expect(container.querySelector("[data-testid='pick-section']")).not.toBeNull();
+  });
+});
+
+describe("fallback fills", () => {
+  it("gives home, draw and away three different fills when no team colours are known", () => {
+    const { container } = render(<ProbabilityBar segments={[{ label: "Home", prob: 0.4 }, { label: "Draw", prob: 0.3 }, { label: "Away", prob: 0.3 }]} />);
+    const fills = [...container.querySelectorAll<HTMLElement>("[data-testid='pbar-fill']")].map((f) => f.style.backgroundColor);
+    expect(new Set(fills).size).toBe(3);
+  });
+});
+
+describe("MatchCard review fixes", () => {
+  it("reads the date and sport meta to screen readers too", () => {
+    render(<MatchCard {...base} status="next" when="Sun 4 Oct · 12:00 PM CDT" meta="BAL −2.5 · Total 46.5" pick={{ label: "Ravens", prob: 0.62 }} />);
+    expect(screen.getByRole("button")).toHaveAccessibleName(/Sun 4 Oct · 12:00 PM CDT.*BAL −2\.5 · Total 46\.5/);
+  });
+  it("always says 'No pick yet' when there is no pick, whatever the status", () => {
+    render(<MatchCard {...base} status="next" />);
+    expect(screen.getByText("No pick yet")).toBeInTheDocument();
   });
 });

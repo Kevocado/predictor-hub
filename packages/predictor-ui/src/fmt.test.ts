@@ -50,11 +50,12 @@ describe("stat, signed, streak, record", () => {
 
 describe("margin and spread", () => {
   it("margin names the team and hides tiny or missing margins", () => {
-    expect(margin("MIA", 4.8)).toBe("MIA by 4.8");
-    expect(margin("MIA", -4.8)).toBe("MIA by 4.8");
-    expect(margin("MIA", 0.3)).toBe("Toss-up");
-    expect(margin("MIA", -0)).toBe("Toss-up");
-    expect(margin("MIA", Number.NaN)).toBe("Toss-up");
+    // x is home minus away: its sign picks the favoured team.
+    expect(margin("TOR", "MIA", -4.8)).toBe("MIA by 4.8");
+    expect(margin("TOR", "MIA", 4.8)).toBe("TOR by 4.8");
+    expect(margin("TOR", "MIA", 0.3)).toBe("Toss-up");
+    expect(margin("TOR", "MIA", -0)).toBe("Toss-up");
+    expect(margin("TOR", "MIA", Number.NaN)).toBe("Toss-up");
   });
   it("spread writes the line with its team", () => {
     expect(spread("KC", -3.5)).toBe("KC −3.5");
@@ -82,5 +83,32 @@ describe("modelDate", () => {
     expect(modelDate("v20260918120240")).toBe("Sep 18 model");
     expect(modelDate("2026-09-18T12:02:40.134071+00:00")).toBe("Sep 18 model");
     expect(modelDate("garbage")).toBe("Model");
+  });
+});
+
+describe("review fixes", () => {
+  it("uses a true minus in stat and rounds before choosing a sign", () => {
+    expect(stat(-3.2)).toBe("\u22123.2");
+    expect(signed(-0.04)).toBe("0.0");
+    expect(signed(0.04)).toBe("0.0");
+  });
+  it("treats Infinity like missing data", () => {
+    expect(stat(Infinity)).toBe("—");
+    expect(signed(-Infinity)).toBe("—");
+    expect(spread("KC", Infinity)).toBe("—");
+    expect(record(Number.NaN, 7)).toBe("—");
+    expect(streak(2.5)).toBe("—");
+  });
+  it("pctFine never prints 10.0%", () => {
+    expect(pctFine(0.0995)).toBe("10%");
+    expect(pctFine(0.09999)).toBe("10%");
+  });
+  it("kickoff survives a bad zone and treats a bare date as a date", () => {
+    expect(kickoff("2026-10-04T00:30:00Z", "Not/AZone")).not.toBe("—");
+    expect(kickoff("2026-10-04")).toBe("Sun 4 Oct");
+  });
+  it("modelDate rejects impossible dates", () => {
+    expect(modelDate("v20261399")).toBe("Model");
+    expect(modelDate("1")).toBe("Model");
   });
 });

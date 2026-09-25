@@ -1,9 +1,9 @@
-/* Predictor family tokens. Synced into each site; import after tailwindcss:
+/* Predictor family tokens. Synced into each site; import in this order:
+     @import "./predictor-ui/fonts.css";
      @import "tailwindcss";
      @import "./predictor-ui/tokens.css";
    A site sets data-sport on its root (AppFrame does this) to pick its accent.
    Contrast is enforced by tokens.test.ts; change a hex, run the tests. */
-@import url("https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap");
 
 @theme {
   --font-pr-display: "Barlow Condensed", "Arial Narrow", ui-sans-serif, sans-serif;
@@ -57,6 +57,7 @@
 
 @layer base {
   [data-sport] {
+    color-scheme: dark;
     background: var(--color-pr-stage);
     color: var(--color-pr-text);
     font-family: var(--font-pr-body);
@@ -76,4 +77,9 @@
    match cards only. */
 .pr-notch {
   clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+}
+/* clip-path hides anything drawn outside the box, including the default
+   outside focus outline, so the notched card draws its focus ring inside. */
+.pr-notch:focus-visible {
+  outline-offset: -3px;
 }

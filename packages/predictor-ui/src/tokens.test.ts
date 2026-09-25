@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { contrast } from "./contrast";
+import { PANEL } from "./components/ProbabilityBar";
 
 // jsdom rewrites import.meta.url, so resolve from the package root instead.
 const css = readFileSync(resolve(__dirname, "tokens.css"), "utf8");
@@ -45,6 +46,27 @@ describe("tokens", () => {
     expect(css).toMatch(/--font-pr-display:\s*"Barlow Condensed"/);
     expect(css).toMatch(/--font-pr-body:\s*"Barlow"/);
     expect(css).not.toMatch(/Inter/);
+  });
+});
+
+describe("review fixes", () => {
+  it("keeps focus visible on the notched card (clip-path would cut an outside outline)", () => {
+    expect(css).toMatch(/\.pr-notch:focus-visible\s*\{[^}]*outline-offset:\s*-\d+px/);
+  });
+  it("loads fonts from fonts.css (imported before tailwindcss), never from tokens.css", () => {
+    const fonts = readFileSync(resolve(__dirname, "fonts.css"), "utf8");
+    expect(css).not.toMatch(/@import\s+url/);
+    expect(fonts).toMatch(/@import url\("https:\/\/fonts\.googleapis\.com\/css2\?family=Barlow/);
+  });
+  it("tells the browser the pages are dark", () => {
+    expect(css).toMatch(/color-scheme:\s*dark/);
+  });
+  it("fails on any colour token it cannot check", () => {
+    const declared = [...css.matchAll(/--color-pr-[\w-]+:\s*([^;]+);/g)].map((m) => m[1].trim());
+    for (const value of declared) expect(value, value).toMatch(/^#[0-9a-fA-F]{6}$/);
+  });
+  it("the bar's panel constant matches the panel token", () => {
+    expect(PANEL.toLowerCase()).toBe(base.panel.toLowerCase());
   });
 });
 

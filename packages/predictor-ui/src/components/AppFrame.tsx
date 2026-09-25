@@ -42,25 +42,24 @@ export function AppFrame({ sport, sportName, sites, tabs, activeTab, onTab, chil
         </div>
         <div className="mx-auto flex max-w-screen-xl flex-wrap items-end justify-between gap-x-6 gap-y-3 px-4 pb-0 pt-3 sm:px-6">
           <h1 className="pb-3 font-pr-display text-3xl font-bold uppercase tracking-wide text-pr-text">{sportName} Predictor</h1>
-          <div role="tablist" aria-label="Pages" className="flex gap-4 overflow-x-auto">
+          <nav aria-label="Pages" className="flex gap-4 overflow-x-auto">
             {tabs.map((tab) => {
-              const selected = tab.id === activeTab;
+              const current = tab.id === activeTab;
               return (
                 <button
                   key={tab.id}
                   type="button"
-                  role="tab"
-                  aria-selected={selected}
+                  aria-current={current ? "page" : undefined}
                   onClick={() => onTab(tab.id)}
                   className={`whitespace-nowrap border-b-2 pb-3 text-sm font-semibold transition-colors ${
-                    selected ? "border-pr-accent text-pr-text" : "border-transparent text-pr-text-dim hover:text-pr-text"
+                    current ? "border-pr-accent text-pr-text" : "border-transparent text-pr-text-dim hover:text-pr-text"
                   }`}
                 >
                   {tab.label}
                 </button>
               );
             })}
-          </div>
+          </nav>
         </div>
       </header>
       <main className="mx-auto max-w-screen-xl px-4 py-6 sm:px-6">{children}</main>
