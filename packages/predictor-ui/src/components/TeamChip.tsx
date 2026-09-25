@@ -8,7 +8,7 @@ export function TeamChip({ code, name, color }: { code: string; name?: string; c
     <span
       aria-label={name}
       style={style}
-      className={`inline-flex min-w-[3ch] items-center justify-center rounded-pr px-1.5 py-0.5 font-pr-display text-sm font-bold uppercase tracking-wide ${
+      className={`inline-flex min-w-[3ch] ring-1 ring-inset ring-pr-rule items-center justify-center rounded-pr px-1.5 py-0.5 font-pr-display text-sm font-bold uppercase tracking-wide ${
         color ? "" : "bg-pr-panel-2 text-pr-text"
       }`}
     >

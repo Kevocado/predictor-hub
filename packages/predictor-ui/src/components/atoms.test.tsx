@@ -64,3 +64,10 @@ describe("States", () => {
     expect(retry).toHaveBeenCalledOnce();
   });
 });
+
+describe("TeamChip outline", () => {
+  it("keeps a visible edge when the team colour is close to the panel", () => {
+    render(<TeamChip code="CLE" name="Cleveland Browns" color="#311D00" />);
+    expect(screen.getByLabelText("Cleveland Browns").className).toMatch(/ring-1/);
+  });
+});

@@ -52,3 +52,21 @@ describe("MatchCard", () => {
     expect(screen.getByText("KC −3.5 · Total 46.5")).toBeInTheDocument();
   });
 });
+
+describe("readability of team colours on the dark panel", () => {
+  it("swaps a team colour that would vanish on the panel for a visible neutral", () => {
+    const { container } = render(<ProbabilityBar segments={[{ label: "PIT", prob: 0.45, color: "#FFB612" }, { label: "CLE", prob: 0.55, color: "#311D00" }]} />);
+    const fills = container.querySelectorAll<HTMLElement>("[data-testid='pbar-fill']");
+    expect(fills[0].style.backgroundColor).toBe("rgb(255, 182, 18)");
+    expect(fills[1].style.backgroundColor).not.toBe("rgb(49, 29, 0)");
+  });
+});
+
+describe("MatchCard without a pick", () => {
+  it("has no empty pick section", () => {
+    const { container, rerender } = render(<MatchCard {...base} status="nopick" />);
+    expect(container.querySelector("[data-testid='pick-section']")).toBeNull();
+    rerender(<MatchCard {...base} pick={{ label: "Aston Villa win", prob: 0.38 }} />);
+    expect(container.querySelector("[data-testid='pick-section']")).not.toBeNull();
+  });
+});

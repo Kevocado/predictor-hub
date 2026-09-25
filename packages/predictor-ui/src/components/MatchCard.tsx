@@ -61,11 +61,13 @@ export function MatchCard({ left, right, centre, status, pick, when, meta, bar, 
         </span>
         <Team side={right} />
       </div>
-      <div className="flex w-full flex-col gap-2 border-t border-pr-rule pt-2.5">
-        {pickLine && <span className="text-sm font-semibold text-pr-text">{pickLine}</span>}
-        {bar && <ProbabilityBar segments={bar} />}
-        {meta && <span className="text-xs text-pr-text-dim">{meta}</span>}
-      </div>
+      {(pickLine || bar || meta) && (
+        <div data-testid="pick-section" className="flex w-full flex-col gap-2 border-t border-pr-rule pt-2.5">
+          {pickLine && <span className="text-sm font-semibold text-pr-text">{pickLine}</span>}
+          {bar && <ProbabilityBar segments={bar} />}
+          {meta && <span className="text-xs text-pr-text-dim">{meta}</span>}
+        </div>
+      )}
     </button>
   );
 }
