@@ -56,6 +56,8 @@ This is a starting brief. `/impeccable shape` (step 4) finalises it.
 
 ## Phase 1 · Trust: nothing lies, nothing hangs
 
+**Status (2026-09-25):** implemented, reviewed and pushed on `claude/sports-predictors-frontend-plan-qpab3v` in Sports_Predictor, PL_Predictor, NBA_Predictor and predictor-hub. Carried over: the "last updated" time in error states and "Odds updated N min ago" need the snapshot's `updated_at`, so they move to the Phase 3 snapshot-first render. The live-VPS check that NBA cards show picks is still open.
+
 **Implementation plan:** [2026-09-25-phase1-trust.md](2026-09-25-phase1-trust.md). Each phase gets its own executable plan (superpowers:writing-plans), and each UI task runs through its `/impeccable` command.
 
 | # | Command | Target | Work | Done when |
