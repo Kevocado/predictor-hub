@@ -10,6 +10,9 @@ const LOOK: Record<Status, { words: string; tone: string }> = {
   rebuilt: { words: "Rebuilt after kickoff", tone: "border border-pr-rule text-pr-text-dim" },
 };
 
+/** The exact words each status reads as, for accessible names elsewhere. */
+export const statusWords = (status: Status) => LOOK[status].words;
+
 export function StatusBadge({ status }: { status: Status }) {
   const { words, tone } = LOOK[status];
   return (
