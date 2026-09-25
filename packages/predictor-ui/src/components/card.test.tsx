@@ -92,3 +92,11 @@ describe("MatchCard review fixes", () => {
     expect(screen.getByText("No pick yet")).toBeInTheDocument();
   });
 });
+
+describe("MatchCard without a status", () => {
+  it("shows no status words for an upcoming game that is not next, but still says when there is no pick", () => {
+    render(<MatchCard left={base.left} right={base.right} centre="15:00" onOpen={() => {}} />);
+    expect(screen.queryByText(/Next up|Live|Called it|Missed|Rebuilt after kickoff/)).toBeNull();
+    expect(screen.getByText("No pick yet")).toBeInTheDocument();
+  });
+});
