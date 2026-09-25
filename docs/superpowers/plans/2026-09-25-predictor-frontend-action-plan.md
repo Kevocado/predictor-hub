@@ -69,7 +69,7 @@ This is a starting brief. `/impeccable shape` (step 4) finalises it.
 
 ## Phase 2 · The family system
 
-**Status (2026-09-25):** 2a (the `predictor-ui` package) is done. 2b (the NFL + CFB site) is done and reviewed; it needed backend changes in `NFL_Predictor` and `CFB_Predictor`, which now flag picks rebuilt after kickoff and leave them out of the track record. 2c (NBA) is built. It fixed a larger honesty hole in the NBA backend: the retrain backtest wrote picks for finished games into the live table, and the cards, track record and calibration all judged them. NBA now records each game's tip-off and counts only picks made before it. Next up: 2d Hub, 2e F1, 2f PL.
+**Status (2026-09-25):** 2a (the `predictor-ui` package) is done. 2b (the NFL + CFB site) is done and reviewed; it needed backend changes in `NFL_Predictor` and `CFB_Predictor`, which now flag picks rebuilt after kickoff and leave them out of the track record. 2c (NBA) is built. It fixed a larger honesty hole in the NBA backend: the retrain backtest wrote picks for finished games into the live table, and the cards, track record and calibration all judged them. NBA now records each game's tip-off and counts only picks made before it. 2d (Hub restyle) is done; the live "this weekend" ticker stays in Phase 4, step 13, because it needs the sport APIs reachable from the Hub (CORS or a same-origin proxy). Next up: 2e F1, 2f PL.
 
 | # | Command | Target | Work |
 |---|---|---|---|
