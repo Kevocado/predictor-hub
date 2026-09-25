@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { kickoff, margin, modelDate, pct, pctFine, record, signed, spread, stat, streak } from "./fmt";
+import { kickoff, margin, modelDate, parseKickoff, pct, pctFine, record, signed, spread, stat, streak } from "./fmt";
 
 describe("pct", () => {
   it("rounds to whole percents", () => {
@@ -110,5 +110,16 @@ describe("review fixes", () => {
   it("modelDate rejects impossible dates", () => {
     expect(modelDate("v20261399")).toBe("Model");
     expect(modelDate("1")).toBe("Model");
+  });
+});
+
+describe("zoneless timestamps (the NFL API sends '2026-10-04T17:00:00')", () => {
+  it("parseKickoff reads a date-time without a zone as UTC", () => {
+    expect(parseKickoff("2026-10-04T17:00:00").toISOString()).toBe("2026-10-04T17:00:00.000Z");
+    expect(parseKickoff("2026-10-04T17:00:00Z").toISOString()).toBe("2026-10-04T17:00:00.000Z");
+    expect(parseKickoff("2026-10-04T12:00:00-05:00").toISOString()).toBe("2026-10-04T17:00:00.000Z");
+  });
+  it("kickoff shows a 1pm ET kickoff at noon Central, not 5 PM", () => {
+    expect(kickoff("2026-10-04T17:00:00", "America/Chicago")).toBe("Sun 4 Oct · 12:00 PM CDT");
   });
 });
