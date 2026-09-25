@@ -69,6 +69,8 @@ This is a starting brief. `/impeccable shape` (step 4) finalises it.
 
 ## Phase 2 · The family system
 
+**Status (2026-09-25):** 2a (the `predictor-ui` package) is done. 2b (the NFL + CFB site) is done and reviewed; it needed backend changes in `NFL_Predictor` and `CFB_Predictor`, which now flag picks rebuilt after kickoff and leave them out of the track record. Next up: 2c NBA, 2d Hub, 2e F1, 2f PL.
+
 | # | Command | Target | Work |
 |---|---|---|---|
 | 5 | `/impeccable init` | predictor-hub | Write `PRODUCT.md`: audience (sports fans on their phones), the one-question promise, the pre-kickoff honesty rule, five sports and one product. impeccable requires this before `shape`. |
