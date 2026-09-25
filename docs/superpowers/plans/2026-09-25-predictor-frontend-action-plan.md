@@ -56,6 +56,8 @@ This is a starting brief. `/impeccable shape` (step 4) finalises it.
 
 ## Phase 1 · Trust: nothing lies, nothing hangs
 
+**Implementation plan:** [2026-09-25-phase1-trust.md](2026-09-25-phase1-trust.md). Each phase gets its own executable plan (superpowers:writing-plans), and each UI task runs through its `/impeccable` command.
+
 | # | Command | Target | Work | Done when |
 |---|---|---|---|---|
 | 1 | `/impeccable harden` | Sports_Predictor (NFL + CFB) | **P0.** A failed fetch currently shows "Loading…" and a pulsing bar forever (`GameCard.tsx:21-22,36`). Replace it with a card-level and page-level error state: "Predictions unavailable", a **Retry** button, and the last-updated time, with the schedule kept visible. Replace the hostname sniffing in `src/api/client.ts` with a relative `/api/nfl` and `/api/cfb`, which the VPS Caddy proxies. Add `aria-live` on status text. | Killing the API shows a readable error with a working Retry, and the live VPS site loads the picks |
