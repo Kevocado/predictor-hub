@@ -55,7 +55,9 @@ export function StatTable<T>({ rows, columns, rowKey, initialSort, caption, expa
     );
 
   return (
-    <div className="overflow-x-auto rounded-pr border border-pr-rule">
+    // relative: the visually hidden caption and tooltips are absolutely
+    // positioned, and must stay inside this scroller or they widen the page.
+    <div className="relative overflow-x-auto rounded-pr border border-pr-rule">
       <table className="w-full border-collapse text-sm">
         <caption className="sr-only">{caption}</caption>
         <thead>
@@ -117,7 +119,8 @@ export function StatTable<T>({ rows, columns, rowKey, initialSort, caption, expa
                 {expand && isOpen && (
                   <tr className="border-b border-pr-rule bg-pr-panel-2/40">
                     <td colSpan={columns.length} className="px-3 py-3">
-                      {expand(row)}
+                      {/* Pinned to the visible part of a wide table on a phone. */}
+                      <div className="sticky left-3 max-w-[calc(100vw-4rem)]">{expand(row)}</div>
                     </td>
                   </tr>
                 )}
