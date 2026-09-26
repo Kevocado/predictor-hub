@@ -5,7 +5,7 @@ import httpx
 import pytest
 import respx
 
-from conftest import facts, good
+from conftest import facts, good, make, reply
 from explainer import news
 from explainer.cache import Cache
 from explainer.config import Settings
@@ -14,26 +14,6 @@ from explainer.llm import OPENROUTER_URL
 from explainer.service import Explainer, NotFound, Upstream
 
 FACTS_URL = "http://nfl.test/api/facts/g1"
-
-
-def reply(body, status=200):
-    content = body if isinstance(body, str) else json.dumps(body)
-    return httpx.Response(status, json={"choices": [{"message": {"content": content}}]})
-
-
-@pytest.fixture(autouse=True)
-def no_news():
-    news._CACHE.clear()
-    with respx.mock(assert_all_called=False) as mock:
-        mock.get(url__startswith="https://site.api.espn.com").mock(return_value=httpx.Response(200, json={"articles": []}))
-        yield mock
-
-
-def make(tmp_path, key="k", cap=10, enabled=True):
-    s = Settings(openrouter_api_key=key, sport_api_nfl="http://nfl.test/api", EXPLAINER_DAILY_CAP=cap,
-                 EXPLAINER_ENABLED=enabled, EXPLAINER_MODEL="m1", EXPLAINER_FALLBACK_MODEL="m2")
-    db = str(tmp_path / "e.sqlite")
-    return Explainer(s, Cache(db), Ledger(db, cap=cap), httpx.AsyncClient())
 
 
 def models_called(route):

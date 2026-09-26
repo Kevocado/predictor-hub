@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import re
+from urllib.parse import quote
 from datetime import datetime, timezone
 
 import httpx
@@ -18,7 +19,7 @@ from .ledger import Ledger
 from .llm import LLMError, complete
 from .news import headlines
 from .prompts import messages
-from .template import explain_from_template
+from .template import explain_from_template, minimal
 from .validate import validate
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,9 @@ logger = logging.getLogger(__name__)
 # A template stored because the model was unavailable (budget, outage) is
 # served for this long, then the model gets another go at the same facts.
 TEMPLATE_RETRY_SECONDS = 3 * 3600
-SECTION_KEYS = ("market", "title", "text", "numbers_used")
+SECTION_KEYS = ("market", "title", "text")
+# Stored in the model column of a template row the model may retry later.
+UNAVAILABLE = "unavailable"
 
 
 class NotFound(Exception):
@@ -45,7 +48,7 @@ def _news_terms(f: Facts) -> list[str]:
 
 def _clean(body: dict) -> dict:
     return {"headline": body["headline"],
-            "sections": [{k: s[k] for k in SECTION_KEYS if k in s} for s in body["sections"]]}
+            "sections": [{k: str(s.get(k) or "") for k in SECTION_KEYS} for s in body["sections"]]}
 
 
 class Explainer:
@@ -58,7 +61,7 @@ class Explainer:
         if not base:
             raise NotFound(f"no sport API configured for {sport!r}")
         try:
-            res = await self.client.get(f"{base}/facts/{id}", timeout=15.0)
+            res = await self.client.get(f"{base}/facts/{quote(id, safe='/')}", timeout=15.0)
         except httpx.HTTPError as exc:
             raise Upstream(f"{sport} API unreachable: {type(exc).__name__}") from None
         if res.status_code == 404:
@@ -71,13 +74,16 @@ class Explainer:
             raise Upstream(f"{sport} facts failed the contract: {type(exc).__name__}") from None
 
     def _answer(self, sport: str, id: str, row: dict) -> dict:
-        return {"sport": sport, "id": id, **row["body"], "source": row["source"], "model": row["model"],
+        model = "" if row["source"] == "template" else row["model"]
+        return {"sport": sport, "id": id, **row["body"], "source": row["source"], "model": model,
                 "generated_at": row["created_at"], "prompt_version": row["prompt_version"]}
 
     def _usable(self, row: dict | None) -> bool:
         if row is None:
             return False
-        if row["source"] != "template":
+        # Only a template made while the model was unavailable is retried;
+        # one made after the model's answers failed validation stands.
+        if row["source"] != "template" or row["model"] != UNAVAILABLE:
             return True
         age = (datetime.now(timezone.utc) - datetime.fromisoformat(row["created_at"])).total_seconds()
         return age < TEMPLATE_RETRY_SECONDS
@@ -88,23 +94,32 @@ class Explainer:
         facts_json = render(facts)
         news_json = json.dumps(news, sort_keys=True, ensure_ascii=False)
         s = self.settings
-        key = Cache.key(sport, id, facts_json, news_json, s.prompt_version, s.model)
+        # News feeds the first write-up but isn't in the key: a fresh
+        # headline alone must not cost another generation.
+        key = Cache.key(sport, id, facts_json, "", s.prompt_version, f"{s.model}|{s.fallback_model}")
 
         row = self.cache.get(key)
         if self._usable(row):
             return self._answer(sport, id, row)
         lock = self._locks.setdefault(key, asyncio.Lock())
-        async with lock:
-            row = self.cache.get(key)  # another caller may have just made it
-            if self._usable(row):
-                return self._answer(sport, id, row)
-            body, source, model = await self._generate(sport, facts, facts_json, news_json)
-            self.cache.put(key, sport, id, body, source, model, s.prompt_version)
-        self._locks.pop(key, None)
+        try:
+            async with lock:
+                row = self.cache.get(key)  # another caller may have just made it
+                if self._usable(row):
+                    return self._answer(sport, id, row)
+                try:
+                    body, source, model = await self._generate(sport, facts, facts_json, news_json)
+                except Exception:
+                    logger.exception("explanation failed for %s/%s", sport, id)
+                    body, source, model = minimal(facts.model_dump()), "template", UNAVAILABLE
+                self.cache.put(key, sport, id, body, source, model, s.prompt_version)
+        finally:
+            self._locks.pop(key, None)
         return self._answer(sport, id, self.cache.get(key))
 
     async def _generate(self, sport: str, facts: Facts, facts_json: str, news_json: str) -> tuple[dict, str, str]:
         s = self.settings
+        reason = UNAVAILABLE  # no key, disabled, over budget or erroring: retry later
         if s.enabled and s.openrouter_api_key:
             msgs = messages(sport, facts_json, news_json)
             for model in (s.model, s.fallback_model):
@@ -119,5 +134,11 @@ class Explainer:
                 problems = validate(out, facts_json, news_json)
                 if not problems:
                     return _clean(out), "llm", model
+                reason = ""  # the model answered but not honestly enough: don't pay again
                 logger.info("model %s output rejected: %s", model, "; ".join(problems)[:300])
-        return explain_from_template(facts.model_dump()), "template", ""
+        try:
+            body = explain_from_template(facts.model_dump())
+        except Exception:
+            logger.exception("template failed")
+            body = minimal(facts.model_dump())
+        return body, "template", reason

@@ -31,7 +31,7 @@ async def _articles(client: httpx.AsyncClient, sport: str) -> list[dict]:
     try:
         res = await client.get(ESPN_NEWS[sport], timeout=TIMEOUT_SECONDS)
         res.raise_for_status()
-        articles = [a for a in res.json().get("articles", []) if isinstance(a, dict) and a.get("headline")]
+        articles = [a for a in (res.json().get("articles") or []) if isinstance(a, dict) and a.get("headline")]
         _CACHE[sport] = (now + TTL_SECONDS, articles)
     except Exception as exc:  # network, HTTP status, JSON, shape
         logger.info("ESPN news unavailable for %s: %s", sport, type(exc).__name__)
@@ -42,13 +42,19 @@ async def _articles(client: httpx.AsyncClient, sport: str) -> list[dict]:
 
 async def headlines(client: httpx.AsyncClient, sport: str, teams: list[str], limit: int = 4) -> list[dict]:
     """Newest-first headlines mentioning any of `teams` (case-insensitive)."""
-    names = [t.lower() for t in teams if t and t.strip()]
+    names = [t.strip().lower() for t in teams if isinstance(t, str) and t.strip()]
     if sport not in ESPN_NEWS or not names:
         return []
-    out = []
-    for a in await _articles(client, sport):
-        blob = f"{a.get('headline', '')} {a.get('description', '')}".lower()
-        if any(n in blob for n in names):
-            out.append({"headline": a["headline"], "published": a.get("published", ""), "source": "ESPN"})
-    out.sort(key=lambda o: o["published"], reverse=True)
-    return out[:limit]
+    try:
+        out = []
+        for a in await _articles(client, sport):
+            if not isinstance(a, dict) or not isinstance(a.get("headline"), str):
+                continue
+            blob = f"{a['headline']} {a.get('description') or ''}".lower()
+            if any(n in blob for n in names):
+                out.append({"headline": a["headline"], "published": str(a.get("published") or ""), "source": "ESPN"})
+        out.sort(key=lambda o: o["published"], reverse=True)
+        return out[:limit]
+    except Exception as exc:  # news is a bonus; an odd payload never breaks an explanation
+        logger.info("ESPN news skipped for %s: %s", sport, type(exc).__name__)
+        return []

@@ -36,26 +36,52 @@ def numbers_in(text: str) -> set[float]:
     return {v for tok in _NUM_RE.findall(text) for v in _values(tok)}
 
 
-def _pool(node, key: str = "") -> set[float]:
-    """Numbers a text may cite. Ids and dates/times are left out: their
-    digits ("00:20", "2026-10-05") would otherwise excuse invented figures."""
-    if isinstance(node, bool) or node is None:
-        return set()
-    if isinstance(node, (int, float)):
-        return {float(node)}
-    if isinstance(node, str):
-        if key == "id" or key.endswith("_id") or _DATE_RE.search(node):
-            return set()
-        return numbers_in(node)
-    if isinstance(node, dict):
-        return set().union(*(_pool(v, k) for k, v in node.items())) if node else set()
-    if isinstance(node, list):
-        return set().union(*(_pool(v, key) for v in node)) if node else set()
-    return set()
+def _pool(node, key: str = "") -> tuple[set[float], set[float]]:
+    """(numbers, written percents) a text may cite. Ids and dates/times are
+    left out: their digits ("00:20", "2026-10-05") would otherwise excuse
+    invented figures."""
+    nums: set[float] = set()
+    pcts: set[float] = set()
+
+    def walk(n, k=""):
+        if isinstance(n, bool) or n is None:
+            return
+        if isinstance(n, (int, float)):
+            nums.add(float(n))
+        elif isinstance(n, str):
+            if k == "id" or k.endswith("_id") or _DATE_RE.search(n):
+                return
+            for tok in _NUM_RE.findall(n):
+                v = _candidates(tok)[-1][0]
+                (pcts if tok.endswith("%") else nums).add(v)
+                if tok.endswith("%"):
+                    nums.add(v)
+        elif isinstance(n, dict):
+            for kk, v in n.items():
+                walk(v, kk)
+        elif isinstance(n, list):
+            for v in n:
+                walk(v, k)
+
+    walk(node, key)
+    return nums, pcts
 
 
-def _known(token: str, pool: set[float]) -> bool:
-    return any(abs(abs(v) - abs(p)) <= tol + 1e-9 for v, tol in _candidates(token) for p in pool)
+def _known(token: str, nums: set[float], pcts: set[float]) -> bool:
+    t = token.replace("−", "-").replace(",", "")
+    decimals = len(t.rstrip("%").split(".")[1]) if "." in t else 0
+    tol = 0.5 * 10 ** -decimals
+    v = abs(float(t.rstrip("%")))
+    if t.endswith("%"):
+        # A percent is a probability (a fraction in the facts) or a percent
+        # the facts themselves wrote; never a raw count like 41 hits.
+        return any(abs(v / 100 - p) <= tol / 100 + 1e-9 for p in nums if 0 <= p <= 1) \
+            or any(abs(v - q) <= tol + 1e-9 for q in pcts)
+    if decimals == 0:
+        # A whole number may round a decimal (48 for 47.8) but not a half
+        # line (46 for 45.5), and never stands for a probability.
+        return any(abs(v - abs(p)) < tol or v == abs(p) for p in nums if abs(p) >= 1 or p == 0)
+    return any(abs(v - abs(p)) <= tol + 1e-9 for p in nums)
 
 
 def validate(output: dict, facts_json: str, news_json: str) -> list[str]:
@@ -82,12 +108,16 @@ def validate(output: dict, facts_json: str, news_json: str) -> list[str]:
 
     texts = [headline] + [s["text"] for s in sections] + [str(s.get("title", "")) for s in sections]
     body = " ".join(texts)
-    if m := _BANNED_RE.search(body):
-        problems.append(f"banned word: {m.group(0)!r}")
+    # "Hammers" is West Ham's nickname, not betting slang.
+    banned = [m.group(0) for m in _BANNED_RE.finditer(body) if m.group(0) != "Hammers"]
+    if banned:
+        problems.append(f"banned word: {banned[0]!r}")
 
     facts = json.loads(facts_json)
-    pool = _pool(facts) | _pool(json.loads(news_json or "[]"))
-    unknown = sorted({tok for tok in _NUM_RE.findall(body) if not _known(tok, pool)})
+    fn, fp = _pool(facts)
+    nn, np_ = _pool(json.loads(news_json or "[]"))
+    nums, pcts = fn | nn, fp | np_
+    unknown = sorted({tok for tok in _NUM_RE.findall(body) if not _known(tok, nums, pcts)})
     if unknown:
         problems.append("number not in the facts or news: " + ", ".join(unknown))
 
