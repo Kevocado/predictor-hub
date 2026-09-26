@@ -1,0 +1,26 @@
+{
+  "name": "predictor-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared tokens, number formatting and components for the Predictor sites. Vendored into each site by scripts/sync-ui.mjs.",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@testing-library/user-event": "^14.5.0",
+    "@types/node": "^22.20.4",
+    "@types/react": "^19.2.17",
+    "jsdom": "^25.0.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "typescript": "~5.9.3",
+    "vitest": "^2.1.8"
+  }
+}
