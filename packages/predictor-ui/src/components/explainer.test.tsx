@@ -12,6 +12,8 @@ const llm: Explanation = {
   source: "llm",
   model: "gpt-4o-mini",
   generated_at: new Date(Date.now() - 4 * 60_000).toISOString(),
+  sport: "pl",
+  pick_timing: "pre_kickoff",
 };
 
 const template: Explanation = {
@@ -20,6 +22,8 @@ const template: Explanation = {
   source: "template",
   model: "template",
   generated_at: new Date(Date.now() - 4 * 60_000).toISOString(),
+  sport: "pl",
+  pick_timing: "pre_kickoff",
 };
 
 const noop = () => {};
@@ -84,6 +88,51 @@ describe("ExplainerPanel content", () => {
       expect(title).toBeInTheDocument();
       expect(screen.getByText(section.text)).toBeInTheDocument();
     }
+  });
+});
+
+describe("ExplainerPanel rebuilt picks", () => {
+  const rebuilt: Explanation = { ...llm, sport: "nfl", pick_timing: "rebuilt" };
+
+  it("repeats the site's own rebuilt status and says the pick is not counted", () => {
+    render(<ExplainerPanel data={rebuilt} loading={false} error={false} onRetry={noop} />);
+    // The same label the site's own StatusBadge shows, not a new wording: a
+    // summary that called it something else would read as a second opinion.
+    expect(screen.getByText("Rebuilt after kickoff")).toBeInTheDocument();
+    expect(screen.getByText(/not counted/)).toBeInTheDocument();
+  });
+
+  it("an F1 session reads 'after the session', because that is the moment there", () => {
+    render(
+      <ExplainerPanel
+        data={{ ...rebuilt, sport: "f1" }}
+        loading={false}
+        error={false}
+        onRetry={noop}
+        moment="the session"
+      />,
+    );
+    expect(screen.getByText("Rebuilt after the session")).toBeInTheDocument();
+    expect(screen.getByText(/after the session started/)).toBeInTheDocument();
+  });
+
+  it("says nothing about rebuilding when the pick was made in time", () => {
+    render(<ExplainerPanel data={llm} loading={false} error={false} onRetry={noop} />);
+    expect(screen.queryByText(/Rebuilt after/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/not counted/)).not.toBeInTheDocument();
+  });
+
+  it("still labels a rebuilt pick when the summary itself is templated", () => {
+    // The status is a fact about the pick, not about who wrote the prose.
+    render(
+      <ExplainerPanel
+        data={{ ...template, sport: "nfl", pick_timing: "rebuilt" }}
+        loading={false}
+        error={false}
+        onRetry={noop}
+      />,
+    );
+    expect(screen.getByText("Rebuilt after kickoff")).toBeInTheDocument();
   });
 });
 

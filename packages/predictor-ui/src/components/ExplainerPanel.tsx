@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ErrorState, Skeleton } from "./States";
+import { StatusBadge, type Moment } from "./StatusBadge";
 
 export type Explanation = {
   headline: string;
@@ -9,6 +10,24 @@ export type Explanation = {
   source: "llm" | "template";
   model: string;
   generated_at: string;
+  /** The sport, so the panel words the rebuilt status for that moment. */
+  sport: string;
+  /** When the pick itself was made. "rebuilt" means the model was asked again
+   *  after the event had begun, so the pick is shown but never counted. This
+   *  travels with the answer rather than being read out of the prose: neither
+   *  the model nor the template is a reliable source for a status label. */
+  pick_timing: "pre_kickoff" | "rebuilt" | "none";
+};
+
+/** The moment an F1 pick has to beat is the session, not a kick-off. */
+const MOMENT_OF: Record<string, Moment> = { f1: "the session", nba: "tip-off" };
+
+/** What "after the moment" means in a sentence. StatusBadge owns the label;
+ *  this owns why the pick is not being counted. */
+const STARTED: Record<Moment, string> = {
+  kickoff: "after the game started",
+  "tip-off": "after the game started",
+  "the session": "after the session started",
 };
 
 /** How long ago a summary was written, in the reader's own units. A summary
@@ -46,12 +65,16 @@ export function ExplainerPanel({
   error,
   onRetry,
   collapsed = false,
+  moment,
 }: {
   data: Explanation | null;
   loading: boolean;
   error: boolean;
   onRetry: () => void;
   collapsed?: boolean;
+  /** Overrides the moment the sport implies. Sites pass their own so the
+   *  status reads in the words that site already uses everywhere else. */
+  moment?: Moment;
 }) {
   const [opened, setOpened] = useState(false);
   const showBody = !collapsed || opened;
@@ -61,6 +84,8 @@ export function ExplainerPanel({
   if (!data) return null;
 
   const now = Date.now();
+  const when = moment ?? MOMENT_OF[data.sport] ?? "kickoff";
+  const rebuilt = data.pick_timing === "rebuilt";
 
   return (
     <section aria-labelledby="explainer-heading" className="flex flex-col gap-3">
@@ -72,6 +97,15 @@ export function ExplainerPanel({
       </h3>
 
       <p className="max-w-[70ch] text-lg font-medium leading-snug text-pr-text">{data.headline}</p>
+
+      {rebuilt && (
+        <p className="flex max-w-[70ch] flex-wrap items-center gap-2 text-sm text-pr-text-dim">
+          <StatusBadge status="rebuilt" moment={when} />
+          <span>
+            This pick was made {STARTED[when]}, so it is shown for reference and not counted.
+          </span>
+        </p>
+      )}
 
       {collapsed && (
         <button
