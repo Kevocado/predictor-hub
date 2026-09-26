@@ -2,6 +2,8 @@
 key material."""
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -11,6 +13,7 @@ from fastapi import FastAPI, HTTPException
 from .cache import Cache
 from .config import Settings
 from .ledger import Ledger
+from .scheduler import run_forever
 from .service import Explainer, NotFound, Upstream
 
 
@@ -23,7 +26,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         async with httpx.AsyncClient() as client:
             app.state.explainer = Explainer(settings, Cache(settings.db_path),
                                             Ledger(settings.db_path, cap=settings.daily_cap), client)
+            task = None
+            if settings.enabled and settings.openrouter_api_key:
+                task = asyncio.create_task(run_forever(app.state.explainer, client, list(settings.sport_api)))
             yield
+            if task:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
 
     app = FastAPI(title="Predictor explainer", lifespan=lifespan)
 
