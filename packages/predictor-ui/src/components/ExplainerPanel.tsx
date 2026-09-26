@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { ErrorState, Skeleton } from "./States";
 import { StatusBadge, type Moment } from "./StatusBadge";
 
@@ -87,6 +87,10 @@ export function ExplainerPanel({
   moment?: Moment;
 }) {
   const [opened, setOpened] = useState(false);
+  // useId, not a literal: two panels on one page (a fixture and a track-record
+  // row, say) would otherwise share an id, and aria-labelledby would point at
+  // the wrong one.
+  const headingId = useId();
   const showBody = !collapsed || opened;
 
   if (loading) return <Skeleton label="Writing the summary…" />;
@@ -113,9 +117,9 @@ export function ExplainerPanel({
     `${section.market}-${section.title}-${index}`;
 
   return (
-    <section aria-labelledby="explainer-heading" className="flex flex-col gap-3">
+    <section aria-labelledby={headingId} className="flex flex-col gap-3">
       <h3
-        id="explainer-heading"
+        id={headingId}
         className="font-pr-display text-xs font-semibold uppercase tracking-wide text-pr-text-dim"
       >
         In plain English

@@ -108,6 +108,24 @@ describe("ExplainerPanel content", () => {
     expect(screen.getByText(llm.headline)).toBeInTheDocument();
   });
 
+  it("two panels on one page each label their own section", () => {
+    // A hard-coded heading id would be shared, and aria-labelledby would point
+    // both sections at whichever heading came first.
+    render(
+      <>
+        <ExplainerPanel data={llm} loading={false} error={false} onRetry={noop} />
+        <ExplainerPanel data={llm} loading={false} error={false} onRetry={noop} />
+      </>,
+    );
+    const sections = document.querySelectorAll("section[aria-labelledby]");
+    expect(sections).toHaveLength(2);
+    const ids = [...sections].map((s) => s.getAttribute("aria-labelledby"));
+    expect(new Set(ids).size).toBe(2);
+    for (const id of ids) {
+      expect(document.getElementById(id!)?.textContent).toBe("In plain English");
+    }
+  });
+
   it("renders every section as a titled block of prose", () => {
     render(<ExplainerPanel data={llm} loading={false} error={false} onRetry={noop} />);
     for (const section of llm.sections) {
