@@ -27,4 +27,13 @@ describe("StatTable", () => {
     expect(screen.getByText("Detail KC")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Hide KC details" })).toHaveAttribute("aria-expanded", "true");
   });
+
+  it("lets a lower-is-better column sort ascending first, with an honest aria-sort", () => {
+    const lower: Column<R>[] = [cols[0], { ...cols[1], label: "Def EPA/play", firstDir: "asc" }];
+    render(<StatTable rows={rows} columns={lower} rowKey={(r) => r.team} caption="t" />);
+    fireEvent.click(screen.getByRole("button", { name: /Def EPA\/play/ }));
+    const order = screen.getAllByRole("row").slice(1).map((r) => within(r).getAllByRole("cell")[0].textContent);
+    expect(order).toEqual(["MIA", "KC", "BAL"]);
+    expect(screen.getByRole("columnheader", { name: /Def EPA/ })).toHaveAttribute("aria-sort", "ascending");
+  });
 });
