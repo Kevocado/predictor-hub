@@ -10,16 +10,26 @@ BANNED = ["lock", "bet", "betting advice", "hammer", "guaranteed", "sure thing",
 _BANNED_RE = re.compile(r"\b(" + "|".join(re.escape(w) for w in BANNED) + r")s?\b", re.I)
 _NUM_RE = re.compile(r"[-−+]?\d+(?:,\d{3})*(?:\.\d+)?%?")
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
-TOLERANCE = 0.05
 REBUILT_WORDS = ("rebuilt", "after kickoff", "after the start", "after the session")
 
 
-def _values(token: str) -> list[float]:
+def _candidates(token: str) -> list[tuple[float, float]]:
+    """(value, tolerance) readings of a written number. The tolerance is
+    rounding of what was written, half a unit of its last digit: "3.4"
+    covers 3.35–3.45, "48" covers 47.8, "62%" covers 61.5–62.5% (never
+    64%)."""
     t = token.replace("−", "-").replace(",", "")
-    if t.endswith("%"):
-        v = float(t[:-1])
-        return [v / 100, v]  # "62%" matches 0.62 or 62
-    return [float(t)]
+    pct = t.endswith("%")
+    t = t.rstrip("%")
+    decimals = len(t.split(".")[1]) if "." in t else 0
+    v, tol = float(t), 0.5 * 10 ** -decimals
+    if pct:
+        return [(v / 100, tol / 100), (v, tol)]  # "62%" matches 0.62 or 62
+    return [(v, tol)]
+
+
+def _values(token: str) -> list[float]:
+    return [v for v, _ in _candidates(token)]
 
 
 def numbers_in(text: str) -> set[float]:
@@ -45,7 +55,7 @@ def _pool(node, key: str = "") -> set[float]:
 
 
 def _known(token: str, pool: set[float]) -> bool:
-    return any(abs(abs(v) - abs(p)) <= TOLERANCE + 1e-9 for v in _values(token) for p in pool)
+    return any(abs(abs(v) - abs(p)) <= tol + 1e-9 for v, tol in _candidates(token) for p in pool)
 
 
 def validate(output: dict, facts_json: str, news_json: str) -> list[str]:

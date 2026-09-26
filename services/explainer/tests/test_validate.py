@@ -72,3 +72,18 @@ def test_shape_and_length_rules():
 
 def test_numbers_in_reads_percents_both_ways():
     assert {0.62, 62.0, -2.5, 6.0, 10.0} <= numbers_in("62% vs −2.5, 6/10")
+
+
+def test_tolerance_is_rounding_of_the_written_figure_not_five_points():
+    facts = json.loads(FACTS)
+    facts["pick"]["prob"] = 0.64
+    assert any("62%" in p for p in validate(good(), json.dumps(facts), "[]"))  # 62% vs 64%: a misstatement
+    facts["pick"]["prob"] = 0.6234
+    assert validate(good(), json.dumps(facts), "[]") == []  # 62% is 0.6234 rounded
+
+
+def test_whole_number_may_round_a_decimal():
+    facts = json.loads(FACTS)
+    facts["markets"].append({"market": "total", "model_total": 47.8, "line": 45.5})
+    assert validate(good("It projects 48 points against 45.5."), json.dumps(facts), "[]") == []
+    assert validate(good("It projects 49 points."), json.dumps(facts), "[]")
