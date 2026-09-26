@@ -1,7 +1,7 @@
 # Phase 3 + 4: Data Hub parity and the AI match explainer (design)
 
 **Date:** 2026-09-25
-**Status:** sections 1–2 approved by Kevin in conversation. Sections 3–4 were written to finish the handoff and have not been reviewed yet; the implementer confirms them with Kevin before building UI.
+**Status:** all four sections approved by Kevin. Sections 1–2 were approved in conversation on 2026-09-25; sections 3–4 were approved on 2026-09-26, which lifted the Task 12 gate.
 **Roadmap:** [../plans/2026-09-25-predictor-frontend-action-plan.md](../plans/2026-09-25-predictor-frontend-action-plan.md). This replaces the old Phase 4 ("live Hub ticker"). The ticker can come later and reuse the explainer's facts endpoints.
 
 ## Kevin's asks, verbatim
@@ -173,7 +173,7 @@ Every sport returns this shape:
 - **Settings:** temperature 0.3, max_tokens 700, timeout 25 s. Requests carry the `HTTP-Referer` and `X-Title: Predictor` headers, as OpenRouter asks.
 - **Cache:** the result is stored with `model`, `prompt_version`, `generated_at` and `source` (`llm` or `template`).
 
-### Section 3: UI (not yet reviewed by Kevin)
+### Section 3: UI (approved by Kevin, 2026-09-26)
 
 - **Placement:** an "In plain English" panel sits at the top of each site's detail view:
   - Sports: `GameDetailModal`;
@@ -189,7 +189,7 @@ Every sport returns this shape:
   - The panel never blocks the rest of the modal.
 - **Components:** a shared component in `predictor-ui`, `ExplainerPanel({ data, loading, error, onRetry })`, synced to every site. Each site fetches `/api/explain/{sport}/{id}` with the family 15 s timeout.
 
-### Section 4: testing and rollout (not yet reviewed by Kevin)
+### Section 4: testing and rollout (approved by Kevin, 2026-09-26)
 
 - **Service tests (pytest):**
   - cache hit and miss;
