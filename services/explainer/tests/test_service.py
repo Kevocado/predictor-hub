@@ -123,6 +123,27 @@ async def test_rebuilt_pick_without_disclosure_is_rejected(tmp_path, no_news):
     assert "rebuilt after kickoff" in " ".join(s["text"] for s in out["sections"])
 
 
+async def test_response_carries_the_pick_timing_so_the_panel_can_say_so(tmp_path, no_news):
+    """The panel has to repeat the site's "Rebuilt after kickoff" status. It
+    cannot know the timing from the prose: a model can be told to disclose a
+    rebuilt pick in its own words, and the template's wording is not the site's
+    status label. So the honest timing travels with the answer, and the panel
+    renders it rather than guessing it."""
+    no_news.get(FACTS_URL).mock(return_value=httpx.Response(200, json=facts(pick_timing="rebuilt")))
+    no_news.post(OPENROUTER_URL).mock(return_value=reply(good()))
+    assert (await make(tmp_path).explain("nfl", "g1"))["pick_timing"] == "rebuilt"
+
+
+async def test_pick_timing_travels_with_a_cached_answer_too(tmp_path, no_news):
+    """The timing comes from the facts, not the cache row, so a cache hit must
+    carry the same value as the miss that filled it."""
+    no_news.get(FACTS_URL).mock(return_value=httpx.Response(200, json=facts(pick_timing="pre_kickoff")))
+    no_news.post(OPENROUTER_URL).mock(return_value=reply(good()))
+    ex = make(tmp_path)
+    assert (await ex.explain("nfl", "g1"))["pick_timing"] == "pre_kickoff"
+    assert (await ex.explain("nfl", "g1"))["pick_timing"] == "pre_kickoff"
+
+
 async def test_sport_api_errors_are_typed(tmp_path, no_news):
     ex = make(tmp_path)
     no_news.get(FACTS_URL).mock(return_value=httpx.Response(404))

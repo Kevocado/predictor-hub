@@ -73,10 +73,16 @@ class Explainer:
         except (ValueError, ValidationError, TypeError) as exc:
             raise Upstream(f"{sport} facts failed the contract: {type(exc).__name__}") from None
 
-    def _answer(self, sport: str, id: str, row: dict) -> dict:
+    def _answer(self, sport: str, id: str, row: dict, pick_timing: str) -> dict:
+        # pick_timing rides along from the facts rather than being read out of
+        # the prose: the panel has to repeat the site's own "Rebuilt after
+        # kickoff" status, and neither the model nor the template is a reliable
+        # source for that label. The cache key covers the facts, so a hit and
+        # the miss that filled it always agree on it.
         model = "" if row["source"] == "template" else row["model"]
         return {"sport": sport, "id": id, **row["body"], "source": row["source"], "model": model,
-                "generated_at": row["created_at"], "prompt_version": row["prompt_version"]}
+                "generated_at": row["created_at"], "prompt_version": row["prompt_version"],
+                "pick_timing": pick_timing}
 
     def _usable(self, row: dict | None) -> bool:
         if row is None:
@@ -100,13 +106,13 @@ class Explainer:
 
         row = self.cache.get(key)
         if self._usable(row):
-            return self._answer(sport, id, row)
+            return self._answer(sport, id, row, facts.pick_timing)
         lock = self._locks.setdefault(key, asyncio.Lock())
         try:
             async with lock:
                 row = self.cache.get(key)  # another caller may have just made it
                 if self._usable(row):
-                    return self._answer(sport, id, row)
+                    return self._answer(sport, id, row, facts.pick_timing)
                 try:
                     body, source, model = await self._generate(sport, facts, facts_json, news_json)
                 except Exception:
@@ -115,7 +121,7 @@ class Explainer:
                 self.cache.put(key, sport, id, body, source, model, s.prompt_version)
         finally:
             self._locks.pop(key, None)
-        return self._answer(sport, id, self.cache.get(key))
+        return self._answer(sport, id, self.cache.get(key), facts.pick_timing)
 
     async def _generate(self, sport: str, facts: Facts, facts_json: str, news_json: str) -> tuple[dict, str, str]:
         s = self.settings
