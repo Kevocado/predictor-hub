@@ -23,12 +23,17 @@ Locally, without Docker:
 ```sh
 uv sync --extra dev
 SPORT_API_NFL=http://127.0.0.1:8001 EXPLAINER_ENABLED=false \
+EXPLAINER_DB_PATH=./explainer.sqlite \
   uv run uvicorn explainer.app:create_app --factory --host 127.0.0.1 --port 8090
 ```
 
 `--factory` is required: there is no module-level `app` in `explainer/app.py`,
 because building the app must not read settings or touch the database at import
 time. `uvicorn explainer.app:app` fails with `Attribute "app" not found`.
+
+`EXPLAINER_DB_PATH` is not optional. It defaults to `/data/explainer.sqlite`,
+and startup creates that directory — a read-only filesystem outside a
+container — so the lifespan raises `OSError` and the app never serves.
 
 With `EXPLAINER_ENABLED=false` and no key, every explanation is the template
 and the panel's footer reads "Summary written from the model's numbers". That
@@ -95,7 +100,7 @@ where the path translation and the error handling are tested. Set:
 | Var | Default | Meaning |
 |---|---|---|
 | `EXPLAINER_URL` | `http://predictor-explainer:8090` | This service, over the compose network. |
-| `EXPLAINER_TIMEOUT_S` | `30` | Longer than this service's own 25 s call plus its fallback retry, so a slow model is not cut off mid-answer. |
+| `EXPLAINER_TIMEOUT_S` | `15` (PL), `10` (NBA, F1) | How long a site's proxy waits. Deliberately **below** the browser's own timeout (PL 20 s, NBA and F1 15 s): the proxy route is a sync `def`, so a request that outlasts the client occupies a worker thread for an answer nobody is waiting for. A first uncached game will usually hit this and show the panel's Try again state — that is what pre-generation is for. |
 
 Each of those three also needs its Vite dev proxy to forward `/api/explain`, so
 dev and production take the same path.
@@ -109,8 +114,16 @@ explainer deployed at all, the sites render exactly as they did before.
 ## Tests
 
 ```sh
-uv sync --extra dev && uv run pytest -q
+uv sync --extra dev && uv run --extra dev python -m pytest -q
 ```
+
+Run pytest **through the venv's python** (`python -m pytest`), not as bare
+`uv run pytest`. The latter resolves whatever `pytest` is first on `PATH`,
+which on a developer machine is the system one — a different interpreter with
+different packages, so a suite can pass against dependencies the project never
+pinned. That is not hypothetical: the same mistake made NFL's and CFB's suites
+run against the wrong interpreter and fail collection with
+`No module named 'cfbd'` while their own venvs imported it fine.
 
 Tests never touch the network: OpenRouter and ESPN are mocked with `respx`,
 and sport APIs with mocked routes.
