@@ -46,19 +46,47 @@ If either default is missing, set `EXPLAINER_MODEL` / `EXPLAINER_FALLBACK_MODEL`
 to a listed `:free` model and restart. A wrong ID is safe (every request falls
 back to the template), but you lose the written explanations until it's fixed.
 
-## Caddy
+## How a site reaches this service
 
-Each site proxies the panel's requests, so the browser never talks to this
-service directly:
+**Every site calls `/api/explain/{sport}/{id}`.** That is the one path the spec,
+the plan and all four site clients name, and it is what you should configure.
+The service's own route is `/explain/{sport}/{id}` — the `/explain` prefix is
+added by whichever proxy sits in front, never by the browser.
+
+There are two shapes of proxy, because the sites are deployed two different ways.
+
+**Sports** (NFL + CFB) is a static bundle behind its own Caddy, so the path is
+translated at the edge. This mirrors the `/api/nfl` and `/api/cfb` blocks
+already in that Caddyfile:
 
 ```
 handle_path /api/explain/* {
-    reverse_proxy predictor-explainer:8090
+    rewrite * /explain{uri}
+    reverse_proxy {$EXPLAINER_UPSTREAM:predictor-explainer:8090}
 }
 ```
 
-A site then calls `/api/explain/explain/{sport}/{id}` (the service's own route
-is `/explain/{sport}/{id}`).
+`handle_path` drops `/api/explain`, and the `rewrite` puts back the `/explain`
+this service serves. The equivalent `uri strip_prefix /api` also works; the
+rewrite form is used because it matches the file it lives in.
+
+**PL, NBA and F1** are served by their own FastAPI, which Caddy reverse-proxies
+wholesale. Their `api/explain.py` router forwards to `EXPLAINER_URL` and is
+where the path translation and the error handling are tested. Set:
+
+| Var | Default | Meaning |
+|---|---|---|
+| `EXPLAINER_URL` | `http://predictor-explainer:8090` | This service, over the compose network. |
+| `EXPLAINER_TIMEOUT_S` | `30` | Longer than this service's own 25 s call plus its fallback retry, so a slow model is not cut off mid-answer. |
+
+Each of those three also needs its Vite dev proxy to forward `/api/explain`, so
+dev and production take the same path.
+
+**If a summary fails, the page still works.** A missing explainer is a 502 with
+a fixed message, never an upstream body — an upstream error could carry key
+material. The site shows its own error state with Try again, and the game,
+fixture or session underneath is unaffected. The panel is additive: with no
+explainer deployed at all, the sites render exactly as they did before.
 
 ## Tests
 
