@@ -6,5 +6,6 @@ export { ProbabilityBar, type Segment } from "./components/ProbabilityBar";
 export { RoundNavigator } from "./components/RoundNavigator";
 export { StatTile } from "./components/StatTile";
 export { EmptyState, ErrorState, Skeleton } from "./components/States";
+export { StatTable, type Column } from "./components/StatTable";
 export { StatusBadge, statusWords, type Moment, type Status } from "./components/StatusBadge";
 export { TeamChip } from "./components/TeamChip";
