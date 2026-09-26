@@ -22,4 +22,10 @@ Review (Tasks 1–6): fresh reviewer — 0 Critical, 7 Important, 7 Minor. Fixed
 Ruling: cache key excludes news (budget: ~100 upcoming ids × 8 runs/day would exceed the cap on headline churn) — cost if wrong: an explanation doesn't pick up a new headline until facts change
 Final: minor (deferred): signed tokens compared by absolute value ("BAL +2.5" passes against "BAL -2.5"); numbers written as words are not checked
 Note: this ledger was kept in the git-ignored .superpowers/sdd/ workspace and moved here so other executors can read it. Keep appending HERE (tracked), not in .superpowers/.
-Next: Task 8 (NFL /facts). Tasks 1–7 and the Tasks 1–6 review fix pass are complete (last commit 3584d75, 67 tests).
+Task 8: Ruling: context.injuries omitted entirely (Kevin's NFL note overrides the plan text) — the cached nflverse report goes stale and ESPN news covers injuries; a stale injury name in a facts bundle would be a hallucination the validator cannot catch — cost if wrong: the panel never names an injured player
+Task 8: Ruling: a started game's stored prediction is the public snapshot's predictions[game_id] in PUBLIC_MODE, and the tracking row's own home/away_win_prob live (that row carries no margin/total, so spread/total are honestly absent rather than recomputed) — cost if wrong: a started game's live-mode panel shows moneyline only
+Task 8: Ruling: tests copied the Facts contract locally AND a cross-repo check validated a real bundle against explainer.facts.Facts itself, so a contract drift fails here rather than silently in the service — cost if wrong: none
+Task 8: Ruling: result.score uses a plain hyphen ("BAL 27-20") not the spec's en dash; validate.numbers_in normalises numeric tokens either way and ASCII keeps the JSON/panel copy stable — cost if wrong: none
+Task 8: coverage note: the first green run did NOT prove the started-game rule (reverting the fix still passed) because public mode reads the same snapshot on both paths; added a live-mode test, then re-verified RED by reintroducing the bug (1 failed, 19 passed) → GREEN 20/20
+Task 8: complete (commit 07778c3, tests: PYTHONPATH=src pytest -q → 150 passed = 130 baseline + 20 new)
+Next: Task 9 (CFB /facts). Tasks 1–8 complete (last commit 07778c3; NFL suite 150, explainer suite 67).
