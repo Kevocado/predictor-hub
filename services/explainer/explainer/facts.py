@@ -6,6 +6,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, model_validator
 
 
+PickTiming = Literal["pre_kickoff", "rebuilt", "none"]
+
+
 class Market(BaseModel):
     market: str
     model_config = ConfigDict(extra="allow")  # sport-specific fields pass through
@@ -17,7 +20,7 @@ class Facts(BaseModel):
     title: str
     starts_at: str
     status: Literal["upcoming", "live", "final"]
-    pick_timing: Literal["pre_kickoff", "rebuilt", "none"]
+    pick_timing: PickTiming
     pick: dict | None = None
     markets: list[Market] = []
     drivers: list[dict] = []

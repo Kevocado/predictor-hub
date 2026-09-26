@@ -18,6 +18,29 @@ docker run -d --name predictor-explainer --network <the sites' network> \
 Health and budget: `curl http://predictor-explainer:8090/status`, which returns
 `{"used_today", "cap", "enabled", "model"}` and never any key material.
 
+Locally, without Docker:
+
+```sh
+uv sync --extra dev
+SPORT_API_NFL=http://127.0.0.1:8001 EXPLAINER_ENABLED=false \
+EXPLAINER_DB_PATH=./explainer.sqlite \
+  uv run uvicorn explainer.app:create_app --factory --host 127.0.0.1 --port 8090
+```
+
+`--factory` is required: there is no module-level `app` in `explainer/app.py`,
+because building the app must not read settings or touch the database at import
+time. `uvicorn explainer.app:app` fails with `Attribute "app" not found`.
+
+`EXPLAINER_DB_PATH` is not optional. It defaults to `/data/explainer.sqlite`,
+and startup creates that directory — a read-only filesystem outside a
+container — so the lifespan raises `OSError` and the app never serves.
+
+With `EXPLAINER_ENABLED=false` and no key, every explanation is the template
+and the panel's footer reads "Summary written from the model's numbers". That
+is the right way to bring this up: the panel is useful before it is clever, it
+costs nothing, and it proves the whole path — site, proxy, service, the sport
+API's `/facts`, and the panel — before a single request is spent.
+
 ## Environment
 
 | Variable | Default | Meaning |
@@ -46,25 +69,100 @@ If either default is missing, set `EXPLAINER_MODEL` / `EXPLAINER_FALLBACK_MODEL`
 to a listed `:free` model and restart. A wrong ID is safe (every request falls
 back to the template), but you lose the written explanations until it's fixed.
 
-## Caddy
+## How a site reaches this service
 
-Each site proxies the panel's requests, so the browser never talks to this
-service directly:
+**Every site calls `/api/explain/{sport}/{id}`.** That is the one path the spec,
+the plan and all four site clients name, and it is what you should configure.
+The service's own route is `/explain/{sport}/{id}` — the `/explain` prefix is
+added by whichever proxy sits in front, never by the browser.
+
+There are two shapes of proxy, because the sites are deployed two different ways.
+
+**Sports** (NFL + CFB) is a static bundle behind its own Caddy, so the path is
+translated at the edge. This mirrors the `/api/nfl` and `/api/cfb` blocks
+already in that Caddyfile:
 
 ```
 handle_path /api/explain/* {
-    reverse_proxy predictor-explainer:8090
+    rewrite * /explain{uri}
+    reverse_proxy {$EXPLAINER_UPSTREAM:predictor-explainer:8090}
 }
 ```
 
-A site then calls `/api/explain/explain/{sport}/{id}` (the service's own route
-is `/explain/{sport}/{id}`).
+`handle_path` drops `/api/explain`, and the `rewrite` puts back the `/explain`
+this service serves. The equivalent `uri strip_prefix /api` also works; the
+rewrite form is used because it matches the file it lives in.
+
+**PL, NBA and F1** are served by their own FastAPI, which Caddy reverse-proxies
+wholesale. Their `api/explain.py` router forwards to `EXPLAINER_URL` and is
+where the path translation and the error handling are tested. Set:
+
+| Var | Default | Meaning |
+|---|---|---|
+| `EXPLAINER_URL` | `http://predictor-explainer:8090` | This service, over the compose network. |
+| `EXPLAINER_TIMEOUT_S` | `15` (PL), `10` (NBA, F1) | How long a site's proxy waits. Deliberately **below** the browser's own timeout (PL 20 s, NBA and F1 15 s): the proxy route is a sync `def`, so a request that outlasts the client occupies a worker thread for an answer nobody is waiting for. A first uncached game will usually hit this and show the panel's Try again state — that is what pre-generation is for. |
+
+Each of those three also needs its Vite dev proxy to forward `/api/explain`, so
+dev and production take the same path.
+
+**If a summary fails, the page still works.** A missing explainer is a 502 with
+a fixed message, never an upstream body — an upstream error could carry key
+material. The site shows its own error state with Try again, and the game,
+fixture or session underneath is unaffected. The panel is additive: with no
+explainer deployed at all, the sites render exactly as they did before.
 
 ## Tests
 
 ```sh
-uv sync --extra dev && uv run pytest -q
+uv sync --extra dev && uv run --extra dev python -m pytest -q
 ```
+
+Run pytest **through the venv's python** (`python -m pytest`), not as bare
+`uv run pytest`. The latter resolves whatever `pytest` is first on `PATH`,
+which on a developer machine is the system one — a different interpreter with
+different packages, so a suite can pass against dependencies the project never
+pinned. That is not hypothetical: the same mistake made NFL's and CFB's suites
+run against the wrong interpreter and fail collection with
+`No module named 'cfbd'` while their own venvs imported it fine.
 
 Tests never touch the network: OpenRouter and ESPN are mocked with `respx`,
 and sport APIs with mocked routes.
+
+## Rollout
+
+Follow spec section 4's staged order. Each step is independently reversible,
+and the kill switch is `EXPLAINER_ENABLED=false`, which serves templates and
+stops pre-generation without touching a site. The sites do not need a redeploy
+at any step: the panel is already wired, and it renders nothing when the
+explainer is unreachable.
+
+**Before step 1**, on the VPS: add the explainer to `compose.yml` and the route
+to the Caddyfile (both already edited in the working tree of the `vps-stack`
+repo), then confirm `docker compose config` resolves and that
+`curl http://predictor-explainer:8090/status` answers. Check the free model IDs
+above while you are there.
+
+1. **Service and NFL facts.** Set `EXPLAINER_ENABLED=false` and no key. Open an
+   NFL game: the panel appears with the non-AI footer. Read three summaries
+   against their facts and confirm every number is the model's. Then set
+   `EXPLAINER_ENABLED=true` and add the key; the same games should now show the
+   model and the AI footer.
+2. **CFB, PL and NBA facts.** Add each `SPORT_API_*`. One game per sport. For
+   PL and NBA, go through the site's own `/api/explain/...` proxy rather than
+   the service directly, so the path translation is exercised.
+3. **F1 facts and the race story.** Open a session. The panel is collapsed to
+   the headline behind "Read the race story". Confirm a rebuilt session says
+   "Rebuilt after the session".
+4. **Turn on pre-generation.** It runs every 3 h and stops 50 requests short of
+   the cap. Watch `used_today` in `/status` climb, and confirm the cache is
+   being hit on a second visit (a repeat request costs no budget).
+
+Then **watch the ledger for a week**. Specifically: `used_today` against the
+cap, how many explanations fall back to the template (a jump means the model or
+its answers are failing, and the fallbacks are why the panel is still honest),
+and whether any panel renders a number that is not in its facts.
+
+`OPENROUTER_API_KEY` is set only in the explainer's environment. It is not in
+any site bundle, any site's GitHub secret, any log line, or any test. The
+per-site proxies turn upstream errors into a fixed 502 precisely so an upstream
+message cannot carry it to a browser.

@@ -14,7 +14,7 @@ import httpx
 from pydantic import ValidationError
 
 from .cache import Cache
-from .facts import Facts, render
+from .facts import Facts, PickTiming, render
 from .ledger import Ledger
 from .llm import LLMError, complete
 from .news import headlines
@@ -73,7 +73,7 @@ class Explainer:
         except (ValueError, ValidationError, TypeError) as exc:
             raise Upstream(f"{sport} facts failed the contract: {type(exc).__name__}") from None
 
-    def _answer(self, sport: str, id: str, row: dict, pick_timing: str) -> dict:
+    def _answer(self, sport: str, id: str, row: dict, pick_timing: PickTiming) -> dict:
         # pick_timing rides along from the facts rather than being read out of
         # the prose: the panel has to repeat the site's own "Rebuilt after
         # kickoff" status, and neither the model nor the template is a reliable

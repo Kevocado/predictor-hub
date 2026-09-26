@@ -38,7 +38,12 @@ describe("ExplainerPanel states", () => {
   it("an error says what failed and offers a way back", async () => {
     const onRetry = vi.fn();
     render(<ExplainerPanel data={null} loading={false} error onRetry={onRetry} />);
-    expect(screen.getByRole("alert")).toBeInTheDocument();
+    const alert = screen.getByRole("alert");
+    expect(alert).toBeInTheDocument();
+    // The panel cannot promise the numbers below are fine — the summary may
+    // have failed because their own fetch did. It offers both ways forward.
+    expect(alert).toHaveTextContent("Try again");
+    expect(alert).toHaveTextContent("carry on with the numbers below");
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(onRetry).toHaveBeenCalledOnce();
   });
@@ -72,6 +77,28 @@ describe("ExplainerPanel honesty footer", () => {
     );
     expect(screen.getByText(/just now/)).toBeInTheDocument();
   });
+
+  // The footer is the one claim with no fact behind it, so it must require
+  // evidence. These three are the ways the wire can disappoint it, and each
+  // one previously produced an "AI" label with nothing to back it.
+  it("claims no provenance at all when the source is not a model", () => {
+    // A renamed value or a dropped field, not the literal "template".
+    render(<ExplainerPanel data={{ ...llm, source: undefined as never }} loading={false} error={false} onRetry={noop} />);
+    expect(screen.getByText("Summary written from the model's numbers")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/\bAI\b/);
+  });
+
+  it("never says 'AI' beside a blank model name", () => {
+    render(<ExplainerPanel data={{ ...llm, model: "" }} loading={false} error={false} onRetry={noop} />);
+    expect(document.body.textContent).not.toMatch(/\bAI\b/);
+    expect(screen.getByText("Summary written from the model's numbers")).toBeInTheDocument();
+  });
+
+  it("drops the age rather than quoting one it cannot read", () => {
+    render(<ExplainerPanel data={{ ...llm, generated_at: "not-a-date" }} loading={false} error={false} onRetry={noop} />);
+    // An unqualified "AI summary" with no recency is the failure this avoids.
+    expect(document.body.textContent).not.toMatch(/\bAI\b/);
+  });
 });
 
 describe("ExplainerPanel content", () => {
@@ -81,6 +108,24 @@ describe("ExplainerPanel content", () => {
     expect(screen.getByText(llm.headline)).toBeInTheDocument();
   });
 
+  it("two panels on one page each label their own section", () => {
+    // A hard-coded heading id would be shared, and aria-labelledby would point
+    // both sections at whichever heading came first.
+    render(
+      <>
+        <ExplainerPanel data={llm} loading={false} error={false} onRetry={noop} />
+        <ExplainerPanel data={llm} loading={false} error={false} onRetry={noop} />
+      </>,
+    );
+    const sections = document.querySelectorAll("section[aria-labelledby]");
+    expect(sections).toHaveLength(2);
+    const ids = [...sections].map((s) => s.getAttribute("aria-labelledby"));
+    expect(new Set(ids).size).toBe(2);
+    for (const id of ids) {
+      expect(document.getElementById(id!)?.textContent).toBe("In plain English");
+    }
+  });
+
   it("renders every section as a titled block of prose", () => {
     render(<ExplainerPanel data={llm} loading={false} error={false} onRetry={noop} />);
     for (const section of llm.sections) {
@@ -88,6 +133,32 @@ describe("ExplainerPanel content", () => {
       expect(title).toBeInTheDocument();
       expect(screen.getByText(section.text)).toBeInTheDocument();
     }
+  });
+
+  it("two sections with the same market and title both render, without a React key warning", () => {
+    // validate.py bounds a title's length but not its uniqueness, so a model
+    // can return two "Trust" sections. Keying on market+title alone logged a
+    // duplicate-key error in the reader's console.
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const doubled = {
+      ...llm,
+      sections: [
+        { market: "trust", title: "Trust", text: "First read of it." },
+        { market: "trust", title: "Trust", text: "Second read of it." },
+      ],
+    };
+    render(<ExplainerPanel data={doubled} loading={false} error={false} onRetry={noop} />);
+    expect(screen.getByText("First read of it.")).toBeInTheDocument();
+    expect(screen.getByText("Second read of it.")).toBeInTheDocument();
+    expect(error.mock.calls.flat().join(" ")).not.toMatch(/same key|unique "key"/i);
+  });
+
+  it("a section with no title still shows its text, with no empty heading", () => {
+    // _clean coerces a missing title to "", so an empty <h4> is reachable.
+    const untitled = { ...llm, sections: [{ market: "result", title: "", text: "Just the prose." }] };
+    render(<ExplainerPanel data={untitled} loading={false} error={false} onRetry={noop} />);
+    expect(screen.getByText("Just the prose.")).toBeInTheDocument();
+    expect(screen.queryAllByRole("heading", { level: 4 })).toHaveLength(0);
   });
 });
 
@@ -103,17 +174,29 @@ describe("ExplainerPanel rebuilt picks", () => {
   });
 
   it("an F1 session reads 'after the session', because that is the moment there", () => {
+    // No `moment` prop: the sport alone must produce the wording. This package
+    // owns that mapping, so it is what has to test it.
+    render(<ExplainerPanel data={{ ...rebuilt, sport: "f1" }} loading={false} error={false} onRetry={noop} />);
+    expect(screen.getByText("Rebuilt after the session")).toBeInTheDocument();
+    expect(screen.getByText(/after the session started/)).toBeInTheDocument();
+  });
+
+  it("an NBA game reads 'after tip-off', because basketball says that", () => {
+    render(<ExplainerPanel data={{ ...rebuilt, sport: "nba" }} loading={false} error={false} onRetry={noop} />);
+    expect(screen.getByText("Rebuilt after tip-off")).toBeInTheDocument();
+  });
+
+  it("a site can still override the moment its own cards use", () => {
     render(
       <ExplainerPanel
         data={{ ...rebuilt, sport: "f1" }}
         loading={false}
         error={false}
         onRetry={noop}
-        moment="the session"
+        moment="kickoff"
       />,
     );
-    expect(screen.getByText("Rebuilt after the session")).toBeInTheDocument();
-    expect(screen.getByText(/after the session started/)).toBeInTheDocument();
+    expect(screen.getByText("Rebuilt after kickoff")).toBeInTheDocument();
   });
 
   it("says nothing about rebuilding when the pick was made in time", () => {
