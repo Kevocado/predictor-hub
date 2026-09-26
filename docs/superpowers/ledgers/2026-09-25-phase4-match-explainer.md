@@ -28,4 +28,8 @@ Task 8: Ruling: tests copied the Facts contract locally AND a cross-repo check v
 Task 8: Ruling: result.score uses a plain hyphen ("BAL 27-20") not the spec's en dash; validate.numbers_in normalises numeric tokens either way and ASCII keeps the JSON/panel copy stable — cost if wrong: none
 Task 8: coverage note: the first green run did NOT prove the started-game rule (reverting the fix still passed) because public mode reads the same snapshot on both paths; added a live-mode test, then re-verified RED by reintroducing the bug (1 failed, 19 passed) → GREEN 20/20
 Task 8: complete (commit 07778c3, tests: PYTHONPATH=src pytest -q → 150 passed = 130 baseline + 20 new)
-Next: Task 9 (CFB /facts). Tasks 1–8 complete (last commit 07778c3; NFL suite 150, explainer suite 67).
+Task 9: Ruling: CFB's snapshot carries no spread/total lines (CFBD's Game model has none; routes._lines_for_game pulls them from the odds feed for the current week only), so the usual public bundle is the pick market alone — that is the plan's "no market lines" case, and spread/total appear only when a line is actually present — cost if wrong: a live current-week CFB game shows a spread the public site doesn't
+Task 9: Ruling: CFB runs pydantic v1, so the test's local contract copy uses root_validator (same fields, same rebuilt/pick_won rule); the real v2 contract is still checked cross-repo by emitting the bundle under CFB's venv and validating it under the explainer service's venv — cost if wrong: none
+Task 9: coverage note: verified RED by reintroducing the started-game bug (1 failed, 19 passed) → GREEN 20/20, same live-mode gap NFL exposed in Task 8
+Task 9: complete (commit 27d473f, tests: PYTHONPATH=src pytest -q → 162 passed = 142 baseline + 20 new)
+Next: Task 10 (NBA /facts). Tasks 1–9 complete (last commits 07778c3 NFL, 27d473f CFB; explainer suite 67).
