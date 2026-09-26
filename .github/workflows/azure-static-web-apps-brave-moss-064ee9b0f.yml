@@ -1,13 +1,9 @@
 name: Azure Static Web Apps CI/CD
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    types: [opened, synchronize, reopened, closed]
-    branches:
-      - main
+  # Everything runs on the VPS now: this Azure deploy no longer fires on push
+  # or PR. Run it by hand from the Actions tab only if Azure is ever needed.
+  workflow_dispatch: {}
 
 jobs:
   build_and_deploy_job:
