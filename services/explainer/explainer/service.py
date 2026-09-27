@@ -3,6 +3,8 @@ cached answer, or one model call (and one retry on the fallback model)
 within the daily budget, validated, else the template."""
 from __future__ import annotations
 
+from collections import Counter
+
 import asyncio
 import json
 import logging
@@ -55,6 +57,18 @@ class Explainer:
     def __init__(self, settings, cache: Cache, ledger: Ledger, client: httpx.AsyncClient):
         self.settings, self.cache, self.ledger, self.client = settings, cache, ledger, client
         self._locks: dict[str, asyncio.Lock] = {}
+        # Failure kinds since start, on /status. A dead default model is
+        # otherwise invisible: every call degrades to the template, the reader
+        # gets a panel, and nothing says why. This is the only place a
+        # withdrawn model, a rate limit and a bad key become distinguishable
+        # without reading logs.
+        #
+        # A Counter, not a dict, and that is not a style choice. `d[k] += 1` on
+        # a plain dict raises KeyError on the first sighting of a key, and the
+        # caller swallows every exception into a template row -- so the first
+        # failure of each kind would have thrown, degraded the whole response,
+        # and left no counter at all. A Counter reads a missing key as zero.
+        self.failures: Counter[str] = Counter()
 
     async def _facts(self, sport: str, id: str) -> Facts:
         base = self.settings.sport_api.get(sport)
@@ -135,7 +149,16 @@ class Explainer:
                 try:
                     out = await complete(self.client, s, model, msgs)
                 except LLMError as exc:
-                    logger.info("model %s failed: %s", model, exc)
+                    self.failures[exc.kind] += 1
+                    logger.warning("model %s failed (%s): %s", model, exc.kind, exc)
+                    # A 429 is the provider throttling THIS ACCOUNT, not this
+                    # model, so the fallback is the same request again. A 404 is
+                    # specific to the model named, so the other one may well
+                    # work -- which is the case that matters most, because a
+                    # withdrawn default must not cost the product its summaries.
+                    if exc.kind == "rate_limited":
+                        logger.info("rate limited; not retrying the fallback model")
+                        break
                     continue
                 problems = validate(out, facts_json, news_json)
                 if not problems:
