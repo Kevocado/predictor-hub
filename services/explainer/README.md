@@ -7,6 +7,37 @@ number in it came from those facts or headlines. Otherwise it uses a plain
 template. Results are cached in SQLite, and a summary is made when a reader asks
 for one — there is no background pre-generation.
 
+## What it returns
+
+```jsonc
+{
+  "sport": "nfl", "id": "401585",
+  "verdict": "Baltimore is the pick, but the line is thinner than the number.",
+  "band": "moderate",              // COMPUTED from pick.prob, never asked of the model
+  "factors": [                    // 2-4, each naming a market the facts carry
+    { "key": "moneyline", "direction": "up", "headline": "Model leans Baltimore",
+      "text": "The rating gap has held all week." }
+  ],
+  "source": "llm", "model": "nemotron-3.5-lightning",
+  "generated_at": "2026-10-05T00:20:00Z", "prompt_version": "v2",
+  "pick_timing": "pre_kickoff"
+}
+```
+
+Two properties worth knowing before changing anything here:
+
+- **The model supplies no figure.** A factor is a *reference* to a market by
+  `key`; the panel resolves it against the facts and draws the numbers itself.
+  That is what makes the template path structurally as good as the model path —
+  the layout is driven by the data the panel is handed and does not know which
+  path produced it.
+- **`band` is derived, not requested.** It is `contract.band_for(pick.prob,
+  market_shape)`, with thresholds in the spec, and the model is not asked for
+  one. A band is a *word*, and a word is the same defect as a number when
+  nothing ties it to anything: a model can call a 52% pick "strong" and there is
+  no fact to contradict it. `tests/test_service.py` proves it with a model that
+  tries.
+
 ## Run
 
 ```sh

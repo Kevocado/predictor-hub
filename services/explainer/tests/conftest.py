@@ -18,16 +18,29 @@ FACTS = {"sport": "nfl", "id": "g1", "title": "Chiefs at Ravens", "starts_at": "
          "markets": [{"market": "spread", "model_margin": 3.4, "line": "BAL -2.5"}],
          "record": {"label": "Picks made before kickoff", "hits": 41, "settled": 66}}
 
-_PICK = ("The model makes Baltimore a 62% favorite at home. Its ratings put the Ravens ahead on both sides of the ball, "
-         "and the gap has held steady through the week. Kansas City is good enough to win this, so read the number as "
-         "a lean toward Baltimore rather than a call that simply cannot miss this weekend.")
-_SPREAD = ("It rates Baltimore 3.4 points better than Kansas City, a little more than the -2.5 line the market is "
-           "offering. That is a small disagreement: the model and the market mostly agree on who is better here.")
-GOOD = {"headline": "Baltimore favored at 62%", "sections": [
-    {"market": "result", "title": "Pick", "text": _PICK, "numbers_used": ["62%"]},
-    {"market": "spread", "title": "Spread", "text": _SPREAD, "numbers_used": ["3.4", "-2.5"]},
-    {"market": "trust", "title": "Trust", "text": "62% still loses about four times in ten games like this one, "
-     "so treat it as a lean. Its picks made before kickoff are 41/66 this season."}]}
+# A v2 answer: a verdict and three factors, each naming a market the facts
+# carry, and every figure in the prose taken from FACTS. `validate()` checks all
+# of that, so this fixture is also the suite's proof that a well-formed v2 body
+# passes — if it drifts out of shape, everything that uses it fails for a reason
+# that has nothing to do with the test asking.
+#
+# The numbers are 62%, 3.4 and -2.5 from `pick.prob`, `markets[0].model_margin`
+# and `markets[0].line`, and 41/66 from the record. Nothing here is invented,
+# which is the property `test_validate.py` leans on.
+_VERDICT = "Baltimore is the pick at 62%, though the line asks more than the model does."
+
+_SPREAD = ("It rates Baltimore 3.4 points better than Kansas City, a little more than the -2.5 line "
+           "the market is offering. That is a small disagreement.")
+_RECORD = ("Its picks made before kickoff are 41/66 this season, so read the number as a lean rather "
+           "than a call that cannot miss.")
+_CONTEXT = ("Kansas City is good enough to win this one, so the gap is a judgement rather than a "
+            "certainty.")
+
+GOOD = {"verdict": _VERDICT, "factors": [
+    {"key": "spread", "direction": "up", "headline": "The model likes Baltimore", "text": _SPREAD},
+    {"key": "record", "direction": "up", "headline": "Its record so far", "text": _RECORD},
+    {"key": "context", "direction": "down", "headline": "And the other way", "text": _CONTEXT},
+]}
 
 
 def facts(**over):

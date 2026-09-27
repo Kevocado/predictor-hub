@@ -15,11 +15,17 @@ Measured against the validator as it stood (rebuilt final, no `pick_won`):
     pre_kickoff, pick_won FALSE, "The pick was right: BAL 27-20." -> PASSED
     pre_kickoff, pick_won FALSE, "The pick was wrong: BAL 27-20." -> PASSED
 
-Every body below is built to satisfy ALL the other rules — 3-6 sections, 60
-words per section, 120-220 total, no banned word, every number present in the
-facts — so the only thing that can reject one is the verdict rule. A body that
-tripped the length or number rule would pass these tests for the wrong reason,
-and the two honest cases (`...may be called wrong/right`) would be meaningless.
+Every body below is built to satisfy ALL the other rules — 2-4 factors, 35 words
+per factor text, no banned word, every number present in the facts, and every
+factor key a market the facts actually carry — so the only thing that can reject
+one is the verdict rule. A body that tripped the length, number or key rule would
+pass these tests for the wrong reason, and the two honest cases
+(`...may be called wrong/right`) would be meaningless.
+
+The v2 conversion is deliberately mechanical: same claims, same assertions, new
+shape. What is new is that the claim now has to live in a factor `text` rather
+than a section, which is the point — the check has to follow the prose wherever
+the shape puts it, or it silently stops running.
 """
 import json
 
@@ -32,36 +38,38 @@ FACTS = {
     "markets": [{"market": "spread", "model_margin": 3.4, "line": "BAL -2.5"}],
 }
 
-# 40 words: under the 60-word per-section cap with a claim in front of it, no
-# digits, and no spelled-out numbers. Both matter and both bit the first
-# version of this file:
-#   * the validator scans section TITLES for numbers too (validate.py puts
-#     them in the same `texts` list as the prose), so titles reading
-#     "Read 0 / 1 / 2" failed as invented figures;
-#   * at 48 words, prefixing a claim pushed sections over 60 and the test
-#     passed for the wrong reason.
+# 19 words, so a claim of up to ~12 words prefixed to it still fits the 35-word
+# per-factor cap, no digits, and no spelled-out numbers. Both matter and both bit
+# the first version of this file:
+#   * the validator scans factor HEADLINES for numbers too (validate.py puts them
+#     in the same `texts` list as the prose), so headlines reading "Read 0 / 1 /
+#     2" failed as invented figures;
+#   * when the neutral text was long, prefixing a claim pushed it over the cap
+#     and the test passed for the wrong reason.
 # The control-body test below is what catches both, and it is the reason it
 # exists: every other test here asserts something is rejected, and a body
 # rejected for a different reason would make them all vacuous.
-NEUTRAL = (
-    "Baltimore are the slight favourites and the rating gap has held all week. "
-    "Rest and weather point the same way, and Kansas City are good enough to "
-    "win this, so read the number as a lean rather than a call."
-)
-TITLES = ("Read one", "Read two", "Read three")
+NEUTRAL = ("Baltimore are the slight favourites and the gap has held all week. "
+           "Kansas City can still win this one.")
+# Real market keys. v1 used f"m{i}" for a section's market, which v2 would reject
+# outright: a factor key the facts do not carry is exactly what the panel would
+# have to render as an empty row.
+KEYS = ("spread", "record", "context")
+HEADLINES = ("Read one", "Read two", "Read three")
 
 
-def _body(*claims: str, headline: str = "Baltimore favoured at 62%") -> dict:
-    """3 sections, 60 words or fewer each, 120-220 in total, no stray numbers.
+def _body(*claims: str, verdict: str = "Baltimore favoured at 62%") -> dict:
+    """A verdict and 3 factors, each within the caps, no stray numbers.
 
-    `headline` is a parameter because the no-pick case cannot use the default:
-    it removes the pick from the facts, and a headline still quoting 62% would
-    then be an invented figure and be rejected as one, which is the wrong reason.
+    `verdict` is a parameter because the no-pick case cannot use the default: it
+    removes the pick from the facts, and a verdict still quoting 62% would then
+    be an invented figure and be rejected as one, which is the wrong reason.
     """
-    sections = [{"market": f"m{i}", "title": TITLES[i], "text": NEUTRAL} for i in range(3)]
+    factors = [{"key": KEYS[i], "direction": "up", "headline": HEADLINES[i], "text": NEUTRAL}
+               for i in range(3)]
     for i, claim in enumerate(claims):
-        sections[i]["text"] = f"{claim} {NEUTRAL}"
-    return {"headline": headline, "sections": sections}
+        factors[i]["text"] = f"{claim} {NEUTRAL}"
+    return {"verdict": verdict, "factors": factors}
 
 
 def _validate(facts: dict, body: dict) -> list[str]:
@@ -104,7 +112,7 @@ def test_no_pick_cannot_be_called_right():
     facts = {**FACTS, "pick_timing": "none", "pick": None, "result": None}
     problems = _validate(facts, _body(
         "There is no pick for this one yet, and the pick was right all the same.",
-        headline="No pick for this one",
+        verdict="No pick for this one",
     ))
     assert any("verdict" in p for p in problems), \
         f"a bundle with no pick was allowed to claim one was right: {problems}"
