@@ -53,6 +53,32 @@ def _values(token: str) -> list[float]:
     return [v for v, _ in _candidates(token)]
 
 
+def _written_sign(token: str) -> int:
+    """The direction the prose asserted: -1, 0 for none written, +1.
+
+    `_candidates` strips the sign, which is right for magnitude and wrong for
+    truth: "BAL -2.5" and "BAL +2.5" are opposite claims about the same game,
+    and a validator that cannot see the difference accepts either. Three-valued
+    rather than a boolean, because a bare "2.5" asserts no direction and must
+    keep passing.
+    """
+    head = token.lstrip()
+    # U+2212 MINUS SIGN is a MINUS. Reading it as a plus is the kind of thing
+    # `test_true_minus_and_rounding_are_tolerated` exists to catch, and it did:
+    # every "−2.50" in honest prose was being treated as "+2.50" and rejected as a
+    # sign flip against its own fact.
+    if head.startswith("-") or head.startswith("\u2212"):
+        return -1
+    if head.startswith("+"):
+        return 1
+    return 0
+
+
+def _is_margin_key(key: str) -> bool:
+    """A margin's sign is a convention; a line's sign is the claim."""
+    return "margin" in key
+
+
 def numbers_in(text: str) -> set[float]:
     return {v for tok in _NUM_RE.findall(text) for v in _values(tok)}
 
@@ -63,12 +89,17 @@ def _pool(node, key: str = "") -> tuple[set[float], set[float]]:
     invented figures."""
     nums: set[float] = set()
     pcts: set[float] = set()
+    # Magnitudes whose sign is a convention, so a written sign may be flipped
+    # against them. A line's may not.
+    flippable: set[float] = set()
 
     def walk(n, k=""):
         if isinstance(n, bool) or n is None:
             return
         if isinstance(n, (int, float)):
             nums.add(float(n))
+            if _is_margin_key(k):
+                flippable.add(abs(float(n)))
         elif isinstance(n, str):
             if k == "id" or k.endswith("_id") or _DATE_RE.search(n):
                 return
@@ -77,6 +108,8 @@ def _pool(node, key: str = "") -> tuple[set[float], set[float]]:
                 (pcts if tok.endswith("%") else nums).add(v)
                 if tok.endswith("%"):
                     nums.add(v)
+                elif _is_margin_key(k):
+                    flippable.add(abs(v))
         elif isinstance(n, dict):
             for kk, v in n.items():
                 walk(v, kk)
@@ -85,15 +118,39 @@ def _pool(node, key: str = "") -> tuple[set[float], set[float]]:
                 walk(v, k)
 
     walk(node, key)
-    return nums, pcts
+    return nums, pcts, flippable
 
 
-def _known(token: str, nums: set[float], pcts: set[float]) -> bool:
-    t = token.replace("−", "-").replace(",", "")
+def _sign_ok(sign: int, magnitude: float, fact: float, flippable: set[float]) -> bool:
+    """Whether a written direction is one the facts support.
+
+    No sign written means the prose cited a magnitude, which any fact of that
+    size supports — people write "2.5" for a 2.5-point line without asserting a
+    direction. A sign written IS a claim, and it has to agree with the fact's own
+    direction, unless the fact is a margin: `model_margin: 3.4` is
+    home-minus-away, so a sentence about the away team legitimately carries the
+    other sign, and rejecting that would cost a reader their explanation.
+    """
+    if sign == 0:
+        return True
+    if fact == 0:
+        return False
+    if sign * fact > 0:
+        return True
+    return abs(fact) in flippable
+
+
+def _known(token: str, nums: set[float], pcts: set[float], flippable: set[float]) -> bool:
+    t = token.replace("\u2212", "-").replace(",", "")
+    sign = _written_sign(token)
     decimals = len(t.rstrip("%").split(".")[1]) if "." in t else 0
     tol = 0.5 * 10 ** -decimals
     v = abs(float(t.rstrip("%")))
     if t.endswith("%"):
+        # A percentage has no direction: "-62%" is not a thing anyone means, and
+        # accepting it would be a free pass for any sign flip dressed as a percent.
+        if sign != 0:
+            return False
         # A percent is a probability (a fraction in the facts) or a percent
         # the facts themselves wrote; never a raw count like 41 hits.
         return any(abs(v / 100 - p) <= tol / 100 + 1e-9 for p in nums if 0 <= p <= 1) \
@@ -101,8 +158,10 @@ def _known(token: str, nums: set[float], pcts: set[float]) -> bool:
     if decimals == 0:
         # A whole number may round a decimal (48 for 47.8) but not a half
         # line (46 for 45.5), and never stands for a probability.
-        return any(abs(v - abs(p)) < tol or v == abs(p) for p in nums if abs(p) >= 1 or p == 0)
-    return any(abs(v - abs(p)) <= tol + 1e-9 for p in nums)
+        return any((abs(v - abs(p)) < tol or v == abs(p)) and _sign_ok(sign, v, p, flippable)
+                   for p in nums if abs(p) >= 1 or p == 0)
+    return any(abs(v - abs(p)) <= tol + 1e-9 and _sign_ok(sign, v, p, flippable)
+               for p in nums)
 
 
 # A verdict claim is a SUBJECT plus a VERB, not a word. "won" and "right" both
@@ -226,10 +285,10 @@ def validate(output: dict, facts_json: str, news_json: str) -> list[str]:
     if banned:
         problems.append(f"banned word: {banned[0]!r}")
 
-    fn, fp = _pool(facts)
-    nn, np_ = _pool(json.loads(news_json or "[]"))
-    nums, pcts = fn | nn, fp | np_
-    unknown = sorted({tok for tok in _NUM_RE.findall(body) if not _known(tok, nums, pcts)})
+    fn, fp, ff = _pool(facts)
+    nn, np_, nf = _pool(json.loads(news_json or "[]"))
+    nums, pcts, flippable = fn | nn, fp | np_, ff | nf
+    unknown = sorted({tok for tok in _NUM_RE.findall(body) if not _known(tok, nums, pcts, flippable)})
     if unknown:
         problems.append("number not in the facts or news: " + ", ".join(unknown))
 
