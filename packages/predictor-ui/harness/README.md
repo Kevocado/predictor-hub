@@ -6,6 +6,7 @@ what a screenshot shows is what ships.
 
 ```sh
 npm install          # its own node_modules, on purpose
+npm run typecheck    # tsc over main.tsx and vite.config.ts — see below
 npm run build        # -> dist/
 npm run preview      # http://localhost:4180
 ```
@@ -22,6 +23,33 @@ npm run preview      # http://localhost:4180
 adding a build tool to `predictor-ui`'s own `package.json` can disturb the
 library's test run — which it did, on the first attempt, silently breaking six
 test files. A review instrument must not be able to break the thing it reviews.
+
+## Why it has its own tsconfig
+
+The same reason, one step further on. `predictor-ui`'s `tsconfig.json` includes
+`["src", "vitest.config.ts", "test-setup.ts"]`, so the harness sat outside every
+type-checker in the repo — and it held a real type error for two commits before
+anyone found it, in the file Kevin reads the panel from.
+
+`npm run typecheck` now covers `main.tsx` and `vite.config.ts`, which drags the
+library's 17 source files in behind them. The check is worth having because
+**nothing else in this repo catches a type error here**: `vite build` transpiles
+via esbuild, which strips types without reading them, so a harness with a type
+error still builds to a working `dist/`. Both facts were measured — with the
+defect reintroduced, `typecheck` exits 2 while `build` exits 0 and the library's
+own `tsc --noEmit` exits 0. A screenshot is a worse place to find out.
+
+**Nothing runs it automatically.** This repo has no CI on push or PR; its only
+workflow is `workflow_dispatch` (the Azure deploy, run by hand). Until that
+changes, `npm run typecheck` is run by a person, and the type of person is
+whoever is about to re-shoot the screenshots.
+
+The `@types` it needs are here rather than in the library: `main.tsx` imports
+`react-dom/client`, and `predictor-ui` declares `@types/react` but never
+`@types/react-dom`, because its own `src` imports only `react`. Versions match
+what the library resolves — `@types/react@^19.2.17`, the same range it declares,
+and `@types/react-dom@^19.3.0`, the React 19 counterpart of the 19.3.0 that
+`@types/react` resolves to today.
 
 ## What it caught that tests could not
 
