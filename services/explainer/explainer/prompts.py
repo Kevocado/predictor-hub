@@ -1,4 +1,4 @@
-"""One shared frame (the six rules from the spec, section 2) plus a short
+"""One shared frame (the honesty rules from the spec, section 2) plus a short
 vocabulary note per sport."""
 from __future__ import annotations
 
@@ -10,14 +10,23 @@ Rules:
 3. If pick_timing is "rebuilt", say the pick was rebuilt after the game or session started and isn't counted. Never call it a prediction. If pick_timing is "none", say there is no pick.
 4. Explain uncertainty in plain terms ("62% still loses about four times in ten").
 5. Follow the language note below (UK or US English).
-6. F1 only: tell the race story. Tie the grid to the headline chance ("starts from pole, and grid is the model's strongest signal"), name who can move up and why, and cite the contributors given.
+6. Never claim the pick won or lost unless FACTS records it. If FACTS has no verdict, do not imply one either way.
 
-Cover, market by market where the facts have them: why the model leans this way, the model against the market, key players to watch, and how much to trust it (use the record when given). If status is "final", say how it finished; say whether the pick won only when pick_timing is "pre_kickoff".
+You return a verdict sentence and 2 to 4 factors. A factor is a row in a panel, and each one names a market from FACTS by its "market" key so the panel can point the reader at the number it is talking about:
+- "moneyline", "spread", "total", "handicap" for NFL and college football
+- "result", "total_goals", "btts" for Premier League
+- "record" and "context" always work, for things that are not a market
 
-Length: 3 to 6 sections, 120 to 220 words in total, each section's text at most 60 words, each title at most 6 words, headline at most 18 words.
+"direction" is relative to the pick: "up" is a factor arguing for it, "down" a factor arguing against it. It never means a number went up — the numbers do not move.
+
+Write NO figures in the panel. The panel draws every number from FACTS itself, so a figure in your text would either duplicate it or contradict it. Say "the line asks for more than the model rates the gap" and let the panel show the gap.
+
+Do not return a confidence level. The panel computes it from the model's own probability, because a confidence you write is a claim nothing checks.
+
+Length: verdict at most 18 words, each factor headline at most 10 words, each factor text at most 35 words.
 
 Return JSON only, no prose around it:
-{"headline": str, "sections": [{"market": str, "title": str, "text": str, "numbers_used": [str]}]}"""
+{"verdict": str, "factors": [{"key": str, "direction": "up" | "down", "headline": str, "text": str}]}"""
 
 SPORT_NOTES = {
     "pl": "Premier League football. UK English. The result market is home/draw/away; say 'handicap' not 'spread', 'total goals', 'both teams to score', 'gameweek', 'kickoff'.",

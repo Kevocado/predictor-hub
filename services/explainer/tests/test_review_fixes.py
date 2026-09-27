@@ -16,7 +16,7 @@ FACTS_URL = "http://nfl.test/api/facts/g1"
 
 
 def text_of(out):
-    return " ".join(s["text"] for s in out["sections"])
+    return " ".join([out["verdict"]] + [f["headline"] + " " + f["text"] for f in out["factors"]])
 
 
 # I1: the template must survive loose facts
@@ -24,7 +24,7 @@ def test_template_survives_malformed_optional_fields():
     out = explain_from_template({"title": "A v B", "pick": {"label": "A", "prob": "0.6"},
                                  "markets": [{"market": "spread", "model_margin": "x", "line": None}, "junk"],
                                  "players": [{"team": "A"}, "junk"], "record": {"hits": None}})
-    assert out["headline"] and len(out["sections"]) >= 1
+    assert out["verdict"] and len(out["factors"]) >= 1
 
 
 async def test_a_template_crash_still_answers_and_frees_the_lock(tmp_path, no_news, monkeypatch):
@@ -33,15 +33,26 @@ async def test_a_template_crash_still_answers_and_frees_the_lock(tmp_path, no_ne
     monkeypatch.setattr("explainer.service.explain_from_template", lambda f: 1 / 0)
     ex = make(tmp_path)
     out = await ex.explain("nfl", "g1")
-    assert out["source"] == "template" and out["sections"]
+    assert out["source"] == "template" and out["factors"]
     assert ex._locks == {}
 
 
 # I2: confidence line uses the pick's own probability
 def test_draw_pick_at_30_percent_is_described_honestly():
-    out = explain_from_template({"title": "Arsenal v Spurs", "sport": "pl", "pick": {"label": "Draw", "prob": 0.30}})
+    """The complement of a probability is the number this product must not state.
+
+    v1 said it in words ("misses about seven times in ten"). v2 does not: the
+    panel draws the figure and the confidence is the computed band, so the
+    template states neither. What is asserted is the part that could still go
+    wrong — the band comes from the facts, and no complement appears anywhere.
+    """
+    out = explain_from_template({"title": "Arsenal v Spurs", "sport": "pl",
+                                 "pick": {"label": "Draw", "prob": 0.30},
+                                 "markets": [{"market": "result", "model": {"home_win": 0.34, "draw": 0.30,
+                                                                          "away_win": 0.36}}]})
     assert "70%" not in text_of(out)
-    assert "misses about seven times in ten" in text_of(out)
+    # PL's result market is three-way, so 0.30 is below the 0.40 threshold.
+    assert out["band"] == "leaning", f"a 30% draw read as {out['band']}"
 
 
 # I3: finals show the result; pick_won only for pre-kickoff picks
@@ -70,8 +81,8 @@ async def test_news_with_nulls_and_odd_types_is_safe():
 # I5: West Ham's nickname isn't betting slang
 def test_hammers_nickname_is_allowed_but_hammer_is_not():
     f = json.dumps(facts())
-    assert validate(good(headline="The Hammers visit Baltimore at 62%"), f, "[]") == []
-    assert validate(good(headline="Hammer Baltimore at 62%"), f, "[]")
+    assert validate(good(verdict="The Hammers visit Baltimore at 62%"), f, "[]") == []
+    assert validate(good(verdict="Hammer Baltimore at 62%"), f, "[]")
 
 
 # I6: the prompt no longer shows a derived number, and forbids computing
@@ -94,7 +105,7 @@ async def test_new_headlines_alone_do_not_cost_a_regeneration(tmp_path, no_news)
 
 async def test_a_validation_failure_template_is_not_retried(tmp_path, no_news, monkeypatch):
     no_news.get(FACTS_URL).mock(return_value=httpx.Response(200, json=facts()))
-    llm = no_news.post(OPENROUTER_URL).mock(return_value=reply(good(headline="A 70% chance")))
+    llm = no_news.post(OPENROUTER_URL).mock(return_value=reply(good(verdict="A 70% chance")))
     monkeypatch.setattr("explainer.service.TEMPLATE_RETRY_SECONDS", -1)
     ex = make(tmp_path)
     await ex.explain("nfl", "g1")
@@ -115,25 +126,37 @@ async def test_no_key_template_is_retried_once_a_key_exists(tmp_path, no_news, m
 # Minors
 def test_percent_only_matches_fractions_or_written_percents():
     f = json.dumps(facts())  # record hits 41
-    assert any("41%" in p for p in validate(good(headline="Right 41% of the time"), f, "[]"))
+    assert any("41%" in p for p in validate(good(verdict="Right 41% of the time"), f, "[]"))
 
 
 def test_integer_cannot_round_a_half_point_line_or_a_probability():
     f = facts(); f["markets"].append({"market": "total", "model_total": 47.8, "line": 45.5})
     fj = json.dumps(f)
-    assert validate(good(headline="Line near 46 at 62%"), fj, "[]")
-    assert validate(good(headline="Won 1-0 at 62%"), fj, "[]")
-    assert validate(good(headline="Total near 48 at 62%"), fj, "[]") == []
+    assert validate(good(verdict="Line near 46 at 62%"), fj, "[]")
+    assert validate(good(verdict="Won 1-0 at 62%"), fj, "[]")
+    assert validate(good(verdict="Total near 48 at 62%"), fj, "[]") == []
 
 
-async def test_answer_drops_numbers_used_and_stringifies_titles(tmp_path, no_news):
+async def test_answer_coerces_junk_factor_fields_and_drops_the_rest(tmp_path, no_news):
+    """v2 has no `numbers_used` and no section `title`, so the coercion that
+    remains is on the factor fields — and a body carrying extra keys must not
+    have them echoed into the response, because the panel renders what it is
+    given."""
     no_news.get(FACTS_URL).mock(return_value=httpx.Response(200, json=facts()))
-    g = good(); g["sections"][0]["title"] = ["Pick"]
+    g = good()
+    # No digits in the junk: `validate()` runs BEFORE `clean_verdict()`, so a
+    # junk value that reads as a number is rejected as an invented figure and
+    # never reaches the coercion. The first version of this test used {"nope": 1}
+    # and passed for the wrong reason — it was testing the number rule.
+    g["factors"][0]["headline"] = ["Pick"]
+    g["factors"][0]["text"] = {"nope": "x"}
+    g["factors"][0]["numbers_used"] = ["62%"]
     no_news.post(OPENROUTER_URL).mock(return_value=reply(g))
     out = await make(tmp_path).explain("nfl", "g1")
     assert out["source"] == "llm"
-    assert all("numbers_used" not in s for s in out["sections"])
-    assert all(isinstance(s["title"], str) and isinstance(s["market"], str) for s in out["sections"])
+    for f in out["factors"]:
+        assert set(f) == {"key", "direction", "headline", "text"}, f"leaked keys: {sorted(f)}"
+        assert isinstance(f["headline"], str) and isinstance(f["text"], str)
 
 
 async def test_id_is_quoted_into_the_sport_api_url(tmp_path, no_news):

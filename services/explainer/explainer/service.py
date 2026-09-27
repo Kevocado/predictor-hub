@@ -17,6 +17,7 @@ from pydantic import ValidationError
 
 from .cache import Cache
 from .config import SERVED_SPORTS
+from .contract import band_for, clean_verdict, market_shape, pick_prob
 from .facts import Facts, PickTiming, render
 from .ledger import Ledger
 from .llm import LLMError, complete
@@ -30,7 +31,6 @@ logger = logging.getLogger(__name__)
 # A template stored because the model was unavailable (budget, outage) is
 # served for this long, then the model gets another go at the same facts.
 TEMPLATE_RETRY_SECONDS = 3 * 3600
-SECTION_KEYS = ("market", "title", "text")
 # Stored in the model column of a template row the model may retry later.
 UNAVAILABLE = "unavailable"
 
@@ -50,8 +50,17 @@ def _news_terms(f: Facts) -> list[str]:
 
 
 def _clean(body: dict) -> dict:
-    return {"headline": body["headline"],
-            "sections": [{k: str(s.get(k) or "") for k in SECTION_KEYS} for s in body["sections"]]}
+    """Coerce a model body to the v2 shape, and refuse a body that is not one.
+
+    The cache key covers `prompt_version`, so a v1 row cannot reach here. Asserting
+    anyway: a reused version must fail loudly rather than render an empty panel,
+    and this is the only place that can notice. A missing `verdict` means a shape
+    we do not understand, not a shape we can render.
+    """
+    if not isinstance(body.get("verdict"), str) or not isinstance(body.get("factors"), list):
+        raise ValueError(f"cached body is not a v2 verdict: {sorted(body)}")
+    return clean_verdict(body)
+
 
 
 class Explainer:
@@ -88,16 +97,23 @@ class Explainer:
         except (ValueError, ValidationError, TypeError) as exc:
             raise Upstream(f"{sport} facts failed the contract: {type(exc).__name__}") from None
 
-    def _answer(self, sport: str, id: str, row: dict, pick_timing: PickTiming) -> dict:
+    def _answer(self, sport: str, id: str, row: dict, facts: Facts) -> dict:
         # pick_timing rides along from the facts rather than being read out of
         # the prose: the panel has to repeat the site's own "Rebuilt after
         # kickoff" status, and neither the model nor the template is a reliable
         # source for that label. The cache key covers the facts, so a hit and
         # the miss that filled it always agree on it.
         model = "" if row["source"] == "template" else row["model"]
-        return {"sport": sport, "id": id, **row["body"], "source": row["source"], "model": model,
+        return {"sport": sport, "id": id, **row["body"],
+                # The band is computed, never asked for (spec §13a). A word is
+                # the same defect as a number when nothing ties it to anything:
+                # a model can call a 52% pick "strong" and there is no fact to
+                # contradict it. Unconditional, so this is the only place the
+                # response's band is decided and the template path cannot drift.
+                "band": band_for(pick_prob(facts), market_shape(facts)),
+                "source": row["source"], "model": model,
                 "generated_at": row["created_at"], "prompt_version": row["prompt_version"],
-                "pick_timing": pick_timing}
+                "pick_timing": facts.pick_timing}
 
     def _usable(self, row: dict | None) -> bool:
         if row is None:
@@ -129,13 +145,13 @@ class Explainer:
 
         row = self.cache.get(key)
         if self._usable(row):
-            return self._answer(sport, id, row, facts.pick_timing)
+            return self._answer(sport, id, row, facts)
         lock = self._locks.setdefault(key, asyncio.Lock())
         try:
             async with lock:
                 row = self.cache.get(key)  # another caller may have just made it
                 if self._usable(row):
-                    return self._answer(sport, id, row, facts.pick_timing)
+                    return self._answer(sport, id, row, facts)
                 try:
                     body, source, model = await self._generate(sport, facts, facts_json, news_json)
                 except Exception:
@@ -144,7 +160,7 @@ class Explainer:
                 self.cache.put(key, sport, id, body, source, model, s.prompt_version)
         finally:
             self._locks.pop(key, None)
-        return self._answer(sport, id, self.cache.get(key), facts.pick_timing)
+        return self._answer(sport, id, self.cache.get(key), facts)
 
     async def _generate(self, sport: str, facts: Facts, facts_json: str, news_json: str) -> tuple[dict, str, str]:
         s = self.settings

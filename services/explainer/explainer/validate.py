@@ -1,16 +1,37 @@
 """The main guard against invented numbers: every figure the model writes
 must come from the facts or the news it was given. Also shape, length,
-banned words, and the rebuilt-pick disclosure."""
+banned words, and the rebuilt-pick disclosure.
+
+v2 changed the shape the model returns and nothing about any of those guards. A
+factor references a market by key and carries a direction; the panel resolves the
+key and draws the figures itself. So the number pool still runs over the prose —
+a digit in a factor is as invented as a digit in a section — and the
+outcome-verdict check still has to see a claim wherever the prose now lives.
+"""
 from __future__ import annotations
 
 import json
 import re
+
+from .contract import DIRECTIONS, PSEUDO_MARKETS, market_keys
 
 BANNED = ["lock", "bet", "betting advice", "hammer", "guaranteed", "sure thing", "value play"]
 _BANNED_RE = re.compile(r"\b(" + "|".join(re.escape(w) for w in BANNED) + r")s?\b", re.I)
 _NUM_RE = re.compile(r"[-−+]?\d+(?:,\d{3})*(?:\.\d+)?%?")
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 REBUILT_WORDS = ("rebuilt", "after kickoff", "after the start", "after the session")
+
+#: Word caps for the v2 body. A verdict line inherits v1's 18-word headline cap;
+#: a factor headline and sentence are new, and are tighter because a factor is
+#: one row of a panel rather than a paragraph beside it. There is deliberately
+#: **no minimum**: v1 demanded 120-220 words, and a v2 body is short by
+#: construction because the figures are drawn rather than written. A floor kept
+#: from v1 would reject the honest short answer and push the model into padding.
+MAX_VERDICT_WORDS = 18
+MAX_HEADLINE_WORDS = 10
+MAX_FACTOR_WORDS = 35
+MIN_FACTORS = 2
+MAX_FACTORS = 4
 
 
 def _candidates(token: str) -> list[tuple[float, float]]:
@@ -154,34 +175,57 @@ def _verdict_problems(facts: dict, body: str) -> list[str]:
 
 def validate(output: dict, facts_json: str, news_json: str) -> list[str]:
     """Problems with a model's output; [] means it may be shown."""
-    sections = output.get("sections") if isinstance(output, dict) else None
-    headline = output.get("headline") if isinstance(output, dict) else None
-    if not isinstance(headline, str) or not isinstance(sections, list) \
-            or not all(isinstance(s, dict) and isinstance(s.get("text"), str) for s in sections):
-        return ["output must be {headline: str, sections: [{text: str, ...}]}"]
+    # The facts are parsed BEFORE the shape check, because the key rule below
+    # needs the market list. They are parsed defensively: a body so malformed
+    # that `output` is not a dict must still produce a list of problems rather
+    # than a TypeError out of a guard whose whole job is to fail safely.
+    try:
+        facts = json.loads(facts_json) if facts_json else {}
+    except ValueError:
+        facts = {}
+    if not isinstance(facts, dict):
+        facts = {}
+
+    factors = output.get("factors") if isinstance(output, dict) else None
+    verdict = output.get("verdict") if isinstance(output, dict) else None
+    if not isinstance(verdict, str) or not isinstance(factors, list) \
+            or not all(isinstance(f, dict) for f in factors):
+        return ["output must be {verdict: str, factors: [{key, direction, headline, text}]}"]
 
     problems = []
-    if not 3 <= len(sections) <= 6:
-        problems.append(f"needs 3–6 sections, got {len(sections)}")
-    if len(headline.split()) > 18:
-        problems.append("headline is over 18 words")
-    for i, s in enumerate(sections):
-        if len(s["text"].split()) > 60:
-            problems.append(f"section {i + 1} text is over 60 words")
-        if len(str(s.get("title", "")).split()) > 6:
-            problems.append(f"section {i + 1} title is over 6 words")
-    total = sum(len(s["text"].split()) for s in sections)
-    if not 120 <= total <= 220:
-        problems.append(f"body is {total} words; needs 120–220")
+    if not MIN_FACTORS <= len(factors) <= MAX_FACTORS:
+        problems.append(f"needs {MIN_FACTORS}-{MAX_FACTORS} factors, got {len(factors)}")
+    if len(verdict.split()) > MAX_VERDICT_WORDS:
+        problems.append(f"verdict is over {MAX_VERDICT_WORDS} words")
 
-    texts = [headline] + [s["text"] for s in sections] + [str(s.get("title", "")) for s in sections]
+    # A key the facts do not carry is a problem rather than something to drop
+    # here: `contract.resolve_factors` already dropped it on the way in, so
+    # reaching this point means the drop was bypassed. An absent market renders
+    # *nothing* (spec §6), so the alternative is a row with nothing in it.
+    allowed = market_keys(facts) | set(PSEUDO_MARKETS)
+    for i, f in enumerate(factors):
+        if f.get("direction") not in DIRECTIONS:
+            problems.append(f"factor {i + 1} direction must be one of {DIRECTIONS}")
+        if f.get("key") not in allowed:
+            problems.append(f"factor {i + 1} names {f.get('key')!r}, which the facts do not carry")
+        if len(str(f.get("headline", "")).split()) > MAX_HEADLINE_WORDS:
+            problems.append(f"factor {i + 1} headline is over {MAX_HEADLINE_WORDS} words")
+        if len(str(f.get("text", "")).split()) > MAX_FACTOR_WORDS:
+            problems.append(f"factor {i + 1} text is over {MAX_FACTOR_WORDS} words")
+
+    # No band rule: the band is computed by `contract.band_for` from the facts,
+    # never supplied by the model (§13a). Validating a field nothing writes
+    # would be a check that cannot fail.
+    texts = [verdict]
+    for f in factors:
+        texts.append(str(f.get("headline", "")))
+        texts.append(str(f.get("text", "")))
     body = " ".join(texts)
     # "Hammers" is West Ham's nickname, not betting slang.
     banned = [m.group(0) for m in _BANNED_RE.finditer(body) if m.group(0) != "Hammers"]
     if banned:
         problems.append(f"banned word: {banned[0]!r}")
 
-    facts = json.loads(facts_json)
     fn, fp = _pool(facts)
     nn, np_ = _pool(json.loads(news_json or "[]"))
     nums, pcts = fn | nn, fp | np_

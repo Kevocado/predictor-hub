@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     daily_cap: int = Field(default=900, validation_alias="EXPLAINER_DAILY_CAP")
     db_path: str = Field(default="/data/explainer.sqlite", validation_alias="EXPLAINER_DB_PATH")
     enabled: bool = Field(default=True, validation_alias="EXPLAINER_ENABLED")
-    prompt_version: str = "v1"
+    prompt_version: str = "v2"
     sport_api_pl: str | None = None
     sport_api_f1: str | None = None
     sport_api_nfl: str | None = None
