@@ -179,3 +179,36 @@ test("NBA picks the closest game among those with a prediction", () => {
   assert.equal(out.rows[0].name, "LAL v GSW");
   assert.equal(out.rows[0].value, "50%");
 });
+
+// --- render contract (Task 7, asserted textually: no jsdom in this repo) ---
+
+import { readFileSync } from "node:fs";
+
+const src = readFileSync(new URL("../teasers.js", import.meta.url), "utf8");
+
+test("every teaser slot ends up with aria-busy removed, on every path", () => {
+  // aria-busy is what tells a screen reader the region is still settling. If
+  // any return path leaves it set, the region is announced as loading
+  // forever -- the exact failure the Phase 1 audit found on the sport sites.
+  assert.match(src, /aria-busy/, "aria-busy is never cleared");
+  assert.match(src, /setAttribute\(\s*["']aria-busy["']\s*,\s*["']false["']/);
+});
+
+test("one failed sport never touches another sport's slot", () => {
+  assert.match(src, /catch/, "no catch: a rejected fetch would leave the board half-filled");
+  // Each sport is fetched in its own promise, not in one Promise.all, so a
+  // single rejection cannot short-circuit the rest.
+  assert.doesNotMatch(src, /await Promise\.all/, "Promise.all short-circuits on the first rejection");
+});
+
+test("the F1 teaser renders its source as its timing signal", () => {
+  // Measured 2026-09-27: no endpoint the hub calls returns `generated_at` --
+  // it exists only at the top level of each public_snapshot.json, which no
+  // hub route serves -- so no teaser can carry a snapshot date today. That
+  // absence is a documented known limitation (see the note on `freshness` in
+  // teasers.js), not an oversight. The F1 teaser's `Source:` line stays as
+  // the one real timing signal available: tracked versus live versus rebuilt
+  // is exactly the distinction that matters on that sport.
+  assert.match(src, /Source: \$\{prediction\.source\}/, "F1 source line removed: the board loses its only timing signal");
+  assert.match(src, /no endpoint.*generated_at/is, "the missing-timestamp limitation must stay documented, not silent");
+});

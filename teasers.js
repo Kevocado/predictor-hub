@@ -134,3 +134,158 @@ export function selectNBA(games) {
     empty: "",
   };
 }
+
+// --- rendering -------------------------------------------------------------
+//
+// The board is static HTML and renders with JavaScript disabled; this section
+// only fills the five .teaser slots that already exist. Cards are never gated
+// on a fetch, so with every API dead the page degrades to the working index
+// of five sites it is today.
+
+// selectFootball returns label: "" because one selector serves two sports, so
+// each football entry carries its own label here -- otherwise the NFL and CFB
+// teasers would render headerless.
+const SPORTS = [
+  { sport: "pl", run: plTeaser },
+  { sport: "f1", run: f1Teaser },
+  { sport: "nfl", run: () => footballTeaser("/nfl", "NFL") },
+  { sport: "cfb", run: () => footballTeaser("/cfb", "CFB") },
+  { sport: "nba", run: nbaTeaser },
+];
+
+async function getJSON(path) {
+  const response = await fetch(path, { headers: { accept: "application/json" } });
+  if (!response.ok) throw new Error(`${path} responded ${response.status}`);
+  return response.json();
+}
+
+/** One teaser row. Text only -- no innerHTML anywhere in this file, because
+ *  every string in it comes from an API payload. */
+function paintRow(row) {
+  const el = document.createElement("div");
+  el.className = "teaser-row";
+  const name = document.createElement("span");
+  name.className = "teaser-name";
+  name.textContent = row.name;
+  const num = document.createElement("span");
+  num.className = "teaser-num";
+  num.textContent = row.value;
+  el.append(name, num);
+  if (row.sub) {
+    const s = document.createElement("span");
+    s.className = "teaser-note";
+    s.textContent = row.sub;
+    el.append(s);
+  }
+  // Edge is rendered only when the selector set it, and the selector sets it
+  // only when a real line exists. An absent edge renders nothing at all --
+  // there is no "no edge" placeholder, because that would read as a claim.
+  if (row.edge) {
+    const e = document.createElement("span");
+    e.className = "teaser-edge";
+    e.textContent = row.edge;
+    el.append(e);
+  }
+  return el;
+}
+
+function paintNote(text) {
+  const p = document.createElement("p");
+  p.className = "teaser-note";
+  p.textContent = text;
+  return p;
+}
+
+function paint(slot, { label, rows, empty }, sub) {
+  slot.replaceChildren();
+  if (label) {
+    const head = document.createElement("span");
+    head.className = "teaser-label";
+    head.textContent = label;
+    slot.append(head);
+  }
+  for (const row of rows) slot.append(paintRow(row));
+  if (empty) slot.append(paintNote(empty));
+  if (sub) slot.append(paintNote(sub));
+  // Cleared on every path out of this function, including the caller's
+  // catch, so no region is ever left announced as loading.
+  slot.setAttribute("aria-busy", "false");
+}
+
+/** Snapshot date for a teaser, when the payload carries one.
+ *
+ *  Known limitation, measured 2026-09-27: no endpoint the hub calls returns
+ *  `generated_at`. It exists only at the top level of each sport's
+ *  public_snapshot.json, which no hub route serves -- /api/games and
+ *  /api/predictions/{s}/{w}/batch return a week block with no timestamp, and
+ *  the F1 and PL routes expose none either. So this renders "" on every sport
+ *  today, and the F1 teaser's `Source:` line is the board's only timing
+ *  signal. Surfacing a real date needs a small change to the four APIs; do
+ *  not invent one here. */
+const freshness = (payload) => {
+  const at = payload?.generated_at;
+  if (!at) return "";
+  const d = new Date(at);
+  return Number.isNaN(d.getTime()) ? "" : `From the ${d.toISOString().slice(0, 10)} snapshot`;
+};
+
+async function plTeaser() {
+  const week = await getJSON("/pl/api/fixtures/gameweek");
+  const gw = week?.current_gameweek ?? week?.gameweek;
+  const full = await getJSON("/pl/api/fixtures");
+  const out = selectPL({ ...full, current_gameweek: gw });
+  return [out, freshness(full)];
+}
+
+async function f1Teaser() {
+  const races = await getJSON("/f1/api/races");
+  const next = (races || []).find((r) => !r.completed);
+  if (!next) return [selectF1(races, {}), ""];
+  const prediction = await getJSON(`/f1/api/races/${next.season}/${next.round}/prediction`);
+  return [selectF1(races, { [next.round]: prediction }), prediction.source ? `Source: ${prediction.source}` : ""];
+}
+
+async function footballTeaser(base, label) {
+  const week = await getJSON(`${base}/api/current-week`);
+  const games = await getJSON(`${base}/api/games?season=${week.season}&week=${week.week}`);
+  const predictions = await getJSON(`${base}/api/predictions/${week.season}/${week.week}/batch`);
+  return [{ ...selectFootball(games, predictions), label }, ""];
+}
+
+async function nbaTeaser() {
+  const games = await getJSON(`/nba/api/games/week?start=${new Date().toISOString().slice(0, 10)}`);
+  return [selectNBA(games), ""];
+}
+
+function hydrate() {
+  for (const { sport, run } of SPORTS) {
+    const slot = document.querySelector(`.teaser[data-teaser="${sport}"]`);
+    if (!slot) continue;
+    // Each sport is its own promise. Promise.all would short-circuit on the
+    // first rejection and leave the rest of the board empty, which is the
+    // failure this file is written to avoid.
+    run(sport)
+      .then(([out, sub]) => paint(slot, out, sub))
+      .catch((err) => {
+        slot.replaceChildren();
+        const note = document.createElement("p");
+        note.className = "teaser-note";
+        note.textContent = "Picks unavailable right now.";
+        slot.append(note);
+        slot.setAttribute("aria-busy", "false");
+        console.warn(`hub teaser ${sport} failed`, err);
+      });
+  }
+}
+
+// Guarded so the Node test suite can import this module's pure selectors
+// without a DOM. In a browser document always exists: type="module" is
+// deferred by default, so readyState here is never "loading" in practice,
+// but the branch costs nothing and covers a script moved to <head>.
+if (typeof document !== "undefined") {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", hydrate, { once: true });
+  } else {
+    hydrate();
+  }
+}
