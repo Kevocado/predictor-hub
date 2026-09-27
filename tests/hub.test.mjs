@@ -81,3 +81,29 @@ test("the wordmark stays the family name, not the product name", () => {
   assert.ok(wordmark, "no wordmark");
   assert.equal(wordmark[1], "Predictor");
 });
+
+test("every card has a picks teaser slot beneath it, not inside it", () => {
+  // Kevin asked for the picks "underneath the cards". A teaser with its own
+  // links cannot live inside the card's <a> -- nesting interactive content in
+  // an anchor is invalid HTML -- so the slot is a sibling in the same <li>.
+  const slots = [...html.matchAll(/<div class="teaser" data-teaser="(\w+)" aria-busy="true">/g)].map((m) => m[1]);
+  assert.deepEqual(slots, ["pl", "f1", "nfl", "cfb", "nba"]);
+
+  // And the slot must be a sibling of the card, not a descendant: an <a> that
+  // still contains "teaser" means someone nested it later.
+  for (const anchor of html.match(/<a class="sport pr-notch"[\s\S]*?<\/a>/g) || []) {
+    assert.doesNotMatch(anchor, /class="teaser"/, "a teaser was nested inside the card's anchor");
+  }
+});
+
+test("the cards themselves are untouched by the teasers", () => {
+  const cards = [...html.matchAll(/<a class="sport pr-notch" data-sport="(\w+)"/g)].map((m) => m[1]);
+  assert.deepEqual(cards, ["pl", "f1", "nfl", "cfb", "nba"]);
+  const status = [...html.matchAll(/<span class="status">([^<]+)<\/span>/g)].map((m) => m[1]);
+  assert.deepEqual(status, ["In season", "In season", "In season", "In season", "Preseason"]);
+});
+
+test("the hub loads the teaser module", () => {
+  assert.match(html, /<script type="module" src="\.\/teasers\.js"><\/script>/);
+});
+

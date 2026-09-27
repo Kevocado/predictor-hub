@@ -259,6 +259,54 @@
   @media (prefers-reduced-motion: reduce) {
     * { transition-duration: 0.01ms !important; }
   }
+
+  /* Picks teaser: the live opinion under each card. Sits below the card as a
+     sibling, so the card stays one big link and the teaser can hold its own
+     links to individual games. */
+  .slot { display: flex; flex-direction: column; gap: 0.5rem; }
+  .teaser {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    border: 1px solid var(--color-pr-rule);
+    border-left: 3px solid var(--color-pr-accent);
+    border-radius: var(--radius-pr);
+    background: var(--color-pr-panel);
+    padding: 0.625rem 0.75rem;
+    min-height: 4.5rem;
+  }
+  .teaser-label {
+    font-family: var(--font-pr-display);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-pr-text-faint);
+  }
+  .teaser-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.4;
+    color: var(--color-pr-text);
+  }
+  .teaser-row a { color: inherit; text-decoration: none; }
+  .teaser-row a:hover { text-decoration: underline; text-underline-offset: 2px; }
+  .teaser-name { font-weight: 600; }
+  .teaser-side { color: var(--color-pr-text-dim); }
+  .teaser-num {
+    font-family: var(--font-pr-display);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-pr-accent);
+  }
+  .teaser-note { font-size: 0.75rem; line-height: 1.4; color: var(--color-pr-text-faint); }
+  .teaser-edge { font-size: 0.75rem; color: var(--color-pr-lean); }
+  /* Reserved, never a spinner that outlives its data. A failed or empty
+     teaser collapses to its note rather than leaving a hole in the board. */
+  .teaser[aria-busy="true"] { color: var(--color-pr-text-faint); }
 </style>
 </head>
 <body data-sport="hub">
@@ -283,47 +331,53 @@
     <p class="rule"><strong>The rule</strong> <span>Only picks made before the game starts count. A pick rebuilt afterwards is still shown, labelled as such, and never counted.</span></p>
 
     <ul class="board">
-      <li>
+      <li class="slot" data-sport="pl">
         <a class="sport pr-notch" data-sport="pl" href="https://pl.40-160-91-131.sslip.io">
           <span class="sport-head"><span class="code">PL</span><span class="status">In season</span></span>
           <h2>Premier League</h2>
           <p>A pick and a most likely score for every fixture, gameweek by gameweek.</p>
           <span class="open">Open PL →</span>
         </a>
+        <div class="teaser" data-teaser="pl" aria-busy="true"></div>
       </li>
-      <li>
+      <li class="slot" data-sport="f1">
         <a class="sport pr-notch" data-sport="f1" href="https://f1.40-160-91-131.sslip.io">
           <span class="sport-head"><span class="code">F1</span><span class="status">In season</span></span>
           <h2>Formula 1</h2>
           <p>Win, podium and points chances for every driver, before each race and during live sessions.</p>
           <span class="open">Open F1 →</span>
         </a>
+        <div class="teaser" data-teaser="f1" aria-busy="true"></div>
       </li>
-      <li>
+      <li class="slot" data-sport="nfl">
         <a class="sport pr-notch" data-sport="nfl" href="https://sports.40-160-91-131.sslip.io/?sport=nfl">
           <span class="sport-head"><span class="code">NFL</span><span class="status">In season</span></span>
           <h2>Pro football</h2>
           <p>Weekly picks with the spread and total written out, plus player projections.</p>
           <span class="open">Open NFL →</span>
         </a>
+        <div class="teaser" data-teaser="nfl" aria-busy="true"></div>
       </li>
-      <li>
+      <li class="slot" data-sport="cfb">
         <a class="sport pr-notch" data-sport="cfb" href="https://sports.40-160-91-131.sslip.io/?sport=cfb">
           <span class="sport-head"><span class="code">CFB</span><span class="status">In season</span></span>
           <h2>College football</h2>
           <p>Picks for each week's games, filterable by conference.</p>
           <span class="open">Open CFB →</span>
         </a>
+        <div class="teaser" data-teaser="cfb" aria-busy="true"></div>
       </li>
-      <li>
+      <li class="slot" data-sport="nba">
         <a class="sport pr-notch" data-sport="nba" href="https://nba.40-160-91-131.sslip.io">
           <span class="sport-head"><span class="code">NBA</span><span class="status">Preseason</span></span>
           <h2>Pro basketball</h2>
           <p>Nightly picks with projected margins and totals. The record starts with the regular season.</p>
           <span class="open">Open NBA →</span>
         </a>
+        <div class="teaser" data-teaser="nba" aria-busy="true"></div>
       </li>
     </ul>
   </main>
+  <script type="module" src="./teasers.js"></script>
 </body>
 </html>
