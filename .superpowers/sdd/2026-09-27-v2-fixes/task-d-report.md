@@ -385,3 +385,419 @@ before it ever had to do it on someone else, which is the argument for having wr
   changed lines. Verified, not assumed.
 - The `onSegmentFocus`/`highlightKey` wiring on the panel, the market row, and
   `expandable`. Task C's work is untouched and still off by default.
+
+---
+
+# Task E — the test that covered nothing, and the harness no compiler read
+
+Worktree: `/Users/sigey/Documents/Projects.nosync/predictor-hub-worktrees/v2p3-fixes`
+Branch: `explainer-v2-phase3` — commits **`319be8b`** (item 1) + **`2001c93`** (item 2), base `b6ed7a3`
+
+Status: **DONE_WITH_CONCERNS**. Both items are done, both mutations are caught, and no
+baseline regressed. Three things need the controller's attention and none of them is
+code I could fix without inventing behaviour: **§13c's third direction does not exist**,
+**the type error in the hand-off was fixed one commit before my base**, and **this repo
+has no CI on push or PR**, so the new typecheck is run by a person.
+
+`HEAD` was checked before I started (`b6ed7a3`), before each commit, and after each
+mutation. No reset landed on this worktree while I was in it. `services/explainer`:
+`git diff --name-only b6ed7a3 HEAD -- services/` returns **0 files**.
+
+## 10. Item 1 — what the test actually covered, and the direction that is not built
+
+### The defect, stated more precisely than the hand-off states it
+
+The hand-off's framing was "a test that asserts an interaction but not its result
+proves the handler is wired, not that the interaction does anything". That is the right
+pattern, and it is the third instance this session. But it is **not quite this test's
+shape**, and saying so matters, because the fix differs.
+
+`"links a factor to the figure it names, and clears on Escape"` already asserted
+**results**, not a handler call: `data-highlighted="true"` on the tile and on the
+segment, then `"false"` after Escape. So it was never a wiring-only test. What it
+actually covered was **one direction of §13c's first affordance** — factor → tile and
+factor → figure — and its blind spot was different from the one described:
+
+**The panel's `onSegmentFocus` was never exercised at all.** The test clicked a
+*factor* row, and a factor row is a `<button>` by §13c's own rule, independently tested
+at `explainerV2.test.tsx:441`. The figures were only ever *read* by the test, never
+*driven*. So the panel could have stopped passing `onSegmentFocus` entirely — the bar
+would have rendered its labels as inert text and the panel would have said nothing —
+and no panel test would have noticed. `ProbabilityBar`'s own tests cannot catch it
+either, because they pass `onSegmentFocus` in themselves; they test the component's
+branch, not the panel's choice of branch.
+
+That is why mutation 2 (labels become `<span>`) left it green, and it is the thing the
+strengthened test has to close.
+
+### §13c's second direction is NOT implemented. Measured, not read off the source.
+
+Spec §13c item 1 (`docs/superpowers/specs/2026-09-27-explainer-v2-design.md:620`)
+says: *"Selecting or hovering a why row highlights the tile and the bar segment whose
+market `key` it names… **Both directions highlight**, and clearing the highlight
+restores the resting state."*
+
+**"Both directions" does not mean figure → factor.** It means: from a factor, the tile
+*and* the segment both light. I checked that reading against the plan doc
+(`2026-09-27-explainer-v2.md:65`, `:785-786`), which is the same: the linkage is one
+lookup from `key` to tile/segment, and `FactorList` is never given a highlight back.
+So the second direction of that *sentence* is implemented, and my test covers it.
+
+**The figure → factor direction — a reader stepping through the bar's figures and the
+corresponding factor lighting up — is a separate affordance, and it does not exist.**
+Task D's hand-off calls this "§13c's second direction"; the spec's own numbering calls
+it §13c's *first item*, second direction. Both are the same thing, and the brief's
+instruction to check it was the right thing to check.
+
+I measured it with a throwaway probe (since deleted) that dumped the DOM after focusing
+the `BAL` figure, which names the `spread` market:
+
+```
+PROBE after click, segment labels: [ 'KC=false', 'BAL=true' ]
+PROBE after click, tiles:          [ 'tile-moneyline=false', 'tile-spread=true' ]
+PROBE after click, factor rows: [
+  'factor-moneyline=false aria-pressed=false',
+  'factor-spread=false    aria-pressed=false'
+]
+```
+
+The figure lights itself and lights its tile. **Neither factor row changes.** The cause
+is structural, not a missed condition: `ExplainerPanel` owns `highlighted` and passes it
+to `KeyNumberTile` (`:228`) and `ProbabilityBar` (`:241`), and `FactorList` **has no
+prop that could receive it** — its props are `factors`, `onSelect`, `expanded`,
+`onToggle`, `expandable`. The only `data-highlighted` on a factor row
+(`FactorList.tsx:127`) is bound to `open`, which is *expansion*, not highlight; the row
+also carries `aria-pressed={open}`, so expansion and highlighting are not even the same
+signal in that component.
+
+So: **the report is that §13c item 1's "both directions" is satisfied, and the
+figure → factor link Task D was looking for is not in the spec's words at all, is not
+built, and is not claimed anywhere in the code's comments.** I did not write a test
+asserting it, per the brief. I did not write a test asserting it is *absent* either —
+see below.
+
+### What I did instead, and why the todo is a todo
+
+`explainerV2.test.tsx`, in the `ExplainerPanel` block:
+
+1. **The existing factor → figure/tile test gained its negatives.** It asserted the
+   lit tile and the lit segment; it never asserted the *unlit* one. A panel that lit
+   every tile and every segment satisfied it. It now also asserts `tile-moneyline` and
+   `[data-seg="KC"]` are `"false"`, both before and after Escape.
+2. **A second test drives the figures** — `"links a figure to the market it names, the
+   other way round, and clears on Escape"` — and asserts the result: the figure naming
+   `spread` lights `tile-spread` and itself; the one naming `moneyline` does not; Escape
+   clears both. This is the test that closes the blind spot above.
+3. **`it.todo` for figure → factor**, with the measurement in the comment.
+
+The crossed fixture is the load-bearing part of (2) and (1): `SEGMENTS` maps
+`{label:"BAL", market:"spread"}` and `{label:"KC", market:"moneyline"}`, so pairing a
+figure to a tile **by label** or **by position** lights the wrong element and fails.
+Without that, "the tile lights" proves only that some tile lit.
+
+Two details I got wrong on the way and corrected, because both would have shipped:
+
+- **I drove it with a raw `figure.focus()` first, and it introduced a new `act()`
+  warning into the suite** — `focus()` is outside `act`, and the bar's `onFocus` calls
+  `setHighlighted`, so React warned. The baseline had **zero** `stderr` blocks and I was
+  not going to add one. Switched to `await user.click(figure)`, which `userEvent`
+  wraps. `grep -c "not wrapped in act"` → **0**.
+- **`user.click` turned out to be the better test anyway, for a reason I did not
+  design for**: `userEvent` focuses what it clicks and will not focus a `<span>`, so
+  `expect(figure).toHaveFocus()` fails on a figure that stopped being a control —
+  an independent second catch. I verified the result assertion catches it *alone* (see
+  mutation A2 below), so the test does not rest on the tag name.
+
+**On the `it.todo`:** I did not write `expect(factorRow).toHaveAttribute(
+"data-highlighted", "false")`. That test would pass today, and it would **fail the day
+somebody implements the feature** — it would pin the gap shut and turn the correct fix
+into a red suite. A `todo` states the spec's claim, shows up in the test count, cannot
+pass while the claim is unmade, and cannot block anyone who makes it. If the controller
+prefers the gap to be invisible in the suite entirely, deleting that one line is the
+whole change.
+
+### Item 1 mutations
+
+**Mutation A1 — the panel's `onSegmentFocus` does nothing.** The brief's required one.
+
+```diff
+--- a/packages/predictor-ui/src/components/ExplainerPanel.tsx
++++ b/packages/predictor-ui/src/components/ExplainerPanel.tsx
+-              onSegmentFocus={(_, market) => market && setHighlighted(market)}
++              onSegmentFocus={() => {}}
+```
+
+```
+Tests  1 failed | 218 passed | 1 todo (220)
+  × ExplainerPanel > links a figure to the market it names, the other way round, and clears on Escape
+```
+```
+Error: expect(element).toHaveAttribute("data-highlighted", "true")
+Expected the element to have attribute:  data-highlighted="true"
+Received:                               data-highlighted="false"
+ ❯ src/components/explainerV2.test.tsx:593
+```
+
+Exactly one test fails and it is the new one. It fails on the **tile staying dark** —
+the result, not the shape.
+
+**Mutation A2 — Task D's mutation 2, the panel's figures become plain text.** The named
+defect of this item, run to confirm it is now closed.
+
+```diff
+--- a/packages/predictor-ui/src/components/ProbabilityBar.tsx
++++ b/packages/predictor-ui/src/components/ProbabilityBar.tsx
+-  if (!onFocus) {
++  if (!onFocus || onFocus) {
+```
+
+```
+Tests  8 failed | 211 passed | 1 todo (220)
+  × no component in this library nests one control inside another > ProbabilityBar with a listener: its labels are controls again
+  × no component in this library nests one control inside another > ProbabilityBar, three-way with a listener
+  × no component in this library nests one control inside another > ExplainerPanel, v2, resting
+  × no component in this library nests one control inside another > ExplainerPanel, expandable market row
+  × ProbabilityBar > shows a 3% segment its label on focus, and keeps it a sliver
+  × ProbabilityBar > makes the segment labels operable only for a caller that can be told about it
+  × ProbabilityBar > is operable by keyboard alone, which is what catches a div with onClick
+  × ExplainerPanel > links a figure to the market it names, the other way round, and clears on Escape
+```
+
+Task D measured **7 failed** for this mutation; it is 8 now, and the extra one is the
+new panel test. It failed first on `expect(figure).toHaveFocus()` at line 589. To check
+that this is not resting on the focus assertion, I re-ran the same mutation with **only**
+that one line neutralised:
+
+```
+  × ExplainerPanel > links a figure to the market it names, the other way round, and clears on Escape
+Error: expect(element).toHaveAttribute("data-highlighted", "true")
+Expected the element to have attribute:  data-highlighted="true"
+Received:                               data-highlighted="false"
+```
+
+So the interaction-not-doing-anything is caught on its own. Both mutations reverted with
+`git checkout --`; `git diff --stat` after reverting showed **only**
+`explainerV2.test.tsx`, and the suite returned to 219 passed.
+
+## 11. Item 2 — the type error in the hand-off was already fixed
+
+### The premise is stale, and the git trail says exactly when
+
+**There is no type error at `harness/main.tsx:201`. There is no type error anywhere in
+the harness.** I did not take that from the absence of output — I confirmed `tsc` is
+reading the file first:
+
+```
+$ npx tsc --noEmit --listFiles | grep -c "predictor-ui/src"
+17
+$ npx tsc --noEmit --listFiles | grep "harness/main.tsx"
+harness/main.tsx
+```
+
+`harness/main.tsx` is in the program, and behind it all 17 library `src` files. `tsc`
+read the file and found nothing. (A check that returns nothing is not a check that
+returns "no" — fourth time this session, and the reason I checked rather than believed.)
+
+The error was real, and it was fixed **one commit before my base**:
+
+| commit | `harness/main.tsx` | the `.factors` access |
+|---|---|---|
+| `3662248` (Task B) | `const NFL_VERDICT: Explanation = {` — the **union** | line **201**: `<FactorList factors={NFL_VERDICT.factors} … />` |
+| `9bc096e` (Task C) | `const NFL_VERDICT: Common & Verdict = {` — the **v2 arm** | line 233, same expression |
+
+At `3662248` the union had no `.factors` on the `LegacyExplanation` arm, so line 201
+raised precisely `Property 'factors' does not exist on type 'Explanation'`. Task C fixed
+it by annotating the fixtures `Common & Verdict` — and left a comment above
+`NFL_VERDICT` (now `main.tsx:20-25`) explaining **exactly this**: *"On the union
+`.factors` does not exist, so the fixture could not hand its own factors to the
+standalone FactorList in state 9."* The import changed from `Explanation` to
+`Common, Verdict` in the same commit. Line 201 today is a `<div>`.
+
+So Task C fixed the type error as a side effect of the label work and did not report it,
+and the hand-off carried the line number forward. **The devDependency gap was real and
+is the thing that needed doing; the type error was already gone.**
+
+### What I did
+
+1. **`harness/package.json`** — `@types/react: ^19.2.17` (the exact range the library
+   declares, resolving to the same **19.3.0** it already has installed) and
+   `@types/react-dom: ^19.3.0`. The second could not be "matched" because the library
+   declares **none** — its `src` imports only `react`, so it has no reason to;
+   `@types/react-dom@19.3.0` is the React 19 counterpart of the `@types/react` that
+   resolves today. `npm install` → `added 3 packages`. Verified installed:
+   `@types/react 19.3.0`, `@types/react-dom 19.3.0`.
+2. **`harness/tsconfig.json`** — new. The library's options minus the three test-time
+   `types`, `noEmit` in the config as well as the script (so a bare `tsc -p .` in an
+   editor cannot write `.js` next to the sources), `include: ["main.tsx",
+   "vite.config.ts"]`. The library's own `include` is untouched, so `npx tsc --noEmit` in
+   `packages/predictor-ui` is undisturbed — measured, exit 0 before, during and after.
+   One non-obvious line, commented in the file: `types: ["react"]` is required, because
+   `main.tsx:145` names `React.ReactNode` as a **type** without importing React, which
+   resolves through the UMD global namespace. Drop it and the harness stops compiling for
+   a reason unrelated to the harness.
+3. **`typecheck` script** in the harness, and the README updated with the command, why
+   the tsconfig is its own, and the measurement below.
+4. **Not the library's manifest.** `predictor-ui/package.json` is byte-identical — the
+   README's warning about the six silently-broken test files is the reason, and I did
+   not go near it.
+
+### Why the check earns its place: measured, with the defect reintroduced
+
+```
+$ npm run typecheck ; echo $?      →  2
+$ npm run build     ; echo $?      →  0
+$ cd .. && npx tsc --noEmit ; echo $?  →  0
+```
+
+**`vite build` cannot see a type error here** — it transpiles through esbuild, which
+strips types without reading them, so a broken harness still builds a working `dist/`
+that screenshots perfectly. The library's `tsc` cannot see it either, because the
+harness is outside its `include`. Only the new script catches it. That is the whole
+argument for this commit, and it is three exit codes rather than a claim.
+
+### Item 2 mutation
+
+The brief's mutation is "revert the `main.tsx:201` fix → the harness typecheck must
+fail". **There is no such fix of mine to revert**, so I substituted the *original*
+defect, which is a stronger test: I put the pre-Task-C annotation back, verbatim.
+
+```diff
+--- a/packages/predictor-ui/harness/main.tsx
++++ b/packages/predictor-ui/harness/main.tsx
+-import type { Common, MarketTile, PickRef, Segment, Verdict } from "../src/index";
++import type { Common, Explanation, MarketTile, PickRef, Segment, Verdict } from "../src/index";
+-const NFL_VERDICT: Common & Verdict = {
++const NFL_VERDICT: Common & Explanation = {
+```
+
+```
+main.tsx(233,44): error TS2339: Property 'factors' does not exist on type 'Common & Explanation'.
+  Property 'factors' does not exist on type 'Common & LegacyExplanation'.
+
+MUTATED typecheck exit: 2
+MUTATED build exit:     0
+MUTATED library tsc:    0
+```
+
+That is the hand-off's error, reproduced character for character, at line **233** rather
+than 201 (Task C's five-line comment above `NFL_VERDICT` moved it down). Restored with
+`cp` from a backup taken outside the tree; `git diff --quiet -- harness/main.tsx` → clean,
+`git status --porcelain` does not list it, and `npm run typecheck` → exit 0.
+
+### Swept the rest of the harness — two findings, neither fixed
+
+Both type-checkable harness files are in the program, so `tsc` exit 0 covers them.
+
+1. **`vite.config.ts:6`'s `as any` is no longer needed.** With the `@types` present,
+   `tailwindcss()` type-checks on its own — I removed the cast and `npx tsc --noEmit`
+   exited **0**. So the harness carries an `any` that is currently suppressing a check
+   that would pass, and nobody can tell that from reading it. **Not changed**: it is not
+   an error, it is a refactor of a line I was not asked to touch, and one word of a cast
+   is a reviewer's decision. It is reported here instead.
+2. **The inline no-pick fixture (`main.tsx:202-213`) is the one fixture not annotated
+   `Common & Verdict`**, so the file's stated convention is not applied to it. It
+   type-checks only because it sits in a **contextually typed** position (`data={…}`),
+   where `direction: "neutral"` infers its literal type from `Explanation` rather than
+   widening to `string`. That is load-bearing and invisible: hoist that literal to a
+   module-level `const` with no annotation and it fails to compile. Arguably good — it
+   fails loudly — but the file's own comment claims the *annotation* is what makes a
+   non-v2 fixture fail to compile, and this fixture has no such guarantee. **Not
+   changed**, same reason as above.
+
+### The finding the brief's step 3 cannot deliver
+
+**This repo has no CI on push or PR.** `.github/workflows/` contains exactly one file,
+`azure-static-web-apps-brave-moss-064ee9b0f.yml`, and its own header says it: *"Everything
+runs on the VPS now: this Azure deploy no longer fires on push or PR. Run it by hand from
+the Actions tab only if Azure is ever needed."* `on: workflow_dispatch: {}`.
+
+So "caught by CI rather than by a screenshot" is not currently achievable, and I did not
+fabricate a workflow to make the sentence true — an Azure deploy config is the wrong
+place to bolt a typecheck onto, and turning that workflow into a push/PR trigger would
+redeploy sites nobody asked to redeploy. What I could do is make the check exist, be
+correct, and be one command, and say plainly in the harness README that **a person runs
+it**. What is actually needed is one CI job that runs, on push and PR:
+
+```
+packages/predictor-ui:  npx vitest run && npx tsc --noEmit
+packages/predictor-ui/harness:  npm ci && npm run typecheck && npm run build
+services/explainer:      .venv/bin/python -m pytest -q
+repo root:              node --test tests/*.mjs
+```
+
+That is a controller/Kevin call, and it is worth more than both commits in this report:
+until it exists, every one of these four numbers is a number somebody remembered to
+measure.
+
+## 12. Commands, exactly as run, with the numbers I measured
+
+Baselines, before I touched anything, on `b6ed7a3`:
+
+```
+cd packages/predictor-ui && npx vitest run
+  → Test Files 10 passed (10) | Tests 218 passed (218)          exit 0
+```
+
+After both commits:
+
+```
+cd /Users/sigey/Documents/Projects.nosync/predictor-hub-worktrees/v2p3-fixes/packages/predictor-ui
+npx vitest run
+  → Test Files 10 passed (10) | Tests 219 passed | 1 todo (220)  exit 0
+      (218 baseline + 1 new test. The 1 todo is item 1's figure -> factor, unbuilt.)
+      grep -c "not wrapped in act"  → 0     (baseline was also 0; I did not add a warning)
+npx tsc --noEmit
+  → exit 0
+
+cd harness
+npm run typecheck
+  → exit 0
+npm run build
+  → ✓ 34 modules transformed.  ✓ built in 164ms  exit 0
+      dist/index.html 0.54 kB, dist/narrow.html 0.49 kB,
+      dist/assets/states-B68YWAlj.js 240.49 kB, states-B32uGMBh.css 19.57 kB
+
+cd ../../services/explainer && .venv/bin/python -m pytest -q
+  → 235 passed, 1 warning in 1.28s
+
+cd /Users/sigey/Documents/Projects.nosync/predictor-hub-worktrees/v2p3-fixes
+node --test tests/*.mjs
+  → tests 21 | pass 21 | fail 0
+```
+
+**218 did not regress — it is 219, plus 1 todo that is a claim nobody has built yet.**
+235, 21 and both `tsc` runs are unchanged. I did not re-shoot the screenshots.
+
+`pytest` run from `services/explainer` as instructed, and I did not once run it from the
+repo root, so I never saw the 191 and did not have to reason about whether it was a
+regression.
+
+## 13. What I did not touch
+
+- **No production code for item 1.** `git diff --name-only b6ed7a3 HEAD` is five files:
+  `explainerV2.test.tsx`, and for item 2 `harness/{package.json, package-lock.json,
+  tsconfig.json, README.md}`. **No `.tsx` component changed.**
+- `services/explainer` — 0 files.
+- The screenshots. Not re-shot, per the brief; the controller needs the clean tree.
+- `harness/main.tsx` and `harness/vite.config.ts` — both back to byte-identical with
+  `b6ed7a3` after the mutations.
+- The unmade affordance itself. Wiring `highlighted` into `FactorList` is production
+  code, it is a new prop on an exported component, and item 1 said test-only. It is
+  reported, not built.
+
+## 14. Carried forward
+
+- **figure → factor does not exist.** Not a broken test, not a regression: a spec-shaped
+  affordance with no implementation and no code comment claiming it. If it is wanted,
+  it is a `highlighted` prop on `FactorList` (its `data-highlighted` is currently bound to
+  *expansion*, and it also sets `aria-pressed={open}`, so highlight and expand are two
+  different signals sharing one attribute — that needs deciding before the prop lands).
+- **`@types/react-dom` was pickable only because Task C exported `Common` and `Verdict`.**
+  Not a loose end, but it is the second time that export saved a type error, which is
+  evidence the export was the right call.
+- **No push/PR CI.** Four numbers, all hand-measured. This is now the largest unguarded
+  thing in the repo, and it is larger than anything in either of my two items.
+- `prompt_version` is still `v2`; the no-pick fix is inert for cached rows until Kevin
+  bumps it. Unchanged, still his call.
+- Task C concern 1 is still the top risk in the PR: a site may pass the *model's* probs
+  as `legend`. Unchanged by this work.
