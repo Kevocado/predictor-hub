@@ -463,3 +463,164 @@ each is one line to reverse.
 | No path filter discussion here | Unrelated to the panel | — |
 | 240ms bar animation, no arrow motion | Motion on a static number implies it is changing | — |
 | NFL's players and both records kept | They are in the facts and they are honest | drop them from §6 |
+
+---
+
+## 13. Amendments
+
+Added after review of this spec and **before** any code moved. Each names the
+clause it overrides, because a spec that says "and also" is how a document ends
+up with two answers to one question. Where an amendment contradicts §12, §13
+wins; §12's row "`band` is a word, not a number" is **replaced** by 13a rather
+than merely supplemented.
+
+### 13a. `band` is computed from the facts, never chosen by the model
+
+**Overrides** the `band` bullet in §5a, and replaces the §12 row about `band`.
+
+The model is not asked for a confidence band and is not allowed to supply one. §5a
+argued that a *numeric* band would be an unsupported figure; it did not notice
+that a *named* band is worse, because a name cannot be checked. Nothing ties
+`"strong"` to anything. So the model can call a 52% pick `"strong"` and the
+reader sees a confident sentence with no fact behind the confidence — which is the
+one failure this whole redesign exists to remove.
+
+The band is therefore a pure function of `pick.prob`, computed by the service,
+with thresholds fixed here so they are reviewable rather than emergent.
+
+**Two-way markets** (NFL and CFB moneyline). No-edge is 0.50.
+
+| band | `pick.prob` |
+|---|---|
+| `strong` | ≥ 0.60 |
+| `moderate` | ≥ 0.52 |
+| `leaning` | < 0.52 |
+
+**Three-way markets** (PL `result`). A draw is a real outcome, so no-edge is
+about 0.333, not 0.50; the two-way thresholds would call a 45% home win `leaning`
+and a 40% one `strong`, which is inverted.
+
+| band | `pick.prob` |
+|---|---|
+| `strong` | ≥ 0.50 |
+| `moderate` | ≥ 0.40 |
+| `leaning` | < 0.40 |
+
+The market shape is read from the facts, not hard-coded per sport, so a future
+sport is classified by its own market rather than by a list someone remembered
+to update.
+
+**When `pick.prob` is absent there is no pick to have a confidence about**, so the
+band is `leaning`, the weakest word, and §6's verdict line reads the no-pick
+sentence. The band never implies a confidence the facts do not contain.
+
+`band` is **removed from the contract** in §5a: the model returns `verdict` and
+`factors` only. A model that volunteers a `band` anyway has it **ignored**, and
+that is tested rather than asserted — a fixture returns `"strong"` beside a 52%
+pick and the rendered band must still read `moderate`. Removing the field from
+the contract is not sufficient on its own, because a model that was trained on
+the old shape will emit it regardless, and a field that is merely undocumented
+is a field that eventually gets read.
+
+**The template calls the same function.** There is exactly one implementation of
+the thresholds, in one place, and a test asserts the template's band equals
+`band_for(prob, shape)` for a range of probabilities. A second hand-written
+threshold table is the failure mode where the two paths quietly diverge, and
+divergence between the default and the model is precisely what §8 forbids.
+
+This does not weaken §5a's "the model never supplies a rendered number". It
+strengthens it: a *word* is a figure too when it is the only carrier of a
+confidence, and now the word is derived from the one number the facts do carry.
+
+### 13b. The PL market row needs implied probabilities for all three outcomes
+
+**Overrides** the second half of §6 item 3 ("With PL's `implied` present, a
+second hairline row…").
+
+Checked against the real bundle, PL's `implied` covers **only the two sides** —
+home and away. There is no `draw` key. So "with `implied` present" is a
+condition that reads as satisfiable and is not: the row would render a three-way
+model split over a two-way market split, the draw segment sitting above nothing,
+and the reader comparing two bars that do not cover the same outcomes.
+
+The market row renders **only when `implied` covers every outcome the model's
+split has** — all three for PL. Otherwise it is omitted entirely. Omission is
+the honest answer; a partial row is a comparison that cannot be made.
+
+The same rule governs the tile's market line: it states `implied` **for a side
+that is present**, and is omitted when the side it would name has no `implied`.
+For a draw pick with no `implied.draw`, the tile carries no market line at all.
+
+**No draw probability is ever derived.** A book's 2.5/3.0/3.5 prices imply a draw
+probability by subtraction, and it would be a real number — but it would be a
+number *this product computed*, not one the facts carry, which is the line §1
+draws. It is also the number most likely to be wrong in a way nobody would
+notice: it silently assumes the overround is distributed across all three
+outcomes, and different books distribute it differently. If a market comparison
+for the draw is wanted, `implied` has to carry it, and that is a `/facts` change
+for later.
+
+### 13c. Light, keyboard-accessible interaction
+
+**Overrides** §6c's "Every interactive element (there are none in v2 beyond a
+retry)", and adds to §6b.
+
+Kevin asked for something intuitive and interactive. v1 had a retry button. That
+is not interaction, it is error handling, and it is not what was asked for. The
+panel gains three affordances, all of which connect parts of the same panel to
+each other, and all of which are reachable and operable from the keyboard.
+
+1. **A factor references what it is about.** Selecting or hovering a *why* row
+   highlights the tile and the bar segment whose market `key` it names. The
+   linkage is the `key` from §5a, so it cannot drift from the reference the
+   factor already makes in text. Both directions highlight, and clearing the
+   highlight restores the resting state.
+2. **A bar segment shows its own label on focus or tap.** A segment is
+   focusable and labelled by the same figures its `aria-label` already carries,
+   so a pointer user and a keyboard user get the same information. A segment
+   that is too narrow to show a label in place still shows one on focus, in a
+   legend — §6a's 12px floor is why the in-place label was never an option.
+3. **A factor's text is expandable on narrow screens.** Under a viewport
+   threshold the sentence is clamped to its first line behind a real
+   `<button aria-expanded>`, not a CSS-only trick, so it works without
+   JavaScript-driven measurement and is announced correctly.
+
+**The constraint that makes this safe: no interaction may reveal a figure that is
+not in the facts.** Each affordance shows a label, a highlight, or geometry the
+facts already supply. None computes, rounds or interpolates a new number, and
+none may be a place where a model's wording surfaces a figure that §5a's
+validator would have rejected in prose. A hover tooltip carrying "probably
+around 55-60%" is the exact failure this section exists to prevent, and it is
+worth naming because it is the obvious thing to reach for when adding
+interactivity to a data panel.
+
+Motion is unchanged in kind: the highlights cross-fade over 120ms, and **all of
+it is disabled under `prefers-reduced-motion: reduce`**, including the
+expansion. A highlight that appears instantly is not a problem; a highlight that
+slides is, for a reader who asked for less motion.
+
+Every affordance is tested twice: that it works, and that it is reachable and
+operable by keyboard alone. The second is the one that catches a div with an
+`onClick`.
+
+### 13d. The trigger and the refusal go first
+
+**Overrides** the sequencing implied by §4 and §10, which read as "trigger last".
+
+The on-demand trigger and the `f1`/`nba` refusal ship as the **first** phase, not
+the last. Two reasons, and the second is the one that matters:
+
+1. They are small and independent — a deletion, a lifespan change and a guard.
+   Nothing in phases two through four can block them.
+2. **Budget is being spent today on exactly what this removes.** The scheduler
+   pre-generates 72 hours across five sports, including two the redesign does not
+   serve. That spend continues until this phase lands, so leaving it last means
+   paying for a design decision to be deferred.
+
+The refusal is in the same phase because it is the same kind of change — a
+refusal at the service boundary — and because a `f1` or `nba` request arriving
+between phases one and three should be a `404` from the first hour, not from the
+day the frontends are edited.
+
+Revised order: **(1) trigger and refusal**, (2) contract and validator,
+(3) shared components, (4) wiring in and removal out.
