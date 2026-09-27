@@ -54,3 +54,30 @@ test("status is honest words, at least 12px", () => {
 test("states the honesty rule once, plainly", () => {
   assert.match(html, /Only picks made before the game starts count/);
 });
+
+test("calls itself Sports Predictor in the title, the heading, and the share card", () => {
+  // The page had three brand surfaces saying "Predictor" and no og:title at
+  // all, so a shared link showed the bare family name with no description.
+  assert.match(html, /<title>Sports Predictor<\/title>/);
+  assert.match(html, /<h1[^>]*>Sports Predictor<\/h1>/);
+  const og = html.match(/<meta property="og:title" content="([^"]+)"/);
+  assert.ok(og, "no og:title, so a shared link has no title to show");
+  assert.equal(og[1], "Sports Predictor");
+  // og:description reuses the existing meta description rather than inventing
+  // copy: two descriptions would drift, and only one of them would get updated.
+  const desc = html.match(/<meta name="description" content="([^"]+)"/);
+  const ogDesc = html.match(/<meta property="og:description" content="([^"]+)"/);
+  assert.ok(ogDesc, "og:title without og:description is a half-done share card");
+  assert.equal(ogDesc[1], desc[1]);
+});
+
+test("the wordmark stays the family name, not the product name", () => {
+  // Deliberate, and pinned so it cannot drift by accident. The wordmark is the
+  // shared frame every Predictor site carries in its header; the five sport
+  // sites all say "Predictor" there. This page's own name is Sports Predictor,
+  // but making its wordmark differ from the five would break the one thing the
+  // wordmark is for -- telling a reader they are in the same family.
+  const wordmark = html.match(/class="wordmark">([^<]+)</);
+  assert.ok(wordmark, "no wordmark");
+  assert.equal(wordmark[1], "Predictor");
+});
