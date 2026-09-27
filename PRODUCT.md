@@ -77,6 +77,13 @@ Each pick shows its confidence, its reasoning and a public record of how often t
 - F1 Track Record: winners called per race.
 - NBA calibration buckets.
 - Design critique baseline: `.impeccable/critique/2026-09-25T07-27-01Z__index-html.md` (18/40).
+  **Stale, and 18/40 is no longer a fair number for the product.** That critique predates the
+  Phase 2 family redesign. Re-measured 2026-09-27: the hub now scores clean on every heuristic
+  that critique covers — no sub-12px text, no contrast failures, no small tap targets, no
+  horizontal scroll at 1440 or 390, no raw developer values, links on the live VPS hosts. The
+  file is kept as the historical record and is not rewritten. The findings that are still real
+  are in Task 24 of the phase-4 ledger, and they are on `Sports_Predictor` (the NFL/CFB site),
+  not the hub — including the one P0, an error-less permanent "Loading…" on a failed fetch.
 - **Absent, and must not be fabricated:** user counts, testimonials, press, betting profit or ROI claims, "beats the bookies" claims.
 
 ## Product Principles

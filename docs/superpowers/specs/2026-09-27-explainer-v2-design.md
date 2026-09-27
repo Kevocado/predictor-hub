@@ -230,8 +230,19 @@ proportional bar) and NFL's player projections as a three-row mini-list.
 
 Reuse the family tokens already in `predictor-ui` (`--font-pr-display`,
 `--font-pr-body`, `--pr-accent`, `--pr-text-dim`, `--pr-rule`). No new palette,
-no new typefaces. The craft floor this repo already holds: 12px minimum, no
-emoji as icons, focus-visible rings, `prefers-reduced-motion` honoured.
+no new typefaces. No emoji as icons, focus-visible rings, `prefers-reduced-motion`
+honoured.
+
+**On the 12px floor specifically — a claim this spec previously made and had to
+be corrected about.** The hub asserts a 12px minimum in `hub.test.mjs` and holds
+it. `Sports_Predictor`, which is the frame NFL and CFB are served in, has 23
+occurrences of `text-[9|10|11px]` across 9 files and no test asserting a floor at
+all. So "the craft floor this repo already holds" was true of the hub and false of
+the site two of the three sports run through. The v2 panel is a *new* surface in
+that site, so it should follow the hub's floor — and the durable answer is a floor
+test in the site rather than a habit, or the next component drifts the same way.
+That is Task 24 in the ledger, and it should land before or with this work rather
+than after.
 
 A 12px floor rules out one tempting move — tiny percentage labels inside the
 split bar segments. Where a segment is too narrow for its label, the label goes
