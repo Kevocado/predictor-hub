@@ -167,13 +167,38 @@ describe("ProbabilityBar", () => {
   });
 
   it("shows a 3% segment its label on focus, and keeps it a sliver", () => {
-    render(<ProbabilityBar segments={[{ label: "A", prob: 0.97 }, { label: "B", prob: 0.03 }]} minSegmentPx={2} />);
+    // The reader this is for is stepping through the figures to find the sliver's
+    // own, so this is the branch where the labels are controls — which is the
+    // branch that exists whenever a caller is listening for a focus. The
+    // handler is a no-op here because the thing under test is the rendered
+    // affordance; `ExplainerPanel` supplies a real one.
+    render(<ProbabilityBar segments={[{ label: "A", prob: 0.97 }, { label: "B", prob: 0.03 }]} minSegmentPx={2} onSegmentFocus={() => {}} />);
     const seg = document.querySelector<HTMLButtonElement>('[data-seg="B"]')!;
     expect(seg).toHaveTextContent("3%");
     seg.focus();
     expect(seg).toHaveFocus();
     // The sliver is the FILL's job: the label is text and never shrinks.
     expect(document.querySelector('[data-testid="pbar-fill"][data-min-width]')).toBeTruthy();
+  });
+
+  it("makes the segment labels operable only for a caller that can be told about it", () => {
+    // The bar's segment buttons exist to report a focus to someone (§13c), and
+    // they are buttons for exactly that reason and no other. With no
+    // `onSegmentFocus` they would be announced as controls, reachable by
+    // keyboard, and inert — a focus stop that lies — and on a surface already
+    // wrapped in a button (a match card) that is also invalid HTML. So with
+    // nobody listening they are text.
+    const { rerender, container } = render(<ProbabilityBar segments={SEGMENTS} />);
+    const figures = () => [...container.querySelectorAll("[data-seg]")].map((n) => n.textContent);
+    expect(figures()).toEqual(["KC 38%", "BAL 62%"]);
+    for (const label of container.querySelectorAll("[data-seg]")) expect(label.tagName).not.toBe("BUTTON");
+
+    rerender(<ProbabilityBar segments={SEGMENTS} onSegmentFocus={() => {}} />);
+    for (const label of container.querySelectorAll("[data-seg]")) expect(label.tagName).toBe("BUTTON");
+    // Same figures either way, and still in the bar's name, so a reader who
+    // cannot step through them has every one of them.
+    expect(figures()).toEqual(["KC 38%", "BAL 62%"]);
+    expect(screen.getByRole("img", { name: "KC 38%, BAL 62%" })).toBeInTheDocument();
   });
 
   it("is operable by keyboard alone, which is what catches a div with onClick", async () => {

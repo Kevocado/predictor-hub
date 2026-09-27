@@ -114,16 +114,98 @@ function marketSplit(segments: Segment[], legend: Segment[]): Segment[] {
   return segments.map((s) => legend.find((l) => l.label === s.label)!);
 }
 
+/** What a segment's figures wear, in both branches below. One constant, because
+ *  the only thing that differs between a label that is a control and a label
+ *  that is text is the element and its handlers — not one pixel of it. */
+const LABEL_CLASS =
+  "min-w-0 rounded-pr text-xs tabular-nums text-pr-text-dim underline-offset-4 transition-opacity duration-150 hover:text-pr-text focus-visible:text-pr-text";
+
+/** One segment's figures: a control when somebody is listening for it, and text
+ *  when nobody is.
+ *
+ *  **Why the buttons are conditional, and why the condition is `onSegmentFocus`
+ *  rather than a prop.** Those buttons have exactly one job — §13c's step
+ *  through the figures, which reports a focus up to `onSegmentFocus` and gets a
+ *  `highlightKey` highlight back. A `<button>` whose only handler is
+ *  `onSegmentFocus?.()` with nothing passed is a control that is announced,
+ *  reachable, and does nothing: a focus stop that lies. `MatchCard` was exactly
+ *  that, and it was not a near-miss: a card cannot host §13c at all, because the
+ *  other half of §13c is a `FactorList` and a card has no factors. So the card
+ *  never passed `onSegmentFocus`, never will, and the buttons inside it were
+ *  dead controls inside a `<button>` — invalid HTML a browser is entitled to
+ *  stop making interactive, which is the same as saying a keyboard reader has
+ *  stops that do nothing.
+ *
+ *  A prop would be a thing every call site has to remember, and here the default
+ *  is what a call site that remembers nothing gets. Deriving the branch from a
+ *  signal the component already receives makes the unsafe answer unreachable by
+ *  accident: a caller that wraps this bar in a button and forgets a flag gets
+ *  plain text — valid HTML, no dead focus stop — and loses only an affordance
+ *  its own surface is already providing. A prop defaulting to interactive would
+ *  fail in the other direction, into invalid HTML, on the call site that forgot.
+ *
+ *  **Nothing is withheld either way.** The figures are in this label and in the
+ *  bar's accessible name above, so a reader who cannot step through them still
+ *  has every one of them. What a non-interactive label gives up is a way to
+ *  *arrive* at them one at a time, which is a duplicate of the affordance
+ *  whatever surface the bar is on. */
+function SegmentFigure({
+  segment,
+  highlighted,
+  opacity,
+  onFocus,
+}: {
+  segment: Segment;
+  highlighted: boolean;
+  opacity: number;
+  onFocus?: (label: string, market?: string) => void;
+}) {
+  const figures = (
+    <>
+      {segment.label} {pct(segment.prob)}
+    </>
+  );
+  if (!onFocus) {
+    return (
+      <span
+        data-testid="pbar-label"
+        data-seg={segment.label}
+        data-highlighted={highlighted ? "true" : "false"}
+        className={LABEL_CLASS}
+        style={{ opacity }}
+      >
+        {figures}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      data-testid="pbar-label"
+      data-seg={segment.label}
+      data-highlighted={highlighted ? "true" : "false"}
+      onClick={() => onFocus(segment.label, segment.market)}
+      onFocus={() => onFocus(segment.label, segment.market)}
+      className={LABEL_CLASS}
+      style={{ opacity }}
+    >
+      {figures}
+    </button>
+  );
+}
+
 /**
  * Segments render in the order given, each labelled in words.
  *
  * The graphic keeps its `role="img"` and its single label, which is the right
  * summary for a reader who is not going to step through it. The per-segment
- * labels are then real buttons carrying the same figures, so a reader who
- * *does* step through it gets them one at a time. That is summary plus detail,
- * and it is why nothing here is `aria-hidden`: a focusable element inside an
- * `aria-hidden` container is reachable by keyboard and invisible to a screen
- * reader, which is worse than either alone.
+ * labels are then operable — real buttons carrying the same figures, so a
+ * reader who *does* step through it gets them one at a time — whenever there is
+ * a caller to report that step to; see `SegmentFigure` for why that is the
+ * condition. That is summary plus detail, and it is why nothing here is
+ * `aria-hidden`: a focusable element inside an `aria-hidden` container is
+ * reachable by keyboard and invisible to a screen reader, which is worse than
+ * either alone.
  */
 export function ProbabilityBar({
   segments,
@@ -155,6 +237,12 @@ export function ProbabilityBar({
    *  nothing. Open to begin with, because an unlabelled market bar is the defect
    *  the figures exist to fix. */
   expandable?: boolean;
+  /** §13c's step through the figures. **This is also what makes the segment
+   *  labels operable**: with it, each label is a real button that reports its
+   *  own focus here, and `highlightKey` lights the figure a factor named. With
+   *  nothing passed, the labels are text — a button with no listener is a focus
+   *  stop that announces a control and does nothing, and on a surface that is
+   *  already a button (a match card) it is also invalid HTML. */
   onSegmentFocus?: (label: string, market?: string) => void;
 }) {
   // Open unless the caller says the layout is narrow. Held here rather than
@@ -203,19 +291,13 @@ export function ProbabilityBar({
 
       <div className="flex items-baseline justify-between gap-2">
         {segments.map((s, i) => (
-          <button
+          <SegmentFigure
             key={i}
-            type="button"
-            data-testid="pbar-label"
-            data-seg={s.label}
-            data-highlighted={highlightKey && s.market === highlightKey ? "true" : "false"}
-            onClick={() => onSegmentFocus?.(s.label, s.market)}
-            onFocus={() => onSegmentFocus?.(s.label, s.market)}
-            className="min-w-0 rounded-pr text-xs tabular-nums text-pr-text-dim underline-offset-4 transition-opacity duration-150 hover:text-pr-text focus-visible:text-pr-text"
-            style={{ opacity: dim(s) }}
-          >
-            {s.label} {pct(s.prob)}
-          </button>
+            segment={s}
+            highlighted={!!highlightKey && s.market === highlightKey}
+            opacity={dim(s)}
+            onFocus={onSegmentFocus}
+          />
         ))}
       </div>
 

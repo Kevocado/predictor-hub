@@ -117,6 +117,58 @@ describe("the match card's bar", () => {
   });
 });
 
+/** The card's bar is inside a `<button>`. A button in a button is invalid HTML,
+ *  and a browser is entitled not to make the inner one interactive at all — so
+ *  the card's bar used to contribute two focus stops that announced a control
+ *  and did nothing, inside the one control on the card that does something. */
+describe("the card's bar inside the card's own button", () => {
+  const bar = [{ label: "TOT", prob: 0.4 }, { label: "AVL", prob: 0.6 }];
+
+  it("holds no control of its own, so the card's surface is the only affordance", () => {
+    const { container } = render(<MatchCard {...base} pick={{ label: "AVL", prob: 0.6 }} bar={bar} />);
+    const card = container.querySelector("button")!;
+    // Every control on the card is the card. A descendant control is what React
+    // warns about and what this assertion is here to keep out.
+    expect(card.querySelectorAll("button, a[href], input, select, textarea, [tabindex]")).toHaveLength(0);
+  });
+
+  it("keeps the figures, in the labels and in the bar's name", () => {
+    // Nothing is lost by not being focusable. The label text is the same
+    // `{label} {prob}` the buttons carried, and the bar's `role="img"` name
+    // still carries them plus which segment is the pick.
+    const { container } = render(<MatchCard {...base} pick={{ label: "AVL", prob: 0.6 }} bar={bar} />);
+    expect([...container.querySelectorAll("[data-seg]")].map((n) => n.textContent)).toEqual(["TOT 40%", "AVL 60%"]);
+    expect(screen.getByRole("img", { name: "TOT 40%, AVL 60%, the pick is AVL" })).toBeInTheDocument();
+  });
+
+  it("leaves Enter and Space reaching the card rather than a dead inner control", async () => {
+    const onOpen = vi.fn();
+    const { container } = render(<MatchCard {...base} pick={{ label: "AVL", prob: 0.6 }} bar={bar} onOpen={onOpen} />);
+    const card = container.querySelector("button")!;
+    card.focus();
+    expect(card).toHaveFocus();
+    await userEvent.keyboard("{Enter}");
+    await userEvent.keyboard(" ");
+    expect(onOpen).toHaveBeenCalledTimes(2);
+    // The card is the only tab stop on it, so a keyboard reader never lands on a
+    // segment label that has nothing to do.
+    expect(container.querySelectorAll("[tabindex]")).toHaveLength(0);
+  });
+
+  it("cannot report a segment focus, so it has no highlight that a reader could get stuck in", () => {
+    // §13c's highlight is a panel affordance and it is not reachable from here:
+    // the card passes no `highlightKey`, so `dim` is a no-op and nothing on the
+    // card can ever be highlighted — which is why the card needs no Escape, and
+    // why a reader on a card has no highlight to clear. A card cannot offer the
+    // panel's Escape either: the state that Escape clears does not exist in it.
+    const { container } = render(<MatchCard {...base} pick={{ label: "AVL", prob: 0.6 }} bar={bar} />);
+    expect([...container.querySelectorAll("[data-highlighted]")].map((n) => n.getAttribute("data-highlighted"))).toEqual(
+      ["false", "false"],
+    );
+    expect(container.querySelector("[data-highlighted='true']")).toBeNull();
+  });
+});
+
 describe("MatchCard review fixes", () => {
   it("reads the date and sport meta to screen readers too", () => {
     render(<MatchCard {...base} status="next" when="Sun 4 Oct · 12:00 PM CDT" meta="BAL −2.5 · Total 46.5" pick={{ label: "Ravens", prob: 0.62 }} />);
