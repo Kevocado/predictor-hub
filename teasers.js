@@ -212,49 +212,81 @@ function paint(slot, { label, rows, empty }, sub) {
   slot.setAttribute("aria-busy", "false");
 }
 
-/** Snapshot date for a teaser, when the payload carries one.
+/** Date line for a teaser, from the sport's /snapshot-meta endpoint.
  *
- *  Known limitation, measured 2026-09-27: no endpoint the hub calls returns
- *  `generated_at`. It exists only at the top level of each sport's
- *  public_snapshot.json, which no hub route serves -- /api/games and
- *  /api/predictions/{s}/{w}/batch return a week block with no timestamp, and
- *  the F1 and PL routes expose none either. So this renders "" on every sport
- *  today, and the F1 teaser's `Source:` line is the board's only timing
- *  signal. Surfacing a real date needs a small change to the four APIs; do
- *  not invent one here. */
-const freshness = (payload) => {
-  const at = payload?.generated_at;
-  if (!at) return "";
-  const d = new Date(at);
-  return Number.isNaN(d.getTime()) ? "" : `From the ${d.toISOString().slice(0, 10)} snapshot`;
+ *  The picks routes the hub calls return nested blocks (a week, a round) that
+ *  drop the top-level `generated_at` of public_snapshot.json, so the picks
+ *  payload itself carries no timestamp. Each sport's /snapshot-meta exists to
+ *  answer exactly that question, and every per-sport fetcher below asks it.
+ *  Two states are real and expected:
+ *  - a valid `generated_at` (source "public_snapshot") -> the snapshot date;
+ *  - source "live", or a null/absent `generated_at` -> the numbers were
+ *    computed on request, not precomputed (a public deploy before its first
+ *    snapshot). Rendered as the honest word "Live": never a dash, which reads
+ *    as missing data, and never a fabricated date.
+ *  A malformed `generated_at` falls back to "Live" rather than throwing or
+ *  inventing a date -- a wrong date is worse than an honest word.
+ *  A missing meta object (the caller never got one) returns "", so paint()'s
+ *  `if (sub)` guard skips the line entirely: the picks render dateless.
+ *  Pure over plain data, like the selectors above, hence unit-tested. */
+export const freshness = (meta) => {
+  if (!meta) return "";
+  const at = meta.generated_at;
+  if (typeof at === "string" && at) {
+    const d = new Date(at);
+    if (!Number.isNaN(d.getTime())) return `From the ${d.toISOString().slice(0, 10)} snapshot`;
+  }
+  return "Live";
 };
+
+/** Fetch one sport's snapshot-meta, never letting it break the picks.
+ *
+ *  This is a second request per sport and it can fail independently of the
+ *  picks fetch, so it is caught here, separately: on failure the sport keeps
+ *  its picks and simply shows no date line (""). What must never happen is
+ *  the meta rejection propagating into hydrate()'s catch, which would blank
+ *  the whole card -- picks with no date line are correct, nothing is not. */
+async function metaSub(path) {
+  try {
+    return freshness(await getJSON(path));
+  } catch {
+    return "";
+  }
+}
 
 async function plTeaser() {
   const week = await getJSON("/pl/api/fixtures/gameweek");
   const gw = week?.current_gameweek ?? week?.gameweek;
   const full = await getJSON("/pl/api/fixtures");
   const out = selectPL({ ...full, current_gameweek: gw });
-  return [out, freshness(full)];
+  return [out, await metaSub("/pl/api/snapshot-meta")];
 }
 
 async function f1Teaser() {
   const races = await getJSON("/f1/api/races");
   const next = (races || []).find((r) => !r.completed);
-  if (!next) return [selectF1(races, {}), ""];
+  // The source (tracked vs live) still matters on F1, so it stays -- folded
+  // onto the same one-line `sub` as the date, joined only when both exist.
+  // If they ever compete for space the date wins: drop the source, not it.
+  if (!next) return [selectF1(races, {}), await metaSub("/f1/api/snapshot-meta")];
   const prediction = await getJSON(`/f1/api/races/${next.season}/${next.round}/prediction`);
-  return [selectF1(races, { [next.round]: prediction }), prediction.source ? `Source: ${prediction.source}` : ""];
+  const source = prediction.source ? `Source: ${prediction.source}` : "";
+  const date = await metaSub("/f1/api/snapshot-meta");
+  return [selectF1(races, { [next.round]: prediction }), [date, source].filter(Boolean).join(" · ")];
 }
 
 async function footballTeaser(base, label) {
   const week = await getJSON(`${base}/api/current-week`);
   const games = await getJSON(`${base}/api/games?season=${week.season}&week=${week.week}`);
   const predictions = await getJSON(`${base}/api/predictions/${week.season}/${week.week}/batch`);
-  return [{ ...selectFootball(games, predictions), label }, ""];
+  // base is "/nfl" or "/cfb" (see SPORTS), so this one line fetches
+  // "/nfl/api/snapshot-meta" or "/cfb/api/snapshot-meta" respectively.
+  return [{ ...selectFootball(games, predictions), label }, await metaSub(`${base}/api/snapshot-meta`)];
 }
 
 async function nbaTeaser() {
   const games = await getJSON(`/nba/api/games/week?start=${new Date().toISOString().slice(0, 10)}`);
-  return [selectNBA(games), ""];
+  return [selectNBA(games), await metaSub("/nba/api/snapshot-meta")];
 }
 
 function hydrate() {

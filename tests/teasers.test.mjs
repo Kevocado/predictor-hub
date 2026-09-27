@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { selectF1, selectPL, selectFootball, selectNBA, pct, driverName } from "../teasers.js";
+import { freshness } from "../teasers.js";
 
 // --- shared formatting ---
 
@@ -201,14 +202,82 @@ test("one failed sport never touches another sport's slot", () => {
   assert.doesNotMatch(src, /await Promise\.all/, "Promise.all short-circuits on the first rejection");
 });
 
-test("the F1 teaser renders its source as its timing signal", () => {
-  // Measured 2026-09-27: no endpoint the hub calls returns `generated_at` --
-  // it exists only at the top level of each public_snapshot.json, which no
-  // hub route serves -- so no teaser can carry a snapshot date today. That
-  // absence is a documented known limitation (see the note on `freshness` in
-  // teasers.js), not an oversight. The F1 teaser's `Source:` line stays as
-  // the one real timing signal available: tracked versus live versus rebuilt
-  // is exactly the distinction that matters on that sport.
-  assert.match(src, /Source: \$\{prediction\.source\}/, "F1 source line removed: the board loses its only timing signal");
-  assert.match(src, /no endpoint.*generated_at/is, "the missing-timestamp limitation must stay documented, not silent");
+test("the F1 teaser keeps its source signal and prefers a real snapshot date", () => {
+  // The /snapshot-meta endpoint now exists on all five APIs, so the board's
+  // timing signal is a real date, not just `Source:`. The F1 source
+  // (tracked vs live) is still rendered alongside it when both fit one line.
+  assert.match(src, /Source: \$\{prediction\.source\}/, "F1 source line removed");
+  assert.match(src, /\/f1\/api\/snapshot-meta/, "F1 teaser never asks for its snapshot date");
+});
+
+// --- freshness (snapshot-meta consumer) ---
+
+test("freshness renders a short dated phrase for a snapshot timestamp", () => {
+  assert.equal(
+    freshness({ generated_at: "2026-09-27T22:12:44.448691+00:00", source: "public_snapshot" }),
+    "From the 2026-09-27 snapshot",
+  );
+});
+
+test("freshness renders an honest word for live numbers, never a date", () => {
+  // {"generated_at": null, "source": "live"} is a real expected state for a
+  // public deploy before its first snapshot: computed on request, not
+  // precomputed. It must never raise and never show a fabricated date.
+  const out = freshness({ generated_at: null, source: "live" });
+  assert.ok(out.length > 0, "the live state must render something, not a blank");
+  assert.doesNotMatch(out, /\d{4}-\d{2}-\d{2}/, "a live computation has no snapshot date to show");
+  assert.equal(out, "Live");
+  assert.equal(freshness({ source: "live" }), "Live", "an absent generated_at is live, not dated");
+});
+
+test("freshness falls back to the live wording on a malformed timestamp", () => {
+  // A bad timestamp from the API must not crash the teaser and must not
+  // invent a date: fall back to the honest word.
+  assert.equal(freshness({ generated_at: "not-a-date", source: "public_snapshot" }), "Live");
+  assert.equal(freshness({ generated_at: 12345, source: "public_snapshot" }), "Live");
+});
+
+test("a missing meta payload renders nothing, not an empty paragraph", () => {
+  // freshness(null) is the meta-fetch-failed case: paint()'s `if (sub)` guard
+  // then skips the date line entirely, so the picks still render dateless.
+  assert.equal(freshness(null), "");
+  assert.equal(freshness(undefined), "");
+  assert.match(src, /if\s*\(\s*sub\s*\)/, "paint must skip a missing sub instead of rendering an empty paragraph");
+});
+
+// --- snapshot-meta wiring: every sport asks, no sport can blank another ---
+
+test("every per-sport fetcher asks its own snapshot-meta endpoint", () => {
+  // PL, F1 and NBA carry literal paths; footballTeaser is shared by NFL and
+  // CFB and takes `base`, so one `${base}` template covers both prefixes --
+  // the SPORTS table below pins that both are still routed through it.
+  assert.match(src, /\/pl\/api\/snapshot-meta/);
+  assert.match(src, /\/f1\/api\/snapshot-meta/);
+  assert.match(src, /\/nba\/api\/snapshot-meta/);
+  assert.match(src, /\$\{base\}\/api\/snapshot-meta/, "footballTeaser must fetch meta under its base prefix");
+  assert.match(src, /footballTeaser\("\/nfl"/, "NFL must still route through footballTeaser");
+  assert.match(src, /footballTeaser\("\/cfb"/, "CFB must still route through footballTeaser");
+  const hits = src.match(/snapshot-meta/g) || [];
+  assert.ok(hits.length >= 4, `expected one meta fetch per fetcher function, found ${hits.length}`);
+});
+
+test("a failed meta fetch leaves the sport's picks on the board", () => {
+  // The meta fetch is a second request per sport and can fail independently
+  // of the picks fetch. It goes through one helper that catches separately
+  // and degrades to no date line (""), never to a blanked card -- and the
+  // per-sport isolation above means it cannot touch any other card either.
+  // Delete the try/catch or make it rethrow and this fails.
+  assert.match(
+    src,
+    /function metaSub\([^)]*\)\s*\{[^]*?try\s*\{[^]*?\}\s*catch\s*\{[^]*?return\s*""/,
+    "the snapshot-meta fetch must be tried and caught separately, falling back to no date line",
+  );
+  for (const call of [
+    'metaSub("/pl/api/snapshot-meta")',
+    'metaSub("/f1/api/snapshot-meta")',
+    'metaSub(`${base}/api/snapshot-meta`)',
+    'metaSub("/nba/api/snapshot-meta")',
+  ]) {
+    assert.ok(src.includes(call), `missing meta call: ${call}`);
+  }
 });
