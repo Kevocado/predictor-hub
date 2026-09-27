@@ -33,7 +33,16 @@ export function driverName(driverId, realName) {
 const byNumber = (key) => (a, b) => (b[key] ?? -Infinity) - (a[key] ?? -Infinity);
 
 /** A rebuilt or backtest pick was made after the event. Showing it as a call
- *  would be the one thing this product must never do, so it is dropped. */
+ *  would be the one thing this product must never do, so it is dropped.
+ *
+ *  This is a whitelist on purpose, not a blacklist of "rebuilt"/"backtest".
+ *  The F1 API documents exactly four sources: "live" (computed fresh) and
+ *  "tracked" (snapshotted before the session) are pre-event; "rebuilt"
+ *  (written after it) and "backtest" (historical replay) are not. An
+ *  unrecognised source is hidden rather than shown: a hidden row costs a
+ *  visitor one line, while a wrongly-shown post-event pick is a lie. Do not
+ *  "simplify" this to a blacklist — a genuinely new pre-event source must be
+ *  added here deliberately, never discovered by a blank card. */
 const isPreEvent = (source) => source === "tracked" || source === "live";
 
 export function selectF1(races, predictions) {

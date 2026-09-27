@@ -60,6 +60,15 @@ test("F1 refuses to present a rebuilt or backtest pick as a pre-race call", () =
   assert.match(out.empty, /after the session|race/i);
 });
 
+test("F1 hides a pick from an unrecognised source rather than showing it", () => {
+  // isPreEvent is a whitelist on purpose: an unknown source might be
+  // post-event, and showing it as a pre-race call would be a lie, while
+  // hiding a genuinely pre-event source merely omits a row.
+  const out = selectF1(F1_RACES, { 4: { source: "model", predictions: [{ driver_id: "russell", p_win: 0.5 }] } });
+  assert.equal(out.rows.length, 0);
+  assert.ok(out.empty, "an unrecognised source must not render as a call");
+});
+
 test("F1 with no upcoming race says so rather than showing the last one", () => {
   const out = selectF1([F1_RACES[0]], { 3: { source: "tracked", predictions: [{ driver_id: "a", p_win: 0.5 }] } });
   assert.equal(out.rows.length, 0);
