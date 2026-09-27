@@ -45,12 +45,39 @@
 
   * { box-sizing: border-box; }
 
+  /* Browser surfaces. These are the parts nobody draws, so they ship as whatever
+     the platform decided — and the platform decided for a white page, on a stage
+     that is #0b0d10. Selection, the caret, scrollbars and form-control accents
+     were the four still doing that. Themed from the same tokens as everything
+     else, so the page reads as one thing. */
+  ::selection {
+    background: var(--color-pr-accent);
+    color: var(--color-pr-accent-ink);
+  }
+  ::-moz-selection {
+    background: var(--color-pr-accent);
+    color: var(--color-pr-accent-ink);
+  }
+  html {
+    accent-color: var(--color-pr-accent);
+    scrollbar-color: var(--color-pr-rule) var(--color-pr-stage);
+  }
+  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  ::-webkit-scrollbar-track { background: var(--color-pr-stage); }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-pr-rule);
+    border: 3px solid var(--color-pr-stage);
+    border-radius: 6px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: var(--color-pr-panel-2); }
+
   body {
     margin: 0;
     min-height: 100vh;
     color-scheme: dark;
     background: var(--color-pr-stage);
     color: var(--color-pr-text);
+    caret-color: var(--color-pr-accent);
     font-family: var(--font-pr-body);
     font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
