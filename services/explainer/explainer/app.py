@@ -8,6 +8,7 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI, HTTPException
 
+from . import hub
 from .cache import Cache
 from .config import Settings
 from .ledger import Ledger
@@ -42,6 +43,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail=str(exc)) from None
         except Upstream as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from None
+
+    @app.get("/hub/summary")
+    async def hub_summary():
+        """What each sport picks next. The hub is one static page, so this is the
+        only thing behind it — and it covers all five sports, not the three
+        `/explain` serves, because a pick is not an explanation."""
+        return await hub.summary(app.state.explainer)
 
     @app.get("/status")
     def status():
