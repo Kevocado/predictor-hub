@@ -2,8 +2,6 @@
 key material."""
 from __future__ import annotations
 
-import asyncio
-import contextlib
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -13,7 +11,6 @@ from fastapi import FastAPI, HTTPException
 from .cache import Cache
 from .config import Settings
 from .ledger import Ledger
-from .scheduler import run_forever
 from .service import Explainer, NotFound, Upstream
 
 
@@ -26,14 +23,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         async with httpx.AsyncClient() as client:
             app.state.explainer = Explainer(settings, Cache(settings.db_path),
                                             Ledger(settings.db_path, cap=settings.daily_cap), client)
-            task = None
-            if settings.enabled and settings.openrouter_api_key:
-                task = asyncio.create_task(run_forever(app.state.explainer, client, list(settings.sport_api)))
+            # No pre-generation. A summary is made when a reader asks for one.
+            # The timer used to walk 72 hours across five sports every 3h, which
+            # was the main consumer of the daily cap and kept spending on the two
+            # sports this service no longer serves. The hard cap is unchanged and
+            # is enforced by the Ledger at spend time, not here; what goes is the
+            # scheduler's own RESERVE headroom, which existed only to stop
+            # pre-generation starving on-demand readers.
             yield
-            if task:
-                task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await task
 
     app = FastAPI(title="Predictor explainer", lifespan=lifespan)
 

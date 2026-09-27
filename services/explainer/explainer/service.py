@@ -16,6 +16,7 @@ import httpx
 from pydantic import ValidationError
 
 from .cache import Cache
+from .config import SERVED_SPORTS
 from .facts import Facts, PickTiming, render
 from .ledger import Ledger
 from .llm import LLMError, complete
@@ -109,6 +110,14 @@ class Explainer:
         return age < TEMPLATE_RETRY_SECONDS
 
     async def explain(self, sport: str, id: str) -> dict:
+        if sport not in SERVED_SPORTS:
+            # First line, before the facts fetch and before try_spend(): a
+            # refused request must cost nothing and must not touch the upstream.
+            #
+            # A refusal, not a template. A template here would render a panel
+            # and spend nothing, which reads as success — and F1 and NBA are
+            # still configured, so nothing else would ever say they had gone.
+            raise NotFound(f"{sport} is not served")
         facts = await self._facts(sport, id)
         news = await headlines(self.client, sport, _news_terms(facts))
         facts_json = render(facts)
