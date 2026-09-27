@@ -43,7 +43,26 @@ The plan's per-sport sources (`predictions`, `fixtures_by_gameweek`, `weeks[].ga
 - **`hits: None` is not zero.** NFL emits that when it knows the rate but not the count.
 - **The labels differ per sport and should be passed through, not normalised:** NFL and CFB say *"Picks made before kickoff"*, PL says *"before kick-off"*, NBA says *"before tip-off"*. One rule, three spellings. A visitor who sees two spellings for one rule has learned two rules; the hub repeating each sport's own label is the fix.
 
-## 4. Confirms your T2, and adds that it is not only NFL and F1
+## 4. NBA's `/facts` is not a snapshot read, and that is the interesting part
+
+The spec's table says NBA must call `GET /games/week` because the snapshot holds
+results only. That is right — and worth stating what the alternative already is.
+
+`NBA_Predictor`'s `facts.py` exists, and its own docstring says: *"NBA has no
+public snapshot of predictions: every number comes from the same SQLite store the
+site itself reads, and `tracking/timing.py` is the single authority on whether a
+pick was made before tip-off."* It emits the same bundle as the other four, with
+the same honesty rules — *"a pick for a game that has started comes only from the
+newest row made before tip-off, never from a later backfill row"*, *"no
+prediction at all means `pick` is null and `pick_timing` is `none`*.
+
+So for NBA the `/facts` path is **not** a snapshot read that happens to be
+missing predictions. It is a live, pre-kickoff-authoritative read. If a teaser
+wants NBA's pick with its timing, `/facts/{id}` is the one source that already
+enforces the rule; `GET /games/week` is a schedule read that does not. The cost
+is that it needs an id, which `GET /games/week` supplies.
+
+## 5. Confirms your T2, and adds that it is not only NFL and F1
 
 Your `NaN` finding is right and I reproduced the consequence independently: a bare `NaN` in the snapshot is a **dead endpoint**, not an ugly number, because the installed starlette renders with `allow_nan=False`.
 
