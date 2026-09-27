@@ -1,0 +1,18 @@
+@import "../src/fonts.css";
+@import "tailwindcss";
+@import "../src/tokens.css";
+
+/* Tailwind 4 scans from the CSS file's own tree by default, which for a
+   harness rooted here is harness/ alone — so every utility the COMPONENTS use
+   (bg-pr-panel, text-pr-win, line-clamp-1) silently generated as nothing. The
+   build still succeeded, which is the trap: a missing utility is not a build
+   error, it is an unstyled component in a screenshot. This points the scanner at
+   the sources the harness actually renders. */
+@source "../src";
+
+@theme {
+  --font-sans: var(--font-pr-body);
+  --font-display: var(--font-pr-display);
+}
+/* Harness chrome only — the panel itself brings no page-level styling. */
+body { margin: 0; }
