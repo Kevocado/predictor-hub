@@ -84,6 +84,74 @@ def _known(token: str, nums: set[float], pcts: set[float]) -> bool:
     return any(abs(v - abs(p)) <= tol + 1e-9 for p in nums)
 
 
+# A verdict claim is a SUBJECT plus a VERB, not a word. "won" and "right" both
+# occur constantly in honest football prose — "Baltimore won the toss", "the
+# right read on the weather" — and a keyword list would reject all of it, which
+# is its own honesty failure: the service falls back to the template and the
+# panel quietly loses the explanations it exists for. So the claim must be
+# about the pick, and only then does the verb mean anything.
+#
+# A false rejection costs a reader some prose. A false acceptance costs them a
+# lie. When the two conflict, the pattern is deliberately the tighter one.
+_PICK_REF = (
+    r"(?:this|that|the|our)\s+"
+    r"(?:pick|call|read|forecast|projection|lean|side|bet\b|tip)"
+)
+_WON_VERB = r"(?:won|win|winner|right|correct|landed|came\s+in|struck|hit|delivered)"
+_LOST_VERB = r"(?:wrong|lost|missed|miss|fell\s+short|did\s*n[o']?t\s+land|didn'?t\s+land|not\s+land)"
+
+# A bounded gap rather than "anywhere later in the sentence": the claim has to
+# be about the same clause, or "the pick is close. Baltimore won." trips it.
+_GAP = r"(?:\s|\w|[^\w\s]){0,32}?"
+
+CLAIMS_WON = re.compile(
+    rf"{_PICK_REF}{_GAP}(?:{_WON_VERB})"
+    # "picked the winner" needs no subject: nobody writes it about anything else.
+    rf"|pick(?:s|ed)?{_GAP}the\s+winner",
+    re.I,
+)
+CLAIMS_LOST = re.compile(rf"{_PICK_REF}{_GAP}(?:{_LOST_VERB})", re.I)
+
+
+def _verdict_problems(facts: dict, body: str) -> list[str]:
+    """Whether the prose may claim an outcome the facts do not support.
+
+    The facts carry the ground truth, and they are careful about it: a rebuilt
+    pick deliberately has NO `pick_won`, because there is no honest verdict to
+    give. So "the facts do not say" and "the facts say no" are different states
+    and both forbid a claim, for different reasons.
+    """
+    problems = []
+    if not CLAIMS_WON.search(body) and not CLAIMS_LOST.search(body):
+        return problems
+
+    pick = facts.get("pick")
+    if not pick:
+        # There is no pick, so there is nothing to have been right about.
+        problems.append("the text claims a verdict but the facts carry no pick")
+        return problems
+
+    if facts.get("pick_timing") == "rebuilt":
+        # A pick made after the start is shown and never judged. The facts omit
+        # `pick_won` here precisely so nothing can grade it — prose that
+        # nonetheless calls it right or wrong is reading a verdict that does not
+        # exist, and "it happened to be right anyway" is the exact thing the
+        # honesty rule exists to prevent being invisible.
+        problems.append(
+            "no verdict may be claimed for a pick rebuilt after the start"
+        )
+        return problems
+
+    won = (facts.get("result") or {}).get("pick_won")
+    if won is None:
+        problems.append("the text claims a verdict but the facts record none")
+    elif won is False and CLAIMS_WON.search(body):
+        problems.append("the text claims a verdict the facts contradict: the pick lost")
+    elif won is True and CLAIMS_LOST.search(body):
+        problems.append("the text claims a verdict the facts contradict: the pick won")
+    return problems
+
+
 def validate(output: dict, facts_json: str, news_json: str) -> list[str]:
     """Problems with a model's output; [] means it may be shown."""
     sections = output.get("sections") if isinstance(output, dict) else None
@@ -123,4 +191,5 @@ def validate(output: dict, facts_json: str, news_json: str) -> list[str]:
 
     if facts.get("pick_timing") == "rebuilt" and not any(w in body.lower() for w in REBUILT_WORDS):
         problems.append("pick is rebuilt but the text doesn't say it was rebuilt after the start")
+    problems.extend(_verdict_problems(facts, body))
     return problems

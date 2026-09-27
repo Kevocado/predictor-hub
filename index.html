@@ -3,7 +3,14 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Predictor</title>
+<title>Sports Predictor</title>
+<!-- No Open Graph tags at all until now, so a shared link showed the bare
+     family name and no description. og:description reuses the meta
+     description below rather than restating it, so there is one string to
+     keep true. -->
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Sports Predictor" />
+<meta property="og:description" content="Model picks for the Premier League, Formula 1, NFL, college football and NBA, with an honest record of picks made before each game." />
 <meta name="description" content="Model picks for the Premier League, Formula 1, NFL, college football and NBA, with an honest record of picks made before each game." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -38,12 +45,39 @@
 
   * { box-sizing: border-box; }
 
+  /* Browser surfaces. These are the parts nobody draws, so they ship as whatever
+     the platform decided — and the platform decided for a white page, on a stage
+     that is #0b0d10. Selection, the caret, scrollbars and form-control accents
+     were the four still doing that. Themed from the same tokens as everything
+     else, so the page reads as one thing. */
+  ::selection {
+    background: var(--color-pr-accent);
+    color: var(--color-pr-accent-ink);
+  }
+  ::-moz-selection {
+    background: var(--color-pr-accent);
+    color: var(--color-pr-accent-ink);
+  }
+  html {
+    accent-color: var(--color-pr-accent);
+    scrollbar-color: var(--color-pr-rule) var(--color-pr-stage);
+  }
+  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  ::-webkit-scrollbar-track { background: var(--color-pr-stage); }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-pr-rule);
+    border: 3px solid var(--color-pr-stage);
+    border-radius: 6px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: var(--color-pr-panel-2); }
+
   body {
     margin: 0;
     min-height: 100vh;
     color-scheme: dark;
     background: var(--color-pr-stage);
     color: var(--color-pr-text);
+    caret-color: var(--color-pr-accent);
     font-family: var(--font-pr-body);
     font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
@@ -240,7 +274,7 @@
           <a href="https://nba.40-160-91-131.sslip.io">NBA</a>
         </nav>
       </div>
-      <h1>Predictor</h1>
+      <h1>Sports Predictor</h1>
       <p class="lede">Model picks for five sports, each with the reasoning behind it and a running record of how often it was right.</p>
     </div>
   </header>

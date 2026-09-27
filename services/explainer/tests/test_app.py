@@ -19,7 +19,27 @@ def test_status_never_shows_the_key(tmp_path):
     assert res.status_code == 200
     body = res.text
     assert "supersecret" not in body and "sk-or" not in body
-    assert set(res.json()) == {"used_today", "cap", "enabled", "model"}
+    # The whole key set, deliberately: this is the only endpoint that reports on
+    # the service's own state, so an addition here is a decision to make rather
+    # than a diff to accept. `failures` earns its place -- a dead default model
+    # is otherwise invisible, because every call degrades to a template and the
+    # reader still gets a panel.
+    assert set(res.json()) == {"used_today", "cap", "enabled", "model", "failures"}
+
+
+def test_status_reports_failure_kinds_with_zeros_rather_than_omitting_them(tmp_path):
+    """So "no failures" and "nobody has looked" cannot be confused.
+
+    An absent key and a zero mean different things to a dashboard, and the
+    absent-key version is how a dead model stays invisible.
+    """
+    with client(tmp_path) as c:
+        failures = c.get("/status").json()["failures"]
+    assert failures["rate_limited"] == 0 and failures["not_found"] == 0
+    for kind in ("unauthorized", "bad_response", "transport", "provider_error"):
+        assert kind in failures, f"{kind} is missing from /status: {failures}"
+    # Model names are fine to expose; the key never is.
+    assert "supersecret" not in str(failures)
 
 
 @respx.mock(assert_all_called=False)

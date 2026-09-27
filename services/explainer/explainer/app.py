@@ -49,6 +49,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/status")
     def status():
         return {"used_today": app.state.explainer.ledger.used_today(), "cap": settings.daily_cap,
-                "enabled": bool(settings.enabled and settings.openrouter_api_key), "model": settings.model}
+                "enabled": bool(settings.enabled and settings.openrouter_api_key), "model": settings.model,
+                # Every kind is present with a zero rather than only the ones
+                # seen, so a dashboard can plot them without filling gaps, and
+                # so "no failures" and "not being read" cannot be confused.
+                "failures": {kind: app.state.explainer.failures.get(kind, 0)
+                             for kind in ("rate_limited", "not_found", "unauthorized",
+                                          "bad_response", "transport", "provider_error")}}
 
     return app

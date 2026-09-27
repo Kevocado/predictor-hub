@@ -46,8 +46,8 @@ API's `/facts`, and the panel — before a single request is spent.
 | Variable | Default | Meaning |
 |---|---|---|
 | `OPENROUTER_API_KEY` | unset | The only secret. Keep it in the env file on the VPS, never in a repo, a site build, a GitHub secret or a log. Unset means template only. |
-| `EXPLAINER_MODEL` | `deepseek/deepseek-chat-v3-0324:free` | First model tried. |
-| `EXPLAINER_FALLBACK_MODEL` | `meta-llama/llama-3.3-70b-instruct:free` | Tried once when the first fails or its answer is rejected. |
+| `EXPLAINER_MODEL` | `nvidia/nemotron-3.5-lightning:free` | First model tried. See the free-model section below before trusting it. |
+| `EXPLAINER_FALLBACK_MODEL` | `poolside/laguna-s-2.1:free` | Tried once when the first fails or its answer is rejected. |
 | `EXPLAINER_DAILY_CAP` | `900` | OpenRouter requests per UTC day, retries included (the account allows 1,000). Pre-generation stops 50 short, leaving those for on-demand use. |
 | `EXPLAINER_ENABLED` | `true` | `false` serves templates only and stops pre-generation. |
 | `EXPLAINER_DB_PATH` | `/data/explainer.sqlite` | Cache and daily ledger. Keep it on the volume. |
@@ -56,18 +56,48 @@ API's `/facts`, and the panel — before a single request is spent.
 Run a single uvicorn worker: the per-match lock that stops two visitors
 paying for the same explanation lives in the process.
 
-## Before going live: check the free model IDs
+## The free model IDs, and checking them
 
-Free model IDs on OpenRouter change. On the VPS:
+The defaults were `deepseek/deepseek-chat-v3-0324:free` and
+`meta-llama/llama-3.3-70b-instruct:free`. **Both have been withdrawn from
+OpenRouter's free tier.** The current pair, verified answering from the VPS:
+
+| | |
+|---|---|
+| `EXPLAINER_MODEL` | `nvidia/nemotron-3.5-lightning:free` |
+| `EXPLAINER_FALLBACK_MODEL` | `poolside/laguna-s-2.1:free` |
+
+`qwen/qwen3.8-27b:free` and `google/gemma-4-26b-a4b-it:free` were tried at the
+same time and were returning **429** — rate-limited, not withdrawn. A 429 is not
+evidence that a model is gone, so it is not recorded as a withdrawal.
+
+**A wrong model ID is the quietest failure in this service.** A non-200 raises
+`LLMError`, the fallback is tried, and if that fails too the template is stored
+and served. The reader gets a panel. The only symptom is that *every* panel is a
+template, which looks like a design decision rather than an outage — see
+`/status` and the `cap`/`used_today` counters, and watch for the template share
+in the logs.
+
+### Re-checking, from a machine with egress
+
+OpenRouter is not reachable from every build environment, so this is a manual
+step rather than a test. On the VPS:
 
 ```sh
+# 1. What is actually on the free tier now.
 curl -s https://openrouter.ai/api/v1/models | python3 -c \
   'import json,sys; [print(m["id"]) for m in json.load(sys.stdin)["data"] if m["id"].endswith(":free")]'
+
+# 2. Does the one you intend to use actually ANSWER? Listing is not answering.
+curl -s https://openrouter.ai/api/v1/chat/completions \
+  -H "Authorization: Bearer $OPENROUTER_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"model":"nvidia/nemotron-3.5-lightning:free","messages":[{"role":"user","content":"Reply with the single word: ok"}]}'
 ```
 
-If either default is missing, set `EXPLAINER_MODEL` / `EXPLAINER_FALLBACK_MODEL`
-to a listed `:free` model and restart. A wrong ID is safe (every request falls
-back to the template), but you lose the written explanations until it's fixed.
+Step 2 is the one that matters and the one that is easy to skip: a model can be
+listed and still 429 or 404 on completion. `tests/test_free_models.py` pins the
+defaults against a whitelist of ids somebody has watched answer, so changing a
+default to something unverified fails the suite.
 
 ## How a site reaches this service
 
@@ -139,7 +169,7 @@ explainer is unreachable.
 **Before step 1**, on the VPS: add the explainer to `compose.yml` and the route
 to the Caddyfile (both already edited in the working tree of the `vps-stack`
 repo), then confirm `docker compose config` resolves and that
-`curl http://predictor-explainer:8090/status` answers. Check the free model IDs
+`curl http://predictor-explainer:8090/status` answers. Check the free model IDs answer, not just that they are listed
 above while you are there.
 
 1. **Service and NFL facts.** Set `EXPLAINER_ENABLED=false` and no key. Open an
