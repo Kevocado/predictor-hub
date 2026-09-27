@@ -54,6 +54,30 @@ const SEGMENTS: Segment[] = [
   { label: "BAL", prob: 0.62, market: "spread" },
 ];
 
+/** The §7a bar as the facts carry it: the away side is listed first for US
+ *  sports, so the pick is the SECOND segment. This is the shape from the
+ *  screenshot, and the reason emphasis has to be found by label — a rule that
+ *  reads position picks KC here, which is the wrong side on every count. */
+const NFL_BAR: Segment[] = [
+  { label: "KC", prob: 0.38, market: "moneyline" },
+  { label: "BAL", prob: 0.62, market: "moneyline" },
+];
+
+/** PL's three-way result market, home / draw / away. */
+const PL_BAR: Segment[] = [
+  { label: "Arsenal", prob: 0.48, market: "result" },
+  { label: "Draw", prob: 0.26, market: "result" },
+  { label: "Chelsea", prob: 0.26, market: "result" },
+];
+
+const ACCENT = "var(--color-pr-accent)";
+const NEUTRALS = ["var(--color-pr-text-dim)", "var(--color-pr-text-faint)", "var(--color-pr-fill-mute)"];
+
+/** What each segment is actually painted, in order. */
+function fills(container: HTMLElement): string[] {
+  return [...container.querySelectorAll<HTMLElement>("[data-testid='pbar-fill']")].map((f) => f.style.backgroundColor);
+}
+
 describe("KeyNumberTile", () => {
   it("shows the model's figure large with its own label beneath", () => {
     render(<KeyNumberTile tile={TILES[0]} />);
@@ -131,6 +155,108 @@ describe("ProbabilityBar", () => {
   });
 });
 
+/** The defect from the screenshot: the accent is a claim about the PICK, and
+ *  segment order is not the pick. On the §7a bar the away side is listed first,
+ *  so an index-driven fill painted KC 38% and greyed BAL 62% — the model shown
+ *  having picked the side it picked least of. */
+describe("the pick is the accented segment", () => {
+  it("accents the pick's segment, and the pick here is the second one", () => {
+    const { container } = render(<ProbabilityBar segments={NFL_BAR} pick={{ label: "BAL" }} />);
+    expect(fills(container)).toEqual([NEUTRALS[0], ACCENT]);
+  });
+
+  it("accents the pick wherever it sits on a three-way bar, and keeps three tones", () => {
+    // The pick is given the accent; the two segments that are not the pick walk
+    // the neutral ramp, so the draw never lands on the same grey as a side —
+    // which would make a 48% home and a 26% draw indistinguishable by tone.
+    for (const [i, label] of ["Arsenal", "Draw", "Chelsea"].entries()) {
+      const { container, unmount } = render(<ProbabilityBar segments={PL_BAR} pick={{ label }} />);
+      const tones = fills(container);
+      expect(tones[i], label).toBe(ACCENT);
+      expect(tones.filter((_, j) => j !== i), label).toHaveLength(2);
+      expect(new Set(tones).size, label).toBe(3);
+      expect(tones.filter((t) => t !== ACCENT).every((t) => NEUTRALS.includes(t)), label).toBe(true);
+      unmount();
+    }
+  });
+
+  it("accents nothing at all when there is no pick", () => {
+    // A bar that emphasises something is claiming there is a pick. With none,
+    // "the first one is" is the same defect one segment over, and it is the
+    // case that pairs with a no-pick answer saying "for the pick".
+    const { container } = render(<ProbabilityBar segments={NFL_BAR} />);
+    expect(fills(container)).not.toContain(ACCENT);
+    expect(fills(container)).toEqual([NEUTRALS[0], NEUTRALS[1]]);
+  });
+
+  it("keeps a three-way bar's three tones with no pick, and spends no accent on one", () => {
+    const { container } = render(<ProbabilityBar segments={PL_BAR} />);
+    const tones = fills(container);
+    expect(new Set(tones).size).toBe(3);
+    expect(tones).not.toContain(ACCENT);
+  });
+
+  it("still lets a legible team colour win, even on the pick's own segment", () => {
+    // The 1.6:1 floor is a legibility rule, not a pick rule: a team's colour is
+    // a fact about the team, and overpainting it to mean "the pick" would put a
+    // second claim on top of the first. So the colour wins and the emphasis is
+    // carried in the name instead (asserted below).
+    const { container } = render(
+      <ProbabilityBar
+        segments={[{ label: "PIT", prob: 0.45, color: "#FFB612" }, { label: "CLE", prob: 0.55, color: "#311D00" }]}
+        pick={{ label: "CLE" }}
+      />,
+    );
+    expect(fills(container)).toEqual(["rgb(255, 182, 18)", ACCENT]);
+  });
+
+  it("keeps both team colours when both are legible, and says the pick in the name", () => {
+    // The honest limit of the colour rule, pinned rather than hidden: with two
+    // readable team colours there is no accent left to spend, so the name is
+    // what carries the pick. Two bright team colours are not an emphasis we can
+    // add without overpainting one of them.
+    render(
+      <ProbabilityBar
+        segments={[{ label: "KC", prob: 0.38, color: "#E31837" }, { label: "BAL", prob: 0.62, color: "#4C8DFF" }]}
+        pick={{ label: "BAL" }}
+      />,
+    );
+    expect(screen.getByRole("img")).toHaveAccessibleName("KC 38%, BAL 62%, the pick is BAL");
+  });
+
+  it("drops an illegible team colour for the ramp, so the pick still shows", () => {
+    // Ravens purple is 1.3:1 on the panel and disappears; the pick on that
+    // segment has to come from the accent or the emphasis is invisible.
+    const { container } = render(
+      <ProbabilityBar
+        segments={[{ label: "KC", prob: 0.38, color: "#E31837" }, { label: "BAL", prob: 0.62, color: "#241773" }]}
+        pick={{ label: "BAL" }}
+      />,
+    );
+    expect(fills(container)).toEqual(["rgb(227, 24, 55)", ACCENT]);
+  });
+
+  it("accents nothing when the pick's label matches no segment here", () => {
+    // Fails closed. A site passing a different vocabulary must not have the
+    // panel point at the segment nearest to the pick.
+    const { container } = render(<ProbabilityBar segments={NFL_BAR} pick={{ label: "Baltimore Ravens" }} />);
+    expect(fills(container)).not.toContain(ACCENT);
+    expect(screen.getByRole("img")).toHaveAccessibleName("KC 38%, BAL 62%");
+  });
+
+  it("names the pick for a reader who cannot see which segment is accented", () => {
+    // The same rule FactorList states about its triangles: a meaning carried by
+    // colour alone is not carried at all.
+    const { unmount } = render(<ProbabilityBar segments={NFL_BAR} pick={{ label: "BAL" }} />);
+    expect(screen.getByRole("img")).toHaveAccessibleName("KC 38%, BAL 62%, the pick is BAL");
+    unmount();
+    // And with no pick the name is unchanged, so the pre-panel call sites are not
+    // given a clause they never asked for.
+    render(<ProbabilityBar segments={NFL_BAR} />);
+    expect(screen.getByRole("img")).toHaveAccessibleName("KC 38%, BAL 62%");
+  });
+});
+
 describe("FactorList", () => {
   it("never carries the direction by colour alone", () => {
     render(<FactorList factors={NFL.factors} />);
@@ -167,6 +293,62 @@ describe("FactorList", () => {
     await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     expect(container.querySelector("[data-expanded='true']")).toBeTruthy();
+  });
+});
+
+/** A factor with no direction: a statement about the game, the record, or how
+ *  little there is to weigh up — and, with no pick, every factor in the panel.
+ *  The words are the accessible truth (rule 1), so a row that draws a triangle
+ *  and a colour is making a claim in colour, and a row whose colour came from
+ *  `direction !== "up"` made the opposite one: "against it". */
+describe("a factor with no direction", () => {
+  const NEUTRAL_FACTORS = [
+    { key: "total", direction: "neutral" as const, headline: "It projects 45.2 points", text: "The line is 44.5." },
+    { key: "record", direction: "neutral" as const, headline: "Its record so far", text: "41 of 68 have landed." },
+  ];
+
+  it("draws no mark at all, and wears neither the win nor the loss colour", () => {
+    const { container } = render(<FactorList factors={NEUTRAL_FACTORS} />);
+    // No triangle in either direction: the mark is the direction, and there is
+    // none. One per up/down row is what the test above pins, so this is the
+    // negative of it.
+    expect(container.querySelectorAll("svg[data-direction]")).toHaveLength(0);
+    expect(container.querySelector(".text-pr-win")).toBeNull();
+    expect(container.querySelector(".text-pr-loss")).toBeNull();
+  });
+
+  it("says what the row is, not which way it leans", () => {
+    render(<FactorList factors={NEUTRAL_FACTORS} />);
+    expect(screen.getAllByText(/context/i)).toHaveLength(2);
+    // The words Kevin's screenshot was really about. There is no pick to be for
+    // or against, so neither phrase may appear anywhere in a neutral row.
+    expect(document.body.textContent).not.toMatch(/for the pick|against it/i);
+  });
+
+  it("keeps the up and down words, and their marks, exactly as they were", () => {
+    // The other half, so neutral cannot become a way of losing the panel's
+    // argument: a factor that is really for or against still says so.
+    const { container } = render(<FactorList factors={NFL.factors} />);
+    expect(screen.getByText(/for the pick/i)).toBeInTheDocument();
+    expect(screen.getByText(/against it/i)).toBeInTheDocument();
+    expect(container.querySelectorAll("svg[data-direction]")).toHaveLength(2);
+  });
+
+  it("is still a real button, and still expands, like any other row", async () => {
+    // What is withheld here is the claim, not the function: a reader who wants
+    // the full sentence gets it, and keyboard-only reachability is unchanged.
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    const { container } = render(<FactorList factors={NEUTRAL_FACTORS} onSelect={onSelect} expandable />);
+    const toggle = within(container.querySelectorAll("li")[0]).getByRole("button", { name: /more/i });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const row = screen.getByRole("button", { name: /it projects 45\.2 points/i });
+    expect(row.tagName).toBe("BUTTON");
+    row.focus();
+    await user.keyboard("{Enter}");
+    expect(onSelect).toHaveBeenCalledWith("total");
   });
 });
 
@@ -247,5 +429,48 @@ describe("ExplainerPanel", () => {
     render(<ExplainerPanel {...RESTING} data={{ ...NFL, source: "template", model: "", verdict: "BAL is the pick.", factors: NFL.factors }} />);
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByText("BAL is the pick.")).toBeInTheDocument();
+  });
+
+  it("hands the answer's pick to the bar, rather than letting the bar work it out", () => {
+    // The pick is derived in Python (spec §5b) and travelled with the answer. A
+    // panel that re-derived it would be a second definition of which side was
+    // picked, which is the one thing that must not exist twice.
+    const { container } = render(<ExplainerPanel {...RESTING} data={answer({ pick: { label: "BAL" } })} segments={NFL_BAR} />);
+    expect(fills(container)).toEqual([NEUTRALS[0], ACCENT]);
+  });
+
+  it("accents nothing on a panel whose answer carries no pick", () => {
+    const noPick = answer({
+      verdict: "There is no pick for this one yet.",
+      factors: [{ key: "context", direction: "neutral", headline: "Not much to go on", text: "The facts are still filling in." }],
+    });
+    const { container } = render(<ExplainerPanel {...RESTING} data={noPick} segments={NFL_BAR} />);
+    expect(fills(container)).not.toContain(ACCENT);
+    // Kevin's sentence, in full: nothing on a no-pick panel may say a row is
+    // for or against a pick, in words or in colour.
+    expect(document.body.textContent).not.toMatch(/for the pick|against it/i);
+    expect(document.querySelector("svg[data-direction]")).toBeNull();
+  });
+});
+
+/** Item 5, decided: a rebuilt pick shows no band. The band is still computed and
+ *  still in the response — `band_for` is untouched — because the claim is what
+ *  is unsound, not the arithmetic. */
+describe("a rebuilt pick's band", () => {
+  it("shows the band when the pick was made in time", () => {
+    render(<ExplainerPanel {...RESTING} data={answer({ band: "strong", pick_timing: "pre_kickoff" })} />);
+    expect(screen.getByTestId("band-chip")).toHaveTextContent("Strong");
+  });
+
+  it("withholds it on a rebuilt pick, while the status line still says rebuilt", () => {
+    // "STRONG" beside "shown for reference and not counted" asks the reader to
+    // resolve a contradiction the panel created, and a rebuilt probability came
+    // from a model that had already seen the score.
+    const { container } = render(
+      <ExplainerPanel {...RESTING} data={answer({ band: "strong", pick_timing: "rebuilt" })} segments={NFL_BAR} />,
+    );
+    expect(screen.queryByTestId("band-chip")).toBeNull();
+    expect(container.textContent).not.toMatch(/strong/i);
+    expect(screen.getByText("Rebuilt after kickoff")).toBeInTheDocument();
   });
 });

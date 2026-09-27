@@ -2,7 +2,7 @@ export * from "./fmt";
 export { contrast, inkFor, luminance } from "./contrast";
 export { AppFrame, type SiteLink, type Sport, type Tab } from "./components/AppFrame";
 export { MatchCard, type Side } from "./components/MatchCard";
-export { ProbabilityBar, type Segment } from "./components/ProbabilityBar";
+export { ProbabilityBar, type PickRef, type Segment } from "./components/ProbabilityBar";
 export { RoundNavigator } from "./components/RoundNavigator";
 export { StatTile } from "./components/StatTile";
 export { EmptyState, ErrorState, Skeleton } from "./components/States";

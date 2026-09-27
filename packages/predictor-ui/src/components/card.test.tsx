@@ -76,9 +76,44 @@ describe("MatchCard without a pick", () => {
 
 describe("fallback fills", () => {
   it("gives home, draw and away three different fills when no team colours are known", () => {
+    // The palette under this changed and the assertion still means what it said:
+    // three distinguishable tones. It used to be accent / faint / dim, with the
+    // accent going to whichever segment was listed first — which claimed a pick
+    // the bar was never told about. With no pick there is no accent to spend, so
+    // the three tones are now the neutral ramp: the assertion, not the values.
     const { container } = render(<ProbabilityBar segments={[{ label: "Home", prob: 0.4 }, { label: "Draw", prob: 0.3 }, { label: "Away", prob: 0.3 }]} />);
     const fills = [...container.querySelectorAll<HTMLElement>("[data-testid='pbar-fill']")].map((f) => f.style.backgroundColor);
     expect(new Set(fills).size).toBe(3);
+  });
+});
+
+describe("the match card's bar", () => {
+  const bar = [{ label: "TOT", prob: 0.4 }, { label: "AVL", prob: 0.6 }];
+
+  it("accents the segment the card's pick names, not the first one", () => {
+    // The card states its pick in words on the line above, but the bar is the
+    // same component as the panel's, and order-order emphasis was the defect
+    // there. It would have been easy to leave this call site passing no pick and
+    // let the bar lose the emphasis it used to have — for the right reason, and
+    // with nothing put in its place.
+    const { container } = render(<MatchCard {...base} pick={{ label: "AVL", prob: 0.6 }} bar={bar} />);
+    const fills = [...container.querySelectorAll<HTMLElement>("[data-testid='pbar-fill']")].map((f) => f.style.backgroundColor);
+    expect(fills).toEqual(["var(--color-pr-text-dim)", "var(--color-pr-accent)"]);
+  });
+
+  it("accents nothing on a card with no pick to point at", () => {
+    const { container } = render(<MatchCard {...base} status="nopick" bar={bar} />);
+    const fills = [...container.querySelectorAll<HTMLElement>("[data-testid='pbar-fill']")].map((f) => f.style.backgroundColor);
+    expect(fills).not.toContain("var(--color-pr-accent)");
+  });
+
+  it("fails closed when the card's pick label is not one of the bar's", () => {
+    // "Aston Villa win" is the card's wording for the pick; the bar's segments
+    // are the teams. A site that does not line the two up gets no emphasis
+    // rather than an emphasis on whichever segment happens to be first.
+    const { container } = render(<MatchCard {...base} pick={{ label: "Aston Villa win", prob: 0.6 }} bar={bar} />);
+    const fills = [...container.querySelectorAll<HTMLElement>("[data-testid='pbar-fill']")].map((f) => f.style.backgroundColor);
+    expect(fills).not.toContain("var(--color-pr-accent)");
   });
 });
 

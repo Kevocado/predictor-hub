@@ -84,7 +84,7 @@ export function MatchCard({ left, right, centre, status, pick, when, meta, bar, 
         <span data-testid="pick-section" className="flex w-full flex-col gap-2 border-t border-pr-rule pt-2.5">
           <Sep />
           {pickLine && <span className={`text-sm font-semibold ${pick ? "text-pr-text" : "text-pr-text-dim"}`}>{pickLine}</span>}
-          {bar && <ProbabilityBar segments={bar} />}
+          {bar && <ProbabilityBar segments={bar} pick={pick ? { label: pick.label } : null} />}
           {meta && (
             <>
               <Sep />

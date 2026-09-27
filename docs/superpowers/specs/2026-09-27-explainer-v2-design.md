@@ -241,9 +241,21 @@ model and the template.
    segments (the moneyline pair), PL gets three (home/draw/away). With PL's
    `implied` present, a second hairline row underneath shows the market's own
    split, so the reader can see model against market rather than a bare number.
+   The accent marks **the pick** (§5b) and nothing else: it is joined to a
+   segment by `pick.label`, never by position, and a bar with no `pick` has no
+   accented segment at all — an accented segment is a claim that there is a pick,
+   so with none there is none to point at. A pick whose label matches no segment
+   accents nothing, for the same reason. The segments that are not the pick are
+   painted in a three-step neutral ramp, so a three-way market keeps three
+   distinguishable tones once the accent has been spent on the pick.
 4. **Why boxes** — the factors. Each is a row: a direction arrow, a headline,
    and the model's sentence. The arrow is a **glyph plus a text label**, never
-   colour alone.
+   colour alone. A `neutral` factor (§5a) draws **no** arrow and wears neither
+   the win nor the loss colour, because it is a statement about the game or the
+   record rather than an argument, and with no pick there is nothing for it to be
+   for or against. Its label says what the row is — "context" — rather than
+   which way it leans, and it is still a row like any other: selectable, and
+   expandable.
 5. **Footer** — §2 rule 3, unchanged.
 
 Plus, where the facts carry them: the record strip (`hits/settled` as a thin
@@ -647,3 +659,36 @@ day the frontends are edited.
 
 Revised order: **(1) trigger and refusal**, (2) contract and validator,
 (3) shared components, (4) wiring in and removal out.
+
+### 13e. A rebuilt pick shows no confidence band
+
+**Overrides** §6 item 1's reading of the band chip as unconditional, and §13a in
+this one case: `band_for` still runs, `band` is still in the response, and the
+chip is withheld **by the renderer** on a `rebuilt` answer.
+
+The band is a claim about how much to trust the pick. A rebuilt pick's
+probability was produced by a model asked *after the event had begun* — it had
+seen the score. So the band measures confidence in a number computed with the
+answer already known, and it is a number the same panel tells the reader, two
+lines lower, not to count or grade. "STRONG" beside "shown for reference and not
+counted" asks the reader to resolve a contradiction the panel created, and §2's
+rule is that the panel does not put a claim in front of a reader that it cannot
+support. The band has no meaning for a pick that must not be acted on, so it is
+withheld rather than softened to a weaker word: a weaker word is still a
+confidence, and the reader would still have to weigh it against the warning
+beside it.
+
+**It fails closed**, which is the direction this panel already fails in (§6's
+footer shows nothing it cannot support), and the withholding is one visible
+line, so the decision is reviewable where it is made rather than smeared through
+the contract.
+
+**Why the band stays in the response.** The band is not wrong; it is unsayable
+*here*. Keeping it computed keeps the value available to whatever reads the row
+next — a settled archive, or a later surface that can act on a rebuilt pick — and
+keeps the thresholds in one place. Moving the withholding into the service would
+have made `band_for` conditional on `pick_timing`, which is a rule about
+rendering inside the module whose whole job is the contract. Tested both ways: a
+`rebuilt` answer renders no chip, and a `pre_kickoff` answer carrying the same
+`band` still does.
+
