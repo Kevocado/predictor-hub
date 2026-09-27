@@ -12,12 +12,19 @@ every factor it emits names one of them. A factor pointing at a market the facts
 lack would have to render as a dash, and spec §6 says an absent market renders
 *nothing*.
 
+`direction` is relative to the pick, so with no pick there is nothing for a
+factor to be for or against, and a factor that cannot be relative to anything
+says `neutral` rather than reaching for "up" — see `_toward`. That is a rule
+about every row below, not a special case for the rows that mention a pick: the
+total, both-teams-to-score and the record are statements about the game and about
+other picks, so they are `neutral` whether or not this one exists.
+
 Facts fields beyond the contract's core are loose dicts, so every read here is
 defensive: this is the last resort and it must never raise.
 """
 from __future__ import annotations
 
-from .contract import as_dict, band_for, market_shape, pick_prob
+from .contract import NEUTRAL, as_dict, band_for, market_shape, pick_for, pick_prob
 
 _TENS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]
 _START = {"f1": "the session started", "pl": "kickoff"}
@@ -61,6 +68,17 @@ def _outcome_key(by_key: dict) -> str:
     return "context"
 
 
+def _toward(direction: str, has_pick: bool) -> str:
+    """A pick-relative direction, or `neutral` when there is no pick to be relative to.
+
+    `direction` means "for the pick" or "against it" and nothing else, so it is
+    only knowable when there IS a pick. With no pick, "up" would render a factor
+    that says nothing about any pick as one arguing for it, which is the defect
+    this exists to remove — so the row claims nothing instead.
+    """
+    return direction if has_pick else NEUTRAL
+
+
 def explain_from_template(facts: dict) -> dict:
     """The no-model path, in the model's own shape, built from the facts."""
     facts = as_dict(facts)
@@ -69,6 +87,10 @@ def explain_from_template(facts: dict) -> dict:
     label = pick.get("label")
     label = str(label) if label not in (None, "") else None
     prob = pick_prob(facts)
+    # Whether there is a pick at all, from the same function the response's own
+    # `pick` field is built by, so a factor can never point at a pick the answer
+    # does not carry.
+    has_pick = pick_for(facts) is not None
     sport = facts.get("sport", "")
     unit = "goals" if sport == "pl" else "points"
     timing = facts.get("pick_timing")
@@ -85,13 +107,13 @@ def explain_from_template(facts: dict) -> dict:
         # for a rebuilt pick precisely so nothing can grade it.
         if timing == "pre_kickoff" and isinstance(result.get("pick_won"), bool) and label:
             text += f" The pick was {'right' if result['pick_won'] else 'wrong'}: {label}."
-        factors.append(_fact(_outcome_key(by_key), "up", "How it finished", text))
+        factors.append(_fact(_outcome_key(by_key), _toward("up", has_pick), "How it finished", text))
 
     # A rebuilt pick is disclosed as a factor in its own right, so it cannot be
     # missed by a reader who only reads the first row.
     if timing == "rebuilt":
         factors.append(_fact(
-            "context", "down", "Rebuilt after the start",
+            "context", _toward("down", has_pick), "Rebuilt after the start",
             f"This pick was rebuilt after {_START.get(sport, 'kickoff')}, so it is shown but "
             f"not counted, and it is not graded either way."))
 
@@ -105,20 +127,23 @@ def explain_from_template(facts: dict) -> dict:
         line = margin_market["line"]
         # down: the market asking for more than the model rates the gap is a
         # point *against* the pick, which is what `direction` means.
-        factors.append(_fact(str(margin_market["market"]), "down", "The line",
+        factors.append(_fact(str(margin_market["market"]), _toward("down", has_pick), "The line",
                              f"It rates {label} {abs(margin):g} {unit} better, against a line of {line}. "
                              f"That is the market asking for more than the model thinks the gap is worth."))
 
     total_market = by_key.get("total") or by_key.get("total_goals")
     total = _num((total_market or {}).get("model_total"))
     if total_market is not None and total is not None and total_market.get("line") is not None:
-        factors.append(_fact(str(total_market["market"]), "up", "The total",
+        # A projection for the game, not a claim about the pick: emitted whether
+        # or not there is one, so it can only be neutral.
+        factors.append(_fact(str(total_market["market"]), NEUTRAL, "The total",
                              f"It projects {total:g} {unit} against a line of {total_market['line']}."))
 
     btts = by_key.get("btts")
     yes = _num((btts or {}).get("yes_prob"))
     if btts is not None and yes is not None:
-        factors.append(_fact("btts", "up", "Both to score",
+        # As the total: a statement about the game, so neutral either way.
+        factors.append(_fact("btts", NEUTRAL, "Both to score",
                              f"It puts {_pct(yes)} on both teams scoring."))
 
     # The record states counts, never a proportion. It is a factor here as well as
@@ -133,7 +158,10 @@ def explain_from_template(facts: dict) -> dict:
     hits, settled = (_num(record.get("hits")), _num(record.get("settled"))) if record else (None, None)
     if hits is not None and settled:
         what = str(record.get("label") or "picks made before the start").lower()
-        factors.append(_fact("record", "up", "Its record so far",
+        # Neutral, and always: the record counts OTHER picks, so it is not
+        # evidence for this one even when this one exists. Reading it as "for the
+        # pick" would let a season's hits stand in for a match.
+        factors.append(_fact("record", NEUTRAL, "Its record so far",
                              f"{int(hits)} of {int(settled)} {what} have landed."))
 
     # Two rows minimum, so the panel is never a single lonely line. Padding only
@@ -147,10 +175,13 @@ def explain_from_template(facts: dict) -> dict:
         # bundles that reach it.
         while len(factors) < 2:
             if not any(f["key"] == "context" for f in factors):
-                factors.append(_fact("context", "down", "Not much to go on",
+                factors.append(_fact("context", _toward("down", has_pick), "Not much to go on",
                                      "The facts for this one are still filling in."))
             else:
-                factors.append(_fact("context", "up", "Where this stands",
+                # Neutral always. "So there is little to weigh up here" is not an
+                # argument FOR a pick; it was given "up" because the row needed a
+                # direction, and the words above it do not support one.
+                factors.append(_fact("context", NEUTRAL, "Where this stands",
                                      f"So there is little to weigh up here: {title}."))
 
     verdict = f"{label} is the pick." if label and prob is not None else "There is no pick for this one yet."
@@ -162,15 +193,17 @@ def minimal(facts: dict) -> dict:
     """If even the template fails: say so, never error.
 
     Only the pseudo-markets, so every factor resolves against a bundle with no
-    markets at all — this runs precisely when things are broken.
+    markets at all — this runs precisely when things are broken. Both are
+    `neutral`: there is no pick here to be for or against, and these rows are
+    about the service rather than about any prediction.
     """
     return {
         "verdict": "No explanation is available for this one yet.",
         "band": "leaning",
         "factors": [
-            _fact("context", "down", "Not ready",
+            _fact("context", NEUTRAL, "Not ready",
                   "The explanation service could not build a summary for this fixture."),
-            _fact("context", "up", "Try again",
+            _fact("context", NEUTRAL, "Try again",
                   "A later visit may find the facts in place."),
         ],
     }

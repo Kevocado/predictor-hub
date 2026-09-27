@@ -17,7 +17,7 @@ from pydantic import ValidationError
 
 from .cache import Cache
 from .config import SERVED_SPORTS
-from .contract import band_for, clean_verdict, market_shape, pick_prob
+from .contract import band_for, clean_verdict, market_shape, pick_for, pick_prob
 from .facts import Facts, PickTiming, render
 from .ledger import Ledger
 from .llm import LLMError, complete
@@ -104,16 +104,30 @@ class Explainer:
         # source for that label. The cache key covers the facts, so a hit and
         # the miss that filled it always agree on it.
         model = "" if row["source"] == "template" else row["model"]
-        return {"sport": sport, "id": id, **row["body"],
-                # The band is computed, never asked for (spec §13a). A word is
-                # the same defect as a number when nothing ties it to anything:
-                # a model can call a 52% pick "strong" and there is no fact to
-                # contradict it. Unconditional, so this is the only place the
-                # response's band is decided and the template path cannot drift.
-                "band": band_for(pick_prob(facts), market_shape(facts)),
-                "source": row["source"], "model": model,
-                "generated_at": row["created_at"], "prompt_version": row["prompt_version"],
-                "pick_timing": facts.pick_timing}
+        out = {"sport": sport, "id": id, **row["body"],
+               # The band is computed, never asked for (spec §13a). A word is
+               # the same defect as a number when nothing ties it to anything:
+               # a model can call a 52% pick "strong" and there is no fact to
+               # contradict it. Unconditional, so this is the only place the
+               # response's band is decided and the template path cannot drift.
+               "band": band_for(pick_prob(facts), market_shape(facts)),
+               "source": row["source"], "model": model,
+               "generated_at": row["created_at"], "prompt_version": row["prompt_version"],
+               "pick_timing": facts.pick_timing}
+        # The pick, derived from the facts for the same reason the band is: the
+        # panel has to know which segment of a bar to emphasise, and a model
+        # asked to name its own pick can disagree with the facts this verdict was
+        # computed from. `pick_for` is the only reader of it, and it agrees with
+        # the template's own "is there a pick" test, so the response cannot point
+        # the panel at a pick the verdict does not name.
+        #
+        # The key is OMITTED when there is no pick rather than set to null: the
+        # renderer acts on its absence, and `null` would be one more thing to
+        # check for instead of the one thing to check.
+        pick = pick_for(facts)
+        if pick is not None:
+            out["pick"] = pick
+        return out
 
     def _usable(self, row: dict | None) -> bool:
         if row is None:

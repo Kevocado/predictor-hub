@@ -157,8 +157,13 @@ for a free model. So:
   about the *pick*, and giving it a number would put a figure on screen that no
   fact supports.
 - `direction` is **relative to the pick**: `up` is a factor arguing for it,
-  `down` a factor arguing against. It is never "the number went up" — the
-  numbers do not move.
+  `down` a factor arguing against, and `neutral` a factor that is neither — a
+  statement about the game (the total, both teams to score) or about the record,
+  which is not for or against any pick. It is never "the number went up" — the
+  numbers do not move. **With no pick, every factor is `neutral`**: there is
+  nothing to be for or against, and an absent or unrecognised `direction`
+  resolves to `neutral` rather than to `up`, which would read a model that said
+  nothing as one that endorsed the pick.
 - `text` is number-free by rule. If the model writes a digit, `validate()` will
   reject it against the facts pool, so the rule is enforced rather than trusted.
 - 2–4 factors. Fewer is fine; zero is a validation failure, because a panel with
@@ -181,6 +186,24 @@ The same applies to a bar's accessible name: it reads "41 of 68", not "60.3%".
 
 Unchanged from today: `sport`, `id`, `source`, `model`, `generated_at`,
 `prompt_version`, `pick_timing`.
+
+Added: **`pick`** — `{ "label": "BAL" }`, plus `"side"` where the sport's facts
+carry one (PL's `home`/`away` against a draw). It is **derived from the facts**
+by `contract.pick_for`, never asked of the model, for the same reason the band is
+derived: a model asked to name its own pick can disagree with the facts the
+verdict was computed from, and then the bar would emphasise a different segment
+than the verdict describes. The panel joins the pick to a bar segment by label,
+which is what it must follow rather than segment order — on the §7a bar that is
+BAL at 62%, the **second** segment.
+
+It carries no probability. The panel draws every figure from the facts (§5a-bis),
+and a second copy of one here is a second thing that can disagree with the bar.
+
+**With no pick the key is absent, not `null`.** The renderer acts on the absence
+— it decides whether to emphasise a segment at all — so a null or an empty-label
+object would be one more thing to check instead of the one thing to check. The
+gate is the same label-and-usable-probability test the template's verdict uses,
+so the response cannot point the panel at a pick the verdict just denied.
 
 **`prompt_version` is bumped.** The v1 rows hold `headline`/`sections`; a v2
 renderer reading one would render nothing. A new version means a new cache key,
