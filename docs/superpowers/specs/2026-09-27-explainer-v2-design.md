@@ -233,16 +233,20 @@ Reuse the family tokens already in `predictor-ui` (`--font-pr-display`,
 no new typefaces. No emoji as icons, focus-visible rings, `prefers-reduced-motion`
 honoured.
 
-**On the 12px floor specifically — a claim this spec previously made and had to
-be corrected about.** The hub asserts a 12px minimum in `hub.test.mjs` and holds
-it. `Sports_Predictor`, which is the frame NFL and CFB are served in, has 23
-occurrences of `text-[9|10|11px]` across 9 files and no test asserting a floor at
-all. So "the craft floor this repo already holds" was true of the hub and false of
-the site two of the three sports run through. The v2 panel is a *new* surface in
-that site, so it should follow the hub's floor — and the durable answer is a floor
-test in the site rather than a habit, or the next component drifts the same way.
-That is Task 24 in the ledger, and it should land before or with this work rather
-than after.
+**On the 12px floor specifically — a claim this spec made and had to correct
+twice.** The hub asserts a 12px minimum in `hub.test.mjs` and holds it. My first
+correction said `Sports_Predictor` had 23 occurrences across 9 files; that number
+came from reading a dirty checkout rather than `origin/main`, and the real count
+is **six, in two files**. `Sports_Predictor` now has `src/craft-floor.test.ts`
+enforcing the floor the way the hub does, so the rule is a test in both places
+rather than a habit in one. The v2 panel is a new surface in that site and should
+follow it.
+
+The wider lesson is in the ledger and worth the space here, because this spec
+inherited a claim it had not checked: **a dirty checkout is not a slower version
+of the product, it is a different product.** Three of four findings from the
+review that prompted this correction were properties of somebody's uncommitted
+work. A spec that cites a defect should be able to say which commit it is on.
 
 A 12px floor rules out one tempting move — tiny percentage labels inside the
 split bar segments. Where a segment is too narrow for its label, the label goes
