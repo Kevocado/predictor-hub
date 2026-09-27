@@ -545,14 +545,72 @@ describe("ExplainerPanel", () => {
   });
 
   it("links a factor to the figure it names, and clears on Escape", async () => {
+    // §13c's first affordance, one direction: a *why* row names the market key
+    // it is about, and the tile and the bar segment carrying that key light up.
+    // `SEGMENTS` is crossed on purpose — `BAL` is the `spread` segment and `KC`
+    // is the `moneyline` one — so pairing a figure to a factor by POSITION or by
+    // LABEL lights the wrong element and fails here. The negatives are the half
+    // that was missing: without them a panel that highlighted every figure and
+    // every tile would satisfy every assertion above.
     const user = userEvent.setup();
     render(<ExplainerPanel {...RESTING} data={NFL} tiles={TILES} segments={SEGMENTS} />);
     await user.click(screen.getByRole("button", { name: /the line asks more/i }));
     expect(screen.getByTestId("tile-spread")).toHaveAttribute("data-highlighted", "true");
     expect(document.querySelector('[data-seg="BAL"]')).toHaveAttribute("data-highlighted", "true");
+    expect(screen.getByTestId("tile-moneyline")).toHaveAttribute("data-highlighted", "false");
+    expect(document.querySelector('[data-seg="KC"]')).toHaveAttribute("data-highlighted", "false");
     await user.keyboard("{Escape}");
     expect(screen.getByTestId("tile-spread")).toHaveAttribute("data-highlighted", "false");
+    expect(document.querySelector('[data-seg="BAL"]')).toHaveAttribute("data-highlighted", "false");
   });
+
+  it("links a figure to the market it names, the other way round, and clears on Escape", async () => {
+    // The direction the segment labels exist for. It was unguarded: this panel's
+    // only highlight test started at a factor, so it never once drove the
+    // figures, and it stayed green when `SegmentFigure` stopped rendering them as
+    // controls at all (task D's mutation 2) — the handler was never exercised
+    // from this end, and a label that is not a control cannot be reached or
+    // activated. `ProbabilityBar`'s own tests pass `onSegmentFocus` themselves,
+    // so they cannot see whether `ExplainerPanel` passes it; only rendering
+    // through the panel can.
+    //
+    // Driven through `userEvent`, not a raw `.focus()`, and not `fireEvent`:
+    // the event is wrapped in `act`, so the state update the handler makes is
+    // flushed the way a reader's would be, instead of React warning that the
+    // panel updated outside one. It also gives the mutation above a second,
+    // independent catch — `userEvent` focuses what it clicks, and it will not
+    // focus a `<span>`, so a figure that stopped being a control loses the focus
+    // as well as the highlight. Asserting the RESULT, not the tag name, is the
+    // point: the claim is that activating a figure does something.
+    const user = userEvent.setup();
+    render(<ExplainerPanel {...RESTING} data={NFL} tiles={TILES} segments={SEGMENTS} />);
+    const figure = document.querySelector<HTMLElement>('[data-seg="BAL"]')!;
+    await user.click(figure);
+    expect(figure).toHaveFocus();
+    // What the figure NAMES, which is its own `market` key and not its label:
+    // `BAL` is the `spread` segment and `spread` is the `KC`-less tile, so
+    // looking the tile up by the figure's label, or by position, is caught.
+    expect(screen.getByTestId("tile-spread")).toHaveAttribute("data-highlighted", "true");
+    expect(screen.getByTestId("tile-moneyline")).toHaveAttribute("data-highlighted", "false");
+    // And the figure lights itself, the segment it is: same key, both places.
+    expect(document.querySelector('[data-seg="BAL"]')).toHaveAttribute("data-highlighted", "true");
+    expect(document.querySelector('[data-seg="KC"]')).toHaveAttribute("data-highlighted", "false");
+    await user.keyboard("{Escape}");
+    expect(screen.getByTestId("tile-spread")).toHaveAttribute("data-highlighted", "false");
+    expect(document.querySelector('[data-seg="BAL"]')).toHaveAttribute("data-highlighted", "false");
+  });
+
+  // §13c reads "Both directions highlight", and the third one — a figure
+  // lighting the *factor* that names it — is not built. `ExplainerPanel` owns the
+  // highlight and passes it to the tile and the bar, and `FactorList` has no
+  // prop that could receive it, so focusing a figure changes nothing about the
+  // rows below. Measured, not read off the source: focusing `BAL` lights
+  // `tile-spread` and the `BAL` figure, and leaves BOTH factor rows
+  // `data-highlighted="false"`. Recorded as a todo rather than as a passing
+  // assertion, because `expect(row).toHaveAttribute("data-highlighted", "false")`
+  // would pin the gap shut and fail the day somebody implements it. Implemented,
+  // this is the figure -> factor half of the pair above.
+  it.todo("lights the factor whose key names the focused figure (spec §13c, direction two)");
 
   it("reveals no figure the facts do not carry, whatever the reader does", async () => {
     // The named failure for §13c: a hover tooltip reading "probably around
