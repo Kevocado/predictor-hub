@@ -4,6 +4,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SPORTS = ("pl", "f1", "nfl", "cfb", "nba")
 
+#: The sports this service answers for. F1 and NBA are configured and reachable
+#: but not served: the v2 panel is specified for the three sports whose facts
+#: carry the markets it draws (§3), and an explanation for a sport we have no
+#: panel for would be a template rendering as an answer. Kept beside SPORTS so
+#: the "configured" set and the "answered" set are read together — a new sport
+#: has to be added to both deliberately rather than by omission.
+SERVED_SPORTS = ("pl", "nfl", "cfb")
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")

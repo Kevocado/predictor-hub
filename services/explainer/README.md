@@ -4,8 +4,8 @@ Writes the "In plain English" panel for a match or F1 session. It reads the
 facts bundle from the sport's own API, adds free ESPN headlines, asks an
 OpenRouter free model for a short explanation, and shows it only if every
 number in it came from those facts or headlines. Otherwise it uses a plain
-template. Results are cached in SQLite and pre-generated every 3 hours for
-what starts in the next 72 hours.
+template. Results are cached in SQLite, and a summary is made when a reader asks
+for one — there is no background pre-generation.
 
 ## Run
 
@@ -48,10 +48,10 @@ API's `/facts`, and the panel — before a single request is spent.
 | `OPENROUTER_API_KEY` | unset | The only secret. Keep it in the env file on the VPS, never in a repo, a site build, a GitHub secret or a log. Unset means template only. |
 | `EXPLAINER_MODEL` | `nvidia/nemotron-3.5-lightning:free` | First model tried. See the free-model section below before trusting it. |
 | `EXPLAINER_FALLBACK_MODEL` | `poolside/laguna-s-2.1:free` | Tried once when the first fails or its answer is rejected. |
-| `EXPLAINER_DAILY_CAP` | `900` | OpenRouter requests per UTC day, retries included (the account allows 1,000). Pre-generation stops 50 short, leaving those for on-demand use. |
-| `EXPLAINER_ENABLED` | `true` | `false` serves templates only and stops pre-generation. |
+| `EXPLAINER_DAILY_CAP` | `900` | OpenRouter requests per UTC day, retries included (the account allows 1,000). Enforced by the ledger at spend time, so a refusal or a cache hit costs nothing. The old scheduler's 50-request headroom is gone with it: that headroom existed to stop pre-generation starving on-demand readers, and there is no pre-generation left to starve them. |
+| `EXPLAINER_ENABLED` | `true` | `false` serves templates only, so the first uncached read is free while you check a rollout. |
 | `EXPLAINER_DB_PATH` | `/data/explainer.sqlite` | Cache and daily ledger. Keep it on the volume. |
-| `SPORT_API_PL`, `SPORT_API_F1`, `SPORT_API_NFL`, `SPORT_API_CFB`, `SPORT_API_NBA` | unset | Base URL of each sport API (the prefix before `/facts/...`). Unset sports return 404. |
+| `SPORT_API_PL`, `SPORT_API_F1`, `SPORT_API_NFL`, `SPORT_API_CFB`, `SPORT_API_NBA` | unset | Base URL of each sport API (the prefix before `/facts/...`). Unset sports return 404. **Serving is a separate list**: `config.SERVED_SPORTS` is `("pl", "nfl", "cfb")`, so `f1` and `nba` return 404 *even when their URL is configured* — the v2 panel is specified for three sports, and F1 and NBA are in `SPORTS` only so their config and their sites' proxies keep working while the frontend removal lands. `tests/test_unserved_sport.py` pins both halves. |
 
 Run a single uvicorn worker: the per-match lock that stops two visitors
 paying for the same explanation lives in the process.
@@ -130,7 +130,7 @@ where the path translation and the error handling are tested. Set:
 | Var | Default | Meaning |
 |---|---|---|
 | `EXPLAINER_URL` | `http://predictor-explainer:8090` | This service, over the compose network. |
-| `EXPLAINER_TIMEOUT_S` | `15` (PL), `10` (NBA, F1) | How long a site's proxy waits. Deliberately **below** the browser's own timeout (PL 20 s, NBA and F1 15 s): the proxy route is a sync `def`, so a request that outlasts the client occupies a worker thread for an answer nobody is waiting for. A first uncached game will usually hit this and show the panel's Try again state — that is what pre-generation is for. |
+| `EXPLAINER_TIMEOUT_S` | `15` (PL), `10` (NBA, F1) | How long a site's proxy waits. Deliberately **below** the browser's own timeout (PL 20 s, NBA and F1 15 s): the proxy route is a sync `def`, so a request that outlasts the client occupies a worker thread for an answer nobody is waiting for. **A first uncached read is the slow case** — it pays for the model round trip, and may hit this and show the panel's Try again state. That is the cost of on-demand, and it is why the cap is worth watching; a second open of the same fixture is a cache hit and costs nothing. |
 
 Each of those three also needs its Vite dev proxy to forward `/api/explain`, so
 dev and production take the same path.
@@ -161,8 +161,8 @@ and sport APIs with mocked routes.
 ## Rollout
 
 Follow spec section 4's staged order. Each step is independently reversible,
-and the kill switch is `EXPLAINER_ENABLED=false`, which serves templates and
-stops pre-generation without touching a site. The sites do not need a redeploy
+and the kill switch is `EXPLAINER_ENABLED=false`, which serves templates
+without touching a site or spending anything. The sites do not need a redeploy
 at any step: the panel is already wired, and it renders nothing when the
 explainer is unreachable.
 
@@ -183,9 +183,12 @@ above while you are there.
 3. **F1 facts and the race story.** Open a session. The panel is collapsed to
    the headline behind "Read the race story". Confirm a rebuilt session says
    "Rebuilt after the session".
-4. **Turn on pre-generation.** It runs every 3 h and stops 50 requests short of
-   the cap. Watch `used_today` in `/status` climb, and confirm the cache is
-   being hit on a second visit (a repeat request costs no budget).
+4. **Watch `used_today` in `/status`.** On-demand spend is per reader now, so
+   the number to watch is requests-per-unique-fixture rather than a steady climb
+   every 3 h. Confirm a second visit to the same fixture is a cache hit and
+   costs no budget — that property is what makes on-demand affordable, and it is
+   the one to check first. `tests/test_unserved_sport.py` also asserts that a
+   refused sport costs nothing at all.
 
 Then **watch the ledger for a week**. Specifically: `used_today` against the
 cap, how many explanations fall back to the template (a jump means the model or
