@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { contrast, parseHex } from "../contrast";
 import { pct } from "../fmt";
 
@@ -81,16 +82,36 @@ function tones(segments: Segment[], index: number): string[] {
   });
 }
 
-/** Whether the market's own split covers every outcome the model's split has.
+/** Whether the market's own split covers exactly the outcomes the model's does.
  *
  *  Spec §13b. PL's `implied` carries only the two sides, so with a three-way
  *  model split a market row would sit under a draw segment with nothing above
  *  it: two bars covering different outcomes, inviting a comparison that cannot
  *  be made. Omission is the honest answer.
+ *
+ *  **Both directions, not one.** §13b says the market row covers every outcome
+ *  the model's split has, and a *superset* satisfies that sentence while
+ *  breaking the thing the row is for: a market segment with no column above it
+ *  cannot be compared with anything, and it also makes the figures below the two
+ *  bars stop lining up. So the two splits must be the same set of outcomes, one
+ *  each, and the figures are then read by label rather than by position.
  */
 function covers(segments: Segment[], legend: Segment[]): boolean {
   const have = new Set(legend.map((s) => s.label));
-  return segments.every((s) => have.has(s.label));
+  return segments.length > 0 && legend.length === segments.length && segments.every((s) => have.has(s.label));
+}
+
+/** The market's own figures, in the model's outcome order, so each one sits
+ *  under the model's figure it belongs to.
+ *
+ *  **Read by label, never by position.** `segments` and `legend` are two
+ *  different facts, and a call site that hands them over in a different order is
+ *  not a mistake to paper over — it is precisely the case where pairing them by
+ *  index would print the market's 44% under the model's 48% and still look like
+ *  a readable comparison. `covers` has already established that every label
+ *  matches, so the lookup cannot miss. */
+function marketSplit(segments: Segment[], legend: Segment[]): Segment[] {
+  return segments.map((s) => legend.find((l) => l.label === s.label)!);
 }
 
 /**
@@ -110,6 +131,7 @@ export function ProbabilityBar({
   minSegmentPx = 0,
   highlightKey = null,
   pick = null,
+  expandable = false,
   onSegmentFocus,
 }: {
   segments: Segment[];
@@ -127,8 +149,19 @@ export function ProbabilityBar({
    *  something is claiming there is a pick, and with none there is none to
    *  point at. */
   pick?: PickRef | null;
+  /** Narrow layouts can collapse the market row's figures, the same way
+   *  `FactorList` clamps a factor's sentence: a real `<button aria-expanded>`,
+   *  off by default so a wide layout never hides text behind a control that adds
+   *  nothing. Open to begin with, because an unlabelled market bar is the defect
+   *  the figures exist to fix. */
+  expandable?: boolean;
   onSegmentFocus?: (label: string, market?: string) => void;
 }) {
+  // Open unless the caller says the layout is narrow. Held here rather than
+  // derived from a width, because `FactorList` made the same call: a CSS-only
+  // clamp is not announced, and a measurement the panel never takes is a
+  // measurement that can be wrong in the reader's favour.
+  const [figuresOpen, setFiguresOpen] = useState(true);
   const index = pickIndex(segments, pick);
   const fills = tones(segments, index);
   const named = segments.map((s) => `${s.label} ${pct(s.prob)}`);
@@ -139,6 +172,12 @@ export function ProbabilityBar({
   // matched a segment — an unmatched label is not a claim about any of them.
   const described = index < 0 ? named : [...named, `the pick is ${segments[index].label}`];
   const showLegend = !!legend && covers(segments, legend);
+  // The market's figures, from `legend` and never from `segments`. The two bars
+  // are a comparison, so the row underneath quotes the *other* split: a figure
+  // read off the wrong array would be the right number attributed to the wrong
+  // source, which is the one failure on this row that is worse than no row.
+  const market = showLegend ? marketSplit(segments, legend!) : [];
+  const showFigures = showLegend && (!expandable || figuresOpen);
   const dim = (s: Segment) => (highlightKey && s.market && s.market !== highlightKey ? 0.4 : 1);
 
   return (
@@ -182,14 +221,60 @@ export function ProbabilityBar({
 
       {showLegend && (
         <div data-testid="pbar-legend" className="flex flex-col gap-1 border-t border-pr-rule pt-1.5">
-          <span className="flex items-center gap-2 text-xs text-pr-text-faint">
-            <span className="w-16 shrink-0 uppercase tracking-wide">market</span>
+          {/* The word names the row; the bar beneath it is then the full width of
+              the bar above, so the two splits start and end in the same place
+              and a reader can see the difference without measuring. A gutter
+              beside the word would indent this bar out of comparison with the
+              model's, which is the one thing the row exists to make possible. */}
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-xs uppercase tracking-wide text-pr-text-faint">market</span>
+            {expandable && (
+              <button
+                type="button"
+                data-testid="pbar-market-toggle"
+                aria-expanded={showFigures}
+                onClick={() => setFiguresOpen((was) => !was)}
+                className="text-xs font-semibold uppercase tracking-wide text-pr-accent underline-offset-4 hover:underline"
+              >
+                {showFigures ? "Less" : "More"}
+              </button>
+            )}
+          </div>
+          {/* The market bar gets no `minSegmentPx`, and that is deliberate. A
+              floor on the *comparison* bar would draw a 1% implied share as wide
+              as the model's 3% sliver, which is the one thing this row must not
+              do: the labels below carry the figures, and the geometry carries
+              only the shape. */}
+          <div role="img" aria-label={`market: ${market.map((s) => `${s.label} ${pct(s.prob)}`).join(", ")}`}>
             <span aria-hidden="true" className="flex h-1 w-full gap-0.5 overflow-hidden rounded-pr">
-              {legend!.map((s, i) => (
-                <span key={i} style={{ flexGrow: Math.max(s.prob, 0.01), backgroundColor: "var(--color-pr-text-faint)" }} />
+              {market.map((s, i) => (
+                <span
+                  key={i}
+                  data-testid="pbar-market-fill"
+                  style={{ flexGrow: Math.max(s.prob, 0.01), backgroundColor: "var(--color-pr-text-faint)" }}
+                />
               ))}
             </span>
-          </span>
+          </div>
+          {/* The figures, in the same row shape and the same tone as the labels
+              above so each one sits in the column of the figure it is being
+              compared with. `text-xs` is the 12px floor, here exactly as it is
+              on the model's own labels: §6a rules out shrinking a figure that
+              will not fit, and the way to survive a narrow row is to drop the
+              row behind the toggle rather than to set it smaller. */}
+          {showFigures && (
+            <div data-testid="pbar-market-figures" className="flex items-baseline justify-between gap-2">
+              {market.map((s) => (
+                <span
+                  key={s.label}
+                  data-market={s.label}
+                  className="min-w-0 text-xs tabular-nums text-pr-text-faint"
+                >
+                  {s.label} {pct(s.prob)}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

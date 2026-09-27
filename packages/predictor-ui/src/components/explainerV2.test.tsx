@@ -14,6 +14,8 @@
  *  optional.
  */
 import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -73,6 +75,15 @@ const PL_BAR: Segment[] = [
 const ACCENT = "var(--color-pr-accent)";
 const NEUTRALS = ["var(--color-pr-text-dim)", "var(--color-pr-text-faint)", "var(--color-pr-fill-mute)"];
 
+/** The market's own split, which is a DIFFERENT set of numbers from the model's.
+ *  Deliberately not a copy of `PL_BAR` with a new label: every figure differs, so
+ *  a test that reads the wrong array cannot pass by coincidence. */
+const MARKET: Segment[] = [
+  { label: "Arsenal", prob: 0.44 },
+  { label: "Draw", prob: 0.25 },
+  { label: "Chelsea", prob: 0.31 },
+];
+
 /** What each segment is actually painted, in order. */
 function fills(container: HTMLElement): string[] {
   return [...container.querySelectorAll<HTMLElement>("[data-testid='pbar-fill']")].map((f) => f.style.backgroundColor);
@@ -100,6 +111,28 @@ describe("KeyNumberTile", () => {
   it("is a definition list, so the label/value pairing is structural", () => {
     render(<KeyNumberTile tile={TILES[0]} />);
     expect(screen.getByTestId("tile-moneyline").tagName).toBe("DL");
+  });
+
+  it("prints the market's LABEL where a label goes, never the key the facts join on", () => {
+    // Kevin's tile. `market` is the identifier — "btts", "total_goals",
+    // "moneyline" — and the tile used to fall back to it, so a caller who passed a
+    // label and no market line got the key in the one slot on the tile reserved
+    // for words. It failed silently, because `label` was required, was type
+    // checked, and was never rendered anywhere in the component.
+    render(<KeyNumberTile tile={{ market: "btts", label: "Both teams score", value: "61%" }} />);
+    expect(screen.getByText("Both teams score")).toBeInTheDocument();
+    expect(screen.queryByText("btts")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/btts/);
+  });
+
+  it("still lets a market line stand in for the label", () => {
+    render(<KeyNumberTile tile={{ market: "total_goals", label: "Total goals", value: "2.7", sub: "Over 2.5 · 56%" }} />);
+    expect(screen.getByText("Over 2.5 · 56%")).toBeInTheDocument();
+    // A `dl` has no name of its own, so its accessible name IS its content: a key
+    // in the text is a key in the name, and there is no second surface to fix.
+    const tile = screen.getByTestId("tile-total_goals");
+    expect(tile.textContent).not.toMatch(/total_goals/);
+    expect(tile.textContent).not.toMatch(/[OU]\d/);
   });
 });
 
@@ -254,6 +287,113 @@ describe("the pick is the accented segment", () => {
     // given a clause they never asked for.
     render(<ProbabilityBar segments={NFL_BAR} />);
     expect(screen.getByRole("img")).toHaveAccessibleName("KC 38%, BAL 62%");
+  });
+});
+
+/** The market row, from the screenshot: the word `market`, a row of grey bars,
+ *  and no figures at all. The bar is the whole point of the row — it is the
+ *  comparison between the model's split and the market's — and it cannot be read
+ *  without them, because a bar is only comparable to another bar once you know
+ *  what each end of it is. */
+describe("the market row is labelled with the market's own figures", () => {
+  it("states the market's percentages under the model's, in the same columns", () => {
+    const { container } = render(<ProbabilityBar segments={PL_BAR} legend={MARKET} pick={{ label: "Arsenal" }} />);
+    const figures = within(within(container).getByTestId("pbar-market-figures"));
+    expect(figures.getByText("Arsenal 44%")).toBeInTheDocument();
+    expect(figures.getByText("Draw 25%")).toBeInTheDocument();
+    expect(figures.getByText("Chelsea 31%")).toBeInTheDocument();
+    // The whole point: each market figure is in the column of the model figure it
+    // is being compared with, so the reader compares down and not across.
+    expect([...container.querySelectorAll("[data-market]")].map((el) => el.textContent)).toEqual(
+      ["Arsenal 44%", "Draw 25%", "Chelsea 31%"],
+    );
+  });
+
+  it("quotes the MARKET's numbers, not the model's — the attribution trap", () => {
+    // Two bars, two splits, one prop each, and reading the wrong array produces
+    // a comparison made entirely of real numbers attributed to the wrong source.
+    // That is worse than no row: there is nothing on screen a reader could use to
+    // notice. Asserted in the visible text AND in the accessible name, because
+    // the name is the whole of what a reader who cannot see the bars is given.
+    const { container } = render(<ProbabilityBar segments={PL_BAR} legend={MARKET} />);
+    const row = within(container).getByTestId("pbar-market-figures");
+    expect(row.textContent).not.toMatch(/48%|26%/);
+    expect(screen.getByRole("img", { name: "market: Arsenal 44%, Draw 25%, Chelsea 31%" })).toBeInTheDocument();
+    // And the bar's own widths, which is the other half of the same claim.
+    const growth = [...container.querySelectorAll<HTMLElement>("[data-testid='pbar-market-fill']")].map(
+      (el) => el.style.flexGrow,
+    );
+    expect(growth).toEqual(["0.44", "0.25", "0.31"]);
+  });
+
+  it("reads the market's figures by label, so a differently ordered legend still lines up", () => {
+    // `segments` and `legend` are two different facts. Pairing them by index would
+    // print the market's 44% under the model's 48% and still look like a comparison.
+    const shuffled = [MARKET[2], MARKET[0], MARKET[1]];
+    const { container } = render(<ProbabilityBar segments={PL_BAR} legend={shuffled} />);
+    expect([...container.querySelectorAll("[data-market]")].map((el) => el.textContent)).toEqual([
+      "Arsenal 44%",
+      "Draw 25%",
+      "Chelsea 31%",
+    ]);
+  });
+
+  it("omits the row when the market covers an outcome the model's split does not", () => {
+    // The other direction of §13b, and the one that matters for the labels: a
+    // market segment with no model column above it cannot be compared with
+    // anything, and the figures below the two bars would stop lining up too.
+    render(<ProbabilityBar segments={PL_BAR} legend={[...MARKET, { label: "Brighton", prob: 0.07 }]} />);
+    expect(screen.queryByTestId("pbar-legend")).toBeNull();
+  });
+
+  it("sets every figure in the bar and the market row at the 12px floor or above", () => {
+    // §6a's floor, asserted on the class the component actually emits. A size a
+    // reader sees is a size in the markup, and the failure the floor exists to
+    // prevent is exactly "set this one smaller so the row fits" — so the check is
+    // over both rows, not just the one a screenshot happened to show.
+    const { container } = render(
+      <ProbabilityBar segments={PL_BAR} legend={MARKET} minSegmentPx={2} pick={{ label: "Arsenal" }} />,
+    );
+    const sized = [...container.querySelectorAll<HTMLElement>("*")].filter((el) =>
+      [...el.childNodes].some((n) => n.nodeType === 3 && (n.textContent ?? "").trim() !== ""),
+    );
+    // Both rows really are in there, or this test is checking nothing.
+    expect(sized.length).toBeGreaterThanOrEqual(PL_BAR.length * 2);
+    for (const el of sized) {
+      const classes = el.className;
+      expect(classes, el.textContent ?? "").toMatch(/\btext-(xs|sm|base|lg|xl|2xl|3xl)\b/);
+      for (const [, px] of classes.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)) {
+        expect(Number(px), `${px}px is under the floor`).toBeGreaterThanOrEqual(12);
+      }
+    }
+  });
+
+  it("falls back to the bare bar behind a real aria-expanded button on a narrow surface", async () => {
+    // The same shape FactorList uses for a clamped sentence: opt in, get a real
+    // button, and collapse to a narrower form. Off by default, so a wide layout
+    // never hides figures behind a control that adds nothing — and OPEN when it
+    // is on, because an unlabelled market bar is the defect these figures fix.
+    const user = userEvent.setup();
+    const { container, rerender } = render(<ProbabilityBar segments={PL_BAR} legend={MARKET} />);
+    expect(screen.queryByTestId("pbar-market-toggle")).toBeNull();
+    expect(within(container).getByTestId("pbar-market-figures")).toBeInTheDocument();
+
+    rerender(<ProbabilityBar segments={PL_BAR} legend={MARKET} expandable />);
+    const toggle = screen.getByTestId("pbar-market-toggle");
+    expect(toggle.tagName).toBe("BUTTON");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(within(container).getByTestId("pbar-market-figures")).toBeInTheDocument();
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByTestId("pbar-market-figures")).toBeNull();
+    // Collapsed, not gone: the comparison bar and the word that names it remain,
+    // which is the only thing the fallback is allowed to drop.
+    expect(within(container).getByTestId("pbar-legend")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "market: Arsenal 44%, Draw 25%, Chelsea 31%" })).toBeInTheDocument();
+
+    await user.click(toggle);
+    expect(within(container).getByTestId("pbar-market-figures")).toBeInTheDocument();
   });
 });
 
@@ -450,6 +590,47 @@ describe("ExplainerPanel", () => {
     // for or against a pick, in words or in colour.
     expect(document.body.textContent).not.toMatch(/for the pick|against it/i);
     expect(document.querySelector("svg[data-direction]")).toBeNull();
+  });
+});
+
+/** Item 4, as a rule rather than as two string swaps. A machine key shown to a
+ *  reader as if it were a label is the general defect; `btts` and `O2.5` are the
+ *  two a screenshot happened to catch. The components render what a site hands
+ *  them, so the only place a key or a bare `O` is actually *written* is the
+ *  harness — the fixtures Kevin reads the panel from, and the shape every site's
+ *  own mapping follows. It is read as source, because a string in a fixture that
+ *  nothing renders today is still the string a site copies tomorrow.
+ */
+describe("no raw key, and no bare O, reaches a reader", () => {
+  // Comments are stripped first: this repo explains a rule by quoting the code it
+  // replaced, so the literal strings "btts" and "O2.5" appear in prose that is
+  // documentation, not output. The strip is line- and block-comment removal with
+  // no string-literal awareness, which is safe here because this one file has no
+  // `//` inside a string.
+  const harness = readFileSync(resolve(__dirname, "../../harness/main.tsx"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+
+  it("never hands a market key to a tile's label or to its sub line", () => {
+    for (const key of ["btts", "total_goals", "moneyline", "spread", "result"]) {
+      expect(harness, key).not.toMatch(new RegExp(`(?:label|sub):\\s*"${key}"`));
+    }
+    // And the words that replaced them are there, so this is not a test that
+    // passes by the fixtures having been emptied.
+    expect(harness).toMatch(/label:\s*"Both teams score"/);
+    expect(harness).toMatch(/sub:\s*"Over 2\.5 · 56%"/);
+  });
+
+  it("never glues an O or a U to a digit, which is all 'O2.5' was", () => {
+    // Why this is a rule about the TYPEFACE and not about the wording: Barlow's
+    // zero is a plain oval, not slashed and not dotted, so a capital O and a
+    // zero are near-identical outlines and the only thing that ever told them
+    // apart was a space that was not there. Rendered in the real face at the
+    // real 12px, "O2.5 56%" and "02.5 56%" are not distinguishable. A screen
+    // reader saying "O two point five" has the same problem with no pixels
+    // involved at all. The word fixes it; a separator alone does not, because
+    // the whole string is one unbroken run of glyphs.
+    expect(harness).not.toMatch(/[OU]\d/);
   });
 });
 

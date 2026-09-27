@@ -13,11 +13,17 @@
  * disagree about what the panel is being asked to draw.
  */
 import { createRoot } from "react-dom/client";
-import { ExplainerPanel, KeyNumberTile, RecordStrip, FactorList, ProbabilityBar } from "../src/index";
-import type { Explanation, MarketTile, PickRef, Segment } from "../src/index";
+import { ExplainerPanel, KeyNumberTile, RecordStrip, FactorList, ProbabilityBar, pct } from "../src/index";
+import type { Common, MarketTile, PickRef, Segment, Verdict } from "../src/index";
 
 const NFL_PICK = 0.62;
-const NFL_VERDICT: Explanation = {
+// Annotated `Common & Verdict` — the v2 arm — rather than `Explanation`. On the
+// union `.factors` does not exist, so the fixture could not hand its own factors
+// to the standalone FactorList in state 9, and a v2 answer built here had to be
+// typed as "either shape" to be passed to the panel at all. Naming the arm says
+// what the fixture is, and it makes a fixture that is NOT a v2 answer fail to
+// compile instead of quietly losing its factors.
+const NFL_VERDICT: Common & Verdict = {
   verdict: "Baltimore is the pick, but the line is thinner than the number.",
   band: "strong", // computed: 0.62 on a two-way market is >= 0.60 (13a)
   // The pick travels with the answer (spec §5b) and the bar follows it by label.
@@ -43,10 +49,15 @@ const NFL_VERDICT: Explanation = {
 
 // §7a, with the record in the bottom strip rather than as a fourth tile — §6
 // lists it as an extra, and the mock's tile duplicates it.
+// Every `label` here is WORDS. `market` is the key the facts join on and the
+// panel never prints it, so a tile whose label is the key again would put
+// "moneyline" or "btts" in the one slot on a tile reserved for something a
+// reader can read — and it would do it only when `sub` was absent, so the
+// screenshot and the page could disagree about which tiles were affected.
 const NFL_TILES: MarketTile[] = [
-  { market: "moneyline", label: "moneyline", value: "62%", sub: "win · BAL" },
-  { market: "spread", label: "spread", value: "BAL −2.5", sub: "model −3.4" },
-  { market: "total", label: "total", value: "45.2", sub: "total pts · line 44.5" },
+  { market: "moneyline", label: "Moneyline", value: "62%", sub: "win · BAL" },
+  { market: "spread", label: "Spread", value: "BAL −2.5", sub: "model −3.4" },
+  { market: "total", label: "Total points", value: "45.2", sub: "total pts · line 44.5" },
 ];
 const NFL_SEGMENTS: Segment[] = [
   { label: "KC", prob: 0.38, market: "moneyline" },
@@ -57,7 +68,7 @@ const NFL_SEGMENTS: Segment[] = [
  *  the same value is handed to the bare bar in state 3 below. */
 const PL_PICK: PickRef = { label: "Arsenal", side: "home" };
 
-const PL_VERDICT: Explanation = {
+const PL_VERDICT: Common & Verdict = {
   verdict: "Arsenal are the pick, and the market roughly agrees.",
   band: "moderate", // computed: 0.48 on a three-way market is < 0.50 (13a)
   pick: PL_PICK,
@@ -71,10 +82,20 @@ const PL_VERDICT: Explanation = {
   generated_at: new Date().toISOString(),
   sport: "pl", pick_timing: "pre_kickoff",
 };
+/** "Over 2.5 · 56%", not "O2.5 56%". Kevin read the old one as "02.5" from a
+ *  screenshot, and the render settles it: Barlow's digit zero is a plain oval,
+ *  not a slashed or dotted one, so a capital O and a zero are near-identical
+ *  outlines and the only thing that ever told them apart was the space that was
+ *  not there. The fix is the word — any character after the O kills it, and a
+ *  separator alone would not, since the whole string is one run of glyphs. */
 const PL_TILES: MarketTile[] = [
-  { market: "result", label: "result", value: "48%", sub: "Arsenal win" },
-  { market: "total_goals", label: "total goals", value: "2.7", sub: "O2.5 56%" },
-  { market: "btts", label: "both score", value: "61%", sub: "btts" },
+  { market: "result", label: "Match result", value: "48%", sub: "Arsenal win" },
+  { market: "total_goals", label: "Total goals", value: "2.7", sub: "Over 2.5 · 56%" },
+  // No `sub`: PL's `btts` facts carry a `yes_prob` and no market line, and §6
+  // says an absent market renders nothing rather than a dash. So this tile falls
+  // back to its label — which is the state a screenshot has to show, because it
+  // is the state the `sub ?? market` bug printed "btts" into.
+  { market: "btts", label: "Both teams score", value: "61%" },
 ];
 const PL_SEGMENTS: Segment[] = [
   { label: "Arsenal", prob: 0.48, market: "result" },
@@ -113,7 +134,10 @@ const SLIVER: Segment[] = [
  */
 function favours(segments: Segment[]): string {
   const [first, second] = [...segments].sort((a, b) => b.prob - a.prob);
-  return `Its numbers favour ${first.label} over ${second.label}.`;
+  // The figures are derived too, not only the direction. Half a derivation still
+  // leaves a sentence that can be right about which way and wrong about how far,
+  // and the gap is the part a reader is most likely to check the bar for.
+  return `Its numbers favour ${first.label} over ${second.label}, ${pct(first.prob)} to ${pct(second.prob)}.`;
 }
 
 const RESTING = { loading: false, error: false, onRetry: () => {} };
@@ -148,9 +172,17 @@ function App() {
       </Case>
 
       <Case id="market-row-present" title="3 · the market row, when implied covers all three"
-        note="The same bar with a complete implied, and the same pick. The comparison is only drawn when it covers every outcome above it.">
-        <div data-sport="pl" className="max-w-[46rem]">
+        note="The same bar with a complete implied, and the same pick. The comparison is only drawn when it covers every outcome above it. The lower row is the market's own figures: same columns, the market's numbers, at the same 12px as the model's.">
+        <div data-sport="pl" className="flex max-w-[46rem] flex-col gap-4">
           <ProbabilityBar segments={PL_SEGMENTS} legend={PL_LEGEND_COMPLETE} minSegmentPx={2} pick={PL_PICK} />
+          <div className="flex flex-col gap-1.5">
+            <p className="max-w-[70ch] text-xs text-pr-text-faint">
+              The same bar with <code className="text-pr-text-dim">expandable</code>, which is how a surface too narrow
+              for a row of figures gets the fallback: a real <code className="text-pr-text-dim">aria-expanded</code>{" "}
+              button that drops the market&rsquo;s figures and leaves the bar, rather than setting them below 12px.
+            </p>
+            <ProbabilityBar segments={PL_SEGMENTS} legend={PL_LEGEND_COMPLETE} minSegmentPx={2} pick={PL_PICK} expandable />
+          </div>
         </div>
       </Case>
 
@@ -194,7 +226,7 @@ function App() {
         <div className="flex max-w-[46rem] flex-col gap-4">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {NFL_TILES.map((t) => <KeyNumberTile key={t.market} tile={t} />)}
-            <KeyNumberTile tile={{ market: "total", label: "total", value: "" }} />
+            <KeyNumberTile tile={{ market: "total", label: "Total points", value: "" }} />
           </div>
           <RecordStrip label="Picks made before kickoff" hits={41} settled={68} />
           <RecordStrip label="Nothing settled yet" hits={0} settled={0} />

@@ -6,7 +6,7 @@ export { ProbabilityBar, type PickRef, type Segment } from "./components/Probabi
 export { RoundNavigator } from "./components/RoundNavigator";
 export { StatTile } from "./components/StatTile";
 export { EmptyState, ErrorState, Skeleton } from "./components/States";
-export { ExplainerPanel, type Explanation, type Verdict, type LegacyExplanation } from "./components/ExplainerPanel";
+export { ExplainerPanel, type Explanation, type Verdict, type LegacyExplanation, type Common } from "./components/ExplainerPanel";
 export { BandChip, PanelHeading, type Band } from "./components/ExplainerVerdict";
 export { KeyNumberTile, type MarketTile } from "./components/KeyNumberTile";
 export { FactorList, type Factor } from "./components/FactorList";

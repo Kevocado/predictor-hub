@@ -237,10 +237,22 @@ model and the template.
 2. **Key-number tiles** — one per market the facts carry. Each shows the
    model's figure large, with the market's line beneath it when there is one.
    A tile is *absent* when its market is absent; never a zero, never a dash.
+   **A tile is labelled in words, never in keys.** `market` is an identifier and
+   is used only to join (§13c); the text under the figure is the market's
+   `label`, or the `sub` line when the caller gave one. A machine key printed
+   where a label belongs — `btts`, `total_goals` — is a defect in the same class
+   as a number this product computed: it is a fact about the code shown to a
+   reader as if it were a fact about the game.
 3. **Split bar** — the probability breakdown, `segments` wide. NFL gets two
    segments (the moneyline pair), PL gets three (home/draw/away). With PL's
    `implied` present, a second hairline row underneath shows the market's own
-   split, so the reader can see model against market rather than a bare number.
+   split **in words — the market's own percentages, under the model's, in the same
+   columns** — so the reader can see model against market rather than a bare
+   number or a row of unlabelled grey bars. The figures are read **by label**,
+   never by position, because the two splits are two different facts and pairing
+   them by index prints the market's 44% under the model's 48% and still looks
+   like a comparison. Both rows are set at the 12px floor (§6a): the market row
+   does not get a smaller size to make a row fit, it drops the row (§13c).
    The accent marks **the pick** (§5b) and nothing else: it is joined to a
    segment by `pick.label`, never by position, and a bar with no `pick` has no
    accented segment at all — an accented segment is a claim that there is a pick,
@@ -582,6 +594,16 @@ The market row renders **only when `implied` covers every outcome the model's
 split has** — all three for PL. Otherwise it is omitted entirely. Omission is
 the honest answer; a partial row is a comparison that cannot be made.
 
+**The rule is symmetric, and the second half is what the labels need.** "Covers
+every outcome the model's split has" is satisfied by a *superset*, and a market
+segment with no model column above it cannot be compared with anything — which is
+the whole purpose of the row, and it is also what stops the two rows of figures
+lining up. So the two splits must be the **same set of outcomes, one each**, and
+the market's figures are then read **by label** rather than by position. Neither
+half is reachable from the shapes this product actually serves (NFL 2/2, PL 3/3),
+so this is a rule about a call site that has not been written yet, and it fails
+closed: a superset omits the row rather than drawing half a comparison.
+
 The same rule governs the tile's market line: it states `implied` **for a side
 that is present**, and is omitted when the side it would name has no `implied`.
 For a draw pick with no `implied.draw`, the tile carries no market line at all.
@@ -602,7 +624,7 @@ retry)", and adds to §6b.
 
 Kevin asked for something intuitive and interactive. v1 had a retry button. That
 is not interaction, it is error handling, and it is not what was asked for. The
-panel gains three affordances, all of which connect parts of the same panel to
+panel gains four affordances, all of which connect parts of the same panel to
 each other, and all of which are reachable and operable from the keyboard.
 
 1. **A factor references what it is about.** Selecting or hovering a *why* row
@@ -619,6 +641,16 @@ each other, and all of which are reachable and operable from the keyboard.
    threshold the sentence is clamped to its first line behind a real
    `<button aria-expanded>`, not a CSS-only trick, so it works without
    JavaScript-driven measurement and is announced correctly.
+4. **The market row's figures collapse the same way.** The market row is a
+   `justify-between` row of labels exactly like the bar's own, so it inherits the
+   same collision, and §6a's floor forbids answering that with a smaller size. On
+   a surface too narrow for it the row drops behind the same real
+   `<button aria-expanded>`, leaving the bar and the word that names it. It is
+   **opt-in and open by default** — off by default so a wide panel never hides
+   figures behind a control that adds nothing, open when on because an unlabelled
+   market bar is the defect the figures exist to fix. Measured, not assumed: at
+   390px with a three-way market and PL's longest club name the row fits, and at
+   260px it collides, which is the width the fallback is for.
 
 **The constraint that makes this safe: no interaction may reveal a figure that is
 not in the facts.** Each affordance shows a label, a highlight, or geometry the

@@ -27,7 +27,11 @@ export type LegacyExplanation = {
   sections: { market: string; title: string; text: string }[];
 };
 
-type Common = {
+/** Everything both shapes of answer carry. Exported so a caller that *builds* an
+ *  answer can name the v2 arm (`Common & Verdict`) rather than the union: on
+ *  the union, `.factors` does not exist, which is a type error at every call
+ *  site that legitimately has a v2 answer in hand. */
+export type Common = {
   /** "llm" means a model wrote these words; "template" means the site's own
    *  copy did, from the same numbers. The panel never blurs the two. */
   source: "llm" | "template";
@@ -104,6 +108,7 @@ export function ExplainerPanel({
   tiles = [],
   segments,
   legend,
+  expandable = false,
   record,
   players,
 }: {
@@ -122,6 +127,11 @@ export function ExplainerPanel({
   /** The market's own split, rendered only when it covers every outcome
    *  `segments` has (§13b). */
   legend?: Segment[];
+  /** For a surface that can be too narrow for a row of figures — the market
+   *  row's labels collapse behind a real `aria-expanded` button, the same shape
+   *  `FactorList` uses for a clamped sentence. Off by default, so a wide panel
+   *  never hides text behind a control that adds nothing. */
+  expandable?: boolean;
   record?: { label: string; hits: number | null; settled: number };
   /** NFL's top player projections (§6). A list the facts already carry, so it
    *  costs the panel nothing to show. */
@@ -224,6 +234,7 @@ export function ExplainerPanel({
               segments={segments}
               legend={legend}
               minSegmentPx={2}
+              expandable={expandable}
               // The answer's pick, never worked out here. Absent, the bar accents
               // nothing, which is the honest rendering of a bar with no pick.
               pick={v2 ? data.pick : null}
