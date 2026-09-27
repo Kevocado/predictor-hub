@@ -1,0 +1,40 @@
+name: Deploy the hub to the VPS
+
+on:
+  # A merge to main publishes the landing page. Unlike the five site repos
+  # there is no image to build: Caddy serves this repo's index.html straight
+  # off disk, and `bin/deploy hub <sha>` checks it out to sites/hub. So there
+  # is no paths filter either — a change to any tracked file here is a change
+  # to what is served, and there is no generated or polled data in this repo
+  # for a filter to exclude.
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  # Caddy serves the landing page from the checkout at sites/hub (see the
+  # vps-stack README). `bin/deploy` is the only thing the CI key can ask for --
+  # a forced command in the deploy user's authorized_keys -- so a leaked key
+  # can publish a checkout and nothing else.
+  vps:
+    name: Publish the landing page
+    if: vars.VPS_HOST != ''
+    runs-on: ubuntu-latest
+    # One deploy at a time: two repos pushing at once race on /opt/stack/.env.
+    # bin/deploy takes its own lock too; this keeps the queue off the box.
+    concurrency: vps-deploy-hub
+    steps:
+      - name: Deploy to VPS
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          # Written before the first connection, or ssh prompts to confirm the
+          # host key and the job hangs until it times out.
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh deploy@${{ vars.VPS_HOST }} hub ${{ github.sha }}
