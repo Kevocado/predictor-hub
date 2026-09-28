@@ -4,13 +4,39 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SPORTS = ("pl", "f1", "nfl", "cfb", "nba")
 
-#: The sports this service answers for. F1 and NBA are configured and reachable
-#: but not served: the v2 panel is specified for the three sports whose facts
-#: carry the markets it draws (§3), and an explanation for a sport we have no
-#: panel for would be a template rendering as an answer. Kept beside SPORTS so
-#: the "configured" set and the "answered" set are read together — a new sport
-#: has to be added to both deliberately rather than by omission.
-SERVED_SPORTS = ("pl", "nfl", "cfb")
+#: The sports this service answers for.
+#:
+#: **F1 is configured and reachable but not served, and that is a product
+#: decision.** A win probability *is* the explanation: a model that says
+#: "Norris 71%" has said the whole thing, and prose over a field of twenty drivers
+#: is the model restating its own input at greater length, which is the failure
+#: this product exists to avoid. F1 also has no line, so a model-vs-market tile
+#: would have nothing honest to show.
+#:
+#: **NBA serves, and it used to be on this list's other side for the wrong
+#: reason.** It was refused alongside F1 because "the v2 panel is specified for the
+#: three sports whose facts carry the markets it draws" — a claim checked for F1
+#: and assumed for NBA. NBA's `/facts` carries `moneyline`, `spread` and `total`,
+#: so every component the panel draws is fed.
+#:
+#: **The shape is NOT the same as NFL and CFB's, and that difference is why serving
+#: NBA was not a one-line change.** NFL and CFB put the MARKET's line in `line`.
+#: NBA puts the MODEL's own projected margin there -- `"BOS by 4.2"`, or the literal
+#: `"Toss-up"` -- and the market's in a separate `market_line`, which it emits only
+#: when a pre-tip market row exists. A panel that reads `line` as the market's
+#: renders the model compared with itself, and renders it silently in the no-quote
+#: case that NBA hits most often.
+#:
+#: An earlier version of this comment said "the same three keys in the same shape
+#: as NFL and CFB". That sentence is what the refusal was justified on, and it was
+#: false in the one respect that mattered -- so the comment that a future session
+#: reads first is now the one that is true. The code carrying the difference is
+#: `template.MARKET_LINE_KEY`; `tests/test_template_quoted_line.py` pins it.
+#:
+#: Kept beside SPORTS so the "configured" set and the "answered" set are read
+#: together — a new sport has to be added to both deliberately rather than by
+#: omission.
+SERVED_SPORTS = ("pl", "nfl", "cfb", "nba")
 
 
 class Settings(BaseSettings):
@@ -30,16 +56,49 @@ class Settings(BaseSettings):
     daily_cap: int = Field(default=900, validation_alias="EXPLAINER_DAILY_CAP")
     db_path: str = Field(default="/data/explainer.sqlite", validation_alias="EXPLAINER_DB_PATH")
     enabled: bool = Field(default=True, validation_alias="EXPLAINER_ENABLED")
-    # The cache key covers this (cache.key, called from service.explain), and a
-    # hit is served verbatim — so a change to the *writer* under a version the
-    # deployed cache already holds is never called. Measured on the VPS
-    # 2026-09-27: the cache holds v2 rows, written before the no-pick `neutral`
-    # default and the absent-band fix. v2 is therefore spent, and shipping this
-    # without moving the version would deploy both fixes inert.
-    #
-    # tests/test_prompt_version.py holds the measured production floor and fails
-    # if this ever stops being strictly greater than it.
-    prompt_version: str = "v3"
+    #: Part of the cache key (`Cache.key`, called from `service.explain`) and a
+    #: hit is served verbatim, so this is a deploy precondition rather than a
+    #: label: a change to how a body is WRITTEN under a version the deployed
+    #: cache already holds ships nothing a reader sees. Move it in the same
+    #: change as the writer, never on its own.
+    #:
+    #: `v2` is spent. `tests/test_prompt_version.py` holds what the deployed
+    #: cache was MEASURED to hold on the VPS on 2026-09-27 — a `v1`/`v2` pair,
+    #: floor `v2` — and fails if this stops being strictly above it. What the bump
+    #: puts live under this version is the cached half of a response, `verdict`
+    #: and `factors`: the no-pick `neutral` direction default, the frame's rule
+    #: that a factor names a market instead of saying which number is bigger, the
+    #: second sentence of rule 2 rewritten so the anti-advice ban no longer hands
+    #: the model a model-vs-market comparison to imitate, and the spread sentence
+    #: that states both figures without naming a side.
+    #:
+    #: The band is deliberately NOT in that list, and this is the limit of the
+    #: rule rather than an oversight: `service._answer` spreads the stored body
+    #: and then re-derives `band`, `pick` and `pick_timing` on every read, hit or
+    #: miss. A change to the band is therefore not gated on this field, and a
+    #: cached `v2` row already gets the right one. §13e withholds the band chip
+    #: in `packages/predictor-ui` for the same reason — it is a reader-side
+    #: decision about an unsayable claim, not a writer change.
+    #:
+    #: **One version is recorded and not deployed, and that is deliberate.**
+    #: `tests/test_prompt_version_moves_with_the_prompt.py` is append-only: a row
+    #: is never edited, because editing one to match a prompt you have just
+    #: changed is the guard switching itself off. A prompt edit made while a
+    #: version is still undeployed would strictly be allowed to re-record that
+    #: version's row — and `v3` is exactly that case, having never been written
+    #: under, since the measured floor is `v2`. It is still bumped rather than
+    #: re-recorded, because the cost of the rule being absolute is one number and
+    #: the cost of it not being is a guard that can be turned off by editing a
+    #: table in the same breath as the prompt. A `v3` row that describes a prompt
+    #: nobody was ever sent is a harmless oddity in a log; a re-recordable row is
+    #: not.
+    #:
+    #: Two rules, two files, and neither substitutes for the other.
+    #: `tests/test_prompt_version.py` bounds this against production; the other
+    #: is `tests/test_prompt_version_moves_with_the_prompt.py`, which holds a
+    #: digest of everything the writer sends, so the frame cannot move without
+    #: this and leave a green suite behind.
+    prompt_version: str = "v4"
     sport_api_pl: str | None = None
     sport_api_f1: str | None = None
     sport_api_nfl: str | None = None

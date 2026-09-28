@@ -55,7 +55,17 @@ def test_the_vocabularies_are_closed():
     # are — and what EVERY factor is when there is no pick. It was left out, and
     # the two that remained were then read as "the model had an opinion", which
     # is how a factor about the total came to read "for the pick".
+    #
+    # Pinned with `==` rather than a membership or length check, and that is the
+    # load-bearing part of this line: `test_template_v2` and
+    # `test_template_spread_claim` both assert `direction in DIRECTIONS`, so a
+    # FOURTH value appended here would leave every direction guard in the suite
+    # green while widening what the panel is asked to draw. This is the only place
+    # the vocabulary is decided, so it is the only place that can notice.
     assert DIRECTIONS == ("up", "down", "neutral")
+    # `NEUTRAL` the constant and `"neutral"` the wire value are the same string
+    # because the panel's MARK table is keyed on the literal; if the two ever
+    # diverge, this is where it shows.
     assert NEUTRAL in DIRECTIONS and NEUTRAL == "neutral"
     assert PSEUDO_MARKETS == ("record", "context")
 

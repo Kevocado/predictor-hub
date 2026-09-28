@@ -21,7 +21,7 @@ for one — there is no background pre-generation.
   "pick": { "label": "BAL" },     // COMPUTED from the facts; the key is OMITTED
                                   // when there is no pick. Never null.
   "source": "llm", "model": "nemotron-3.5-lightning",
-  "generated_at": "2026-10-05T00:20:00Z", "prompt_version": "v3",
+  "generated_at": "2026-10-05T00:20:00Z", "prompt_version": "v4",
   "pick_timing": "pre_kickoff"
 }
 ```
@@ -54,17 +54,38 @@ Three properties worth knowing before changing anything here:
   direction resolves to `neutral`, never to `up`: `up` renders as "for the
   pick", so defaulting to it reads a model that said nothing as one that
   endorsed the pick.
+- **A factor names a market and states two figures; it never says which is
+  bigger, and never says whose margin a number is.** The facts carry
+  `model_margin` (home-minus-away) and a market line that is a worded string
+  (`"BAL -2.5"`, or NBA's `"BOS by 4.2"`), with no home/away designation
+  anywhere in the bundle — so the comparison is not a question those fields can
+  answer, and the prompt tells the model not to attempt it. The spread row
+  therefore reads *"It projects a margin of 2.6 points, against a line of
+  BAL -2.5"*: both numbers, no verdict on the relationship and no team named.
+  The end state is a `pick_margin` beside `model_margin`, emitted by each
+  sport's own `/facts` builder, which would let the row name the pick again.
+  Until that exists in the facts, no renderer here may attribute the margin.
 
 **`prompt_version` is part of the deploy, not of the code.** The cache key
 covers it and a hit is served verbatim, so **a deploy that changes the writer
 and does not move the version changes nothing a reader sees** — the cached
-bodies keep being served under the old version's key, and the deploy is green
-while the fix is inert. It is now `v3`; the cache measured on the VPS on
-2026-09-27 held `v2` rows written before the `neutral` and absent-band fixes.
-Move it in the same change as the writer, and expect it to cost one generation
-per cached row: that is the price of the prose changing. `tests/test_prompt_version.py`
-fails if it is not strictly greater than the version the deployed cache was
-measured to hold.
+bodies keep being served under the old version's key and the deploy is green
+while the fix is inert. It is now `v4`; the cache measured on the VPS on
+2026-09-27 held `v1`/`v2` rows written before the `neutral` direction default,
+the frame's rule on which number is bigger, the spread sentence that names no
+side, and rule 2's second sentence, which used to hand the model a
+model-vs-market comparison to imitate. (`v3` is recorded in the digest log and
+was never written under; the measured floor is `v2`.) Move the version in the
+same change as the writer, and expect it to cost one generation per cached row:
+that is the price of the prose changing. Two tests hold the two halves apart —
+`tests/test_prompt_version.py` fails if the version is not above what the
+deployed cache was measured to hold, and
+`tests/test_prompt_version_moves_with_the_prompt.py` fails if the prompt text
+moves without the version moving with it. The band is not on that list and
+never was: `service._answer` re-derives it on every read, so a cached row
+already gets the right one, and the band chip withheld on a rebuilt pick
+(§13e, in `packages/predictor-ui`) is a reader-side decision that the version
+does not gate either.
 
 ## Run
 
@@ -110,7 +131,7 @@ API's `/facts`, and the panel — before a single request is spent.
 | `EXPLAINER_DAILY_CAP` | `900` | OpenRouter requests per UTC day, retries included (the account allows 1,000). Enforced by the ledger at spend time, so a refusal or a cache hit costs nothing. The old scheduler's 50-request headroom is gone with it: that headroom existed to stop pre-generation starving on-demand readers, and there is no pre-generation left to starve them. |
 | `EXPLAINER_ENABLED` | `true` | `false` serves templates only, so the first uncached read is free while you check a rollout. |
 | `EXPLAINER_DB_PATH` | `/data/explainer.sqlite` | Cache and daily ledger. Keep it on the volume. |
-| `SPORT_API_PL`, `SPORT_API_F1`, `SPORT_API_NFL`, `SPORT_API_CFB`, `SPORT_API_NBA` | unset | Base URL of each sport API (the prefix before `/facts/...`). Unset sports return 404. **Serving is a separate list**: `config.SERVED_SPORTS` is `("pl", "nfl", "cfb")`, so `f1` and `nba` return 404 *even when their URL is configured* — the v2 panel is specified for three sports, and F1 and NBA are in `SPORTS` only so their config and their sites' proxies keep working while the frontend removal lands. `tests/test_unserved_sport.py` pins both halves. |
+| `SPORT_API_PL`, `SPORT_API_F1`, `SPORT_API_NFL`, `SPORT_API_CFB`, `SPORT_API_NBA` | unset | Base URL of each sport API (the prefix before `/facts/...`). Unset sports return 404. **Serving is a separate list**: `config.SERVED_SPORTS` is `("pl", "nfl", "cfb", "nba")`, so **`f1` returns 404 even when its URL is configured**. F1 is refused as a product decision rather than a data gap: a win probability *is* the explanation, and prose over a field of twenty drivers is the model restating its own input. NBA **does** serve — it was refused alongside F1 on an assumption that was never checked against its own facts, and its `/facts` carries the same `moneyline`/`spread`/`total` the panel draws. `tests/test_unserved_sport.py` pins both halves, and `tests/test_template_quoted_line.py` pins the contract difference that serving NBA exposed: NBA puts the market's line in `market_line` while NFL and CFB use `line`, so the template reads whichever key is present. |
 
 Run a single uvicorn worker: the per-match lock that stops two visitors
 paying for the same explanation lives in the process.
@@ -217,6 +238,30 @@ run against the wrong interpreter and fail collection with
 Tests never touch the network: OpenRouter and ESPN are mocked with `respx`,
 and sport APIs with mocked routes.
 
+**One test needs a sibling checkout, and it FAILS rather than skips if it cannot
+find one.** `tests/test_unserved_sport.py::test_nbas_facts_carry_the_markets_the_panel_draws`
+reads `NBA_Predictor`'s `src/nba_predictor/api/facts.py` from that repo's own
+git and runs its `_markets`, so the claim that NBA can serve is checked against
+the builder that has to produce the data rather than against a fixture written
+here. It looks for `../NBA_Predictor` (and any `NBA_Predictor` beside this
+checkout); set `NBA_REPO=/path/to/NBA_Predictor` to point it elsewhere. That path must be a
+git checkout with an `origin/main`; a plain directory is skipped and the sibling
+beside this repo is used instead, so a typo in the variable is a silent no-op
+rather than an error.
+
+It fails rather than skips deliberately: a skip would make the whole
+justification for serving NBA unverifiable while still reporting a green suite,
+which is the failure mode this project keeps hitting. The cost is that a copy of
+`services/explainer` on its own, with no sibling, has one red test. That is
+documented here because this repo's only workflow is a manually-dispatched static
+deploy with no pytest job, so nothing else will tell you.
+
+Run the mutation harnesses the same way:
+
+```sh
+uv run --extra dev python tools/mutcheck_template_line.py
+```
+
 ## Rollout
 
 Follow spec section 4's staged order. Each step is independently reversible,
@@ -239,9 +284,58 @@ above while you are there.
 2. **CFB, PL and NBA facts.** Add each `SPORT_API_*`. One game per sport. For
    PL and NBA, go through the site's own `/api/explain/...` proxy rather than
    the service directly, so the path translation is exercised.
-3. **F1 facts and the race story.** Open a session. The panel is collapsed to
-   the headline behind "Read the race story". Confirm a rebuilt session says
-   "Rebuilt after the session".
+
+   **NBA specifically: a two-row panel is CORRECT today, and a four-row one
+   needs data this service does not produce.** Read a real NBA game and expect
+   the pick row ("The model makes BOS the pick at 62%") and then, because nothing
+   else is there to show, a padding row saying either that the model has a number
+   and the market has not quoted a price, or that there is no model number at
+   all. The verdict reads "BOS is the pick." with no qualifier anywhere in it,
+   and the `band` chip beside it is computed from `pick.prob` — the template does
+   not qualify the pick and never will, because a word nothing ties to a fact is
+   the same defect as a number, which is the whole reason the model is forbidden
+   from writing one either.
+
+   The two rows you will **not** see yet are "The line" (the model's projected
+   margin beside the market's quoted spread) and "The total". Both need the
+   market's own price, and NBA only quotes one when a pre-tip market row exists
+   for that game — a row written after tip-off is deliberately ignored, because
+   quoting a post-tip line is hindsight. Its `game_market_predictions` table was
+   measured at **0 rows** on 2026-09-28, in NBA_Predictor's tracking DB, so there
+   is no pre-tip row to quote and both factors are omitted. That is the correct
+   behaviour, not a bug: spec §6 has an absent market render *nothing*, and the
+   row is omitted rather than narrated against a number nobody could check it
+   against. The panel withholds nothing silently — but it is close to empty, and
+   the deployer is the first person who will see that.
+
+   **What to check, not what to file.** Before concluding NBA is broken, count
+   the rows that make the quote possible:
+
+   ```sh
+   sqlite3 "${TRACKING_DB_PATH:-$PROJECT_ROOT/data/tracking.db}" \
+     'SELECT count(*) FROM game_market_predictions'
+   ```
+
+   Zero, and a thin NBA panel is the expected state — nothing to file. Non-zero,
+   and a correct NBA panel should show "The line" and "The total". If the count
+   is non-zero and the figures are still missing, the thing to check is
+   `template.MARKET_LINE_KEY`: NBA's quoted line lives in `market_line` and has
+   **no fallback**, because `line` holds the *model's* own wording for NBA
+   ("BOS by 4.2", or the literal `"Toss-up"`), and reading it as the market's
+   renders the model compared with itself. `tests/test_unserved_sport.py` runs
+   NBA's real `_markets` to check that contract and
+   `tests/test_template_quoted_line.py` pins the template's side of it.
+
+   Re-measure the count rather than trusting the number above. It is a
+   measurement of a moment, and it is the one input to this step that will change
+   on its own.
+3. **F1 is not in this list, on purpose.** It has been refused at
+   `/explain/{sport}/{id}` since the on-demand phase, so there is no F1 panel to
+   check and `SPORT_API_F1` is only read by the deploy script's smoke loop. This
+   step used to walk an operator through the race story; it described a panel that
+   does not exist, and a checklist item that cannot be performed is worse than no
+   item, because it reads as an omission. If F1 is ever un-refused, the race-story
+   check comes back with it.
 4. **Watch `used_today` in `/status`.** On-demand spend is per reader now, so
    the number to watch is requests-per-unique-fixture rather than a steady climb
    every 3 h. Confirm a second visit to the same fixture is a cache hit and

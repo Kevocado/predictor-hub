@@ -31,7 +31,11 @@ def test_template_covers_markets_and_the_record():
     out = explain_from_template(FACTS)
     text = _text(out)
     assert "BAL the pick at 62%" in text
-    assert "3.4 points better" in text and "BAL -2.5" in text
+    # Both figures of the spread, and nothing about which of them is bigger or
+    # whose gap it is: the bundle carries no home/away designation, so the
+    # template cannot say. `test_template_spread_claim.py` is where that is
+    # pinned exactly; this only has to know neither figure is dropped.
+    assert "3.4 points" in text and "BAL -2.5" in text
     assert "47.8" in text and "45.5" in text
     assert "41 of 66" in text
     assert [f["key"] for f in out["factors"]] == ["moneyline", "spread", "total", "record"], (

@@ -80,10 +80,15 @@ def test_the_template_emits_the_v2_shape(facts):
     assert 2 <= len(out["factors"]) <= 4, f"{len(out['factors'])} factors"
     for f in out["factors"]:
         assert set(f) == {"key", "direction", "headline", "text"}, f"wrong factor shape: {sorted(f)}"
-        # `DIRECTIONS` rather than a literal pair: the vocabulary grew to three,
-        # and a second copy of it here is how a "neutral" row would have started
-        # failing this file instead of the service.
-        assert f["direction"] in DIRECTIONS
+        # `DIRECTIONS` rather than a literal pair, from both directions: a second
+        # copy of the vocabulary here is how a "neutral" row would have started
+        # failing this file instead of the service, and a hardcoded `("up",
+        # "down")` is what made the spread factor's `neutral` a shape failure
+        # rather than a decision. The failure message names the undrawable value,
+        # because "direction not in tuple" alone does not say which row did it.
+        # `test_contract.test_the_vocabularies_are_closed` pins the CONTENTS, so
+        # this is not a comparison against a constant nobody watches.
+        assert f["direction"] in DIRECTIONS, f"undrawable direction: {f['direction']!r}"
         assert f["headline"] and f["text"]
 
 
@@ -213,16 +218,58 @@ def test_the_rows_about_the_pick_still_carry_their_direction():
     With a pick, the rows that really are for or against it keep saying so, or
     neutral would be a way of losing the panel's argument rather than a way of
     keeping it honest.
+
+    **`"The line"` is `neutral` here, and this used to assert `"down"` for it.**
+    That entry was not the point of this test -- the point is that a row which
+    really is about the pick keeps its direction -- and the "down" was inherited
+    from the template rather than argued for here. It was wrong: nothing in
+    `template.py` compares `model_margin` against the quoted line, so "down"
+    (which means "against the pick", i.e. a market SOFTER than the model) was a
+    mark asserting a comparison that is never computed. `test_template_spread_claim`
+    is the authority on that row now, and it says `neutral` for all three
+    orderings of the two numbers.
+
+    The intent is kept at full strength, and this is still an exact-equality
+    assertion on the whole row set rather than a membership check, so a template
+    that made "The pick" neutral to "balance" the rows would fail here. What is
+    lost is one witness for "with a pick, a row about the line is still
+    directional"; the two that remain -- "How it finished" and "Rebuilt after
+    the start", one `up` and one `down` -- are the ones that were argued for, and
+    they cover both directions of the vocabulary between them.
     """
     assert _directions(explain_from_template(NFL)) == {
         "The pick": "up",
-        "The line": "down",
+        "The line": NEUTRAL,
         "Its record so far": NEUTRAL,
     }, _directions(explain_from_template(NFL))
-    assert _directions(explain_from_template(FINISHED))["How it finished"] == "up"
+    assert _directions(explain_from_template(FINISHED))["How it finished"] == "up", (
+        f"{_directions(explain_from_template(FINISHED))}"
+    )
     assert _directions(explain_from_template(REBUILT))["Rebuilt after the start"] == "down", (
         "a rebuilt pick is a reason not to lean on it, which is a real 'against'"
     )
+
+
+def test_the_line_row_is_neutral_with_a_pick_and_without_one_alike():
+    """The pair that distinguishes a constant from a `_toward` call.
+
+    `NFL` has a full pick and `WITHOUT_PROBABILITY` has a label and no
+    probability, so the two disagree about `has_pick` and agree about everything
+    else the row reads. If the row were still `_toward("down", has_pick)` the two
+    would differ -- `down` and `neutral` -- and this fails. They do not, so the
+    row's direction does not consult the pick at all.
+
+    This is the half of main's no-pick rule that the spread fix made
+    unreachable: the rule is real and still applies to every OTHER row (see
+    `test_no_pick_bundle_emits_nothing_directional`), but for THIS row the
+    direction was already unavailable with a pick in hand, which is a stronger
+    reason and reached earlier. Asserting it once, on one bundle, would have let
+    the `_toward` call hide in here.
+    """
+    with_pick = _directions(explain_from_template(NFL))
+    without_pick = _directions(explain_from_template(WITHOUT_PROBABILITY))
+    assert with_pick["The line"] == NEUTRAL, with_pick
+    assert without_pick["The line"] == NEUTRAL, without_pick
 
 
 def test_a_finished_game_with_no_pick_is_neutral_not_up():
@@ -244,6 +291,17 @@ def test_a_label_without_a_probability_gives_neutral_where_it_names_a_side():
     even though the label is there for it to name. This is the row the panel
     would have pointed at the pick for, so it is the row where being wrong is
     visible rather than merely wrong.
+
+    **What this now rests on.** When this was written the row's direction was
+    `_toward("down", has_pick)`, so this test was the only thing standing between
+    a half-written pick and a row reading "against it" — and if `_toward` had
+    been dropped, this would have failed. It no longer would: the row's direction
+    is a constant `NEUTRAL` (see the spread fix), so the assertion holds
+    whatever `has_pick` is. Kept, because the verdict/label half of the claim is
+    still worth stating and still holds, but it is no longer a guard on
+    `has_pick`. The guard that is, for this row, is the with/without pair in
+    `test_the_line_row_is_neutral_with_a_pick_and_without_one_alike`; for every
+    other row it is `test_no_pick_bundle_emits_nothing_directional`.
     """
     out = explain_from_template(WITHOUT_PROBABILITY)
     assert out["verdict"] == "There is no pick for this one yet."

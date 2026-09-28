@@ -19,6 +19,12 @@ about every row below, not a special case for the rows that mention a pick: the
 total, both-teams-to-score and the record are statements about the game and about
 other picks, so they are `neutral` whether or not this one exists.
 
+One row is `neutral` for the *other* reason, and `_toward` is not what puts it
+there: the spread factor, which cannot be directional even with a pick in hand,
+because nothing in this file compares the model's margin against the quoted line.
+See the comment at that row — it is `neutral` always, and would be wrong to
+write as `_toward(NEUTRAL, has_pick)`, which is a no-op that reads like a rule.
+
 Facts fields beyond the contract's core are loose dicts, so every read here is
 defensive: this is the last resort and it must never raise.
 """
@@ -27,7 +33,117 @@ from __future__ import annotations
 from .contract import NEUTRAL, as_dict, band_for, market_shape, pick_for, pick_prob
 
 _TENS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]
-_START = {"f1": "the session started", "pl": "kickoff"}
+#: Which key holds the MARKET's quoted line, per sport. Read in order; the first
+#: key present with a non-empty value wins, and if none is present the factor is
+#: omitted rather than narrated against nothing.
+#:
+#: This is a table rather than a precedence rule because `line` does not mean one
+#: thing across the family. NFL and CFB put the market's line there; NBA puts the
+#: MODEL's own projected margin there and the market's in `market_line`. A blanket
+#: fallback reaches the model's wording whenever NBA has no pre-tip quote, and
+#: NBA omits `market_line` in exactly that case -- so the fallback fired on NBA's
+#: common path and rendered "against a line of Toss-up".
+#:
+#: The end state is NFL and CFB emitting `market_line` the way NBA already does
+#: (NBA's own facts.py says so: "`market_line` in every market, so the panel reads
+#: one key for the quoted book line. `line` is reserved for the model's own
+#: wording"). One line each in two sibling repos, and this table empties.
+#:
+#: Absent from the table means the default, which is right for a sport whose `line`
+#: IS the market's line. A new sport that puts its model's own wording in `line`
+#: must be added here -- and that is the failure this table exists to make
+#: visible rather than guess at.
+#: Only the sports whose `line` is NOT the market's need an entry. Everyone else
+#: gets the default, which prefers `market_line` and falls back to `line` -- right
+#: for a sport that puts the market's line in either key, and wrong for one that
+#: puts something else in `line`. NBA is currently the only such sport.
+MARKET_LINE_KEY: dict[str, tuple[str, ...]] = {
+    "nba": ("market_line",),
+}
+
+#: The key list a sport gets when it is **absent** from `MARKET_LINE_KEY` above:
+#: the market's quoted key first, then the sport's own `line`, which is the
+#: market's line for every sport that has only one of the two.
+#:
+#: It is a named constant and not a default argument, and both call sites pass it
+#: explicitly. The signature used to declare the same two-key tuple as a default
+#: while BOTH callers overrode it, so the default was dead code, the value existed
+#: in three places, and nothing tied them together -- changing the default to a
+#: single key changed no rendered output and failed no test, which is the only
+#: reason it is worth writing down. Stated once here, it is reachable by the two
+#: rows that use it, and
+#: `test_a_sport_absent_from_the_table_prefers_the_quoted_key_over_the_model_key`
+#: fails if the order or the length changes.
+DEFAULT_MARKET_LINE_KEY: tuple[str, ...] = ("market_line", "line")
+
+#: How each sport names the moment the game begins. NBA says "tip-off" in its
+#: prompts (`prompts.py` `SPORT_NOTES`) and in the record label the panel renders,
+#: so a sentence reading "rebuilt after kickoff" sat next to "picks made before
+#: tip-off" on the same screen. The default is kept for the two football sports
+#: rather than listing them, so a new sport gets a sensible word instead of
+#: `KeyError`.
+_START = {"f1": "the session started", "pl": "kickoff", "nba": "tip-off"}
+#: How small a projected margin may be before the spread factor stops narrating
+#: it, in points. Half a point, and not a number invented here: NBA's own
+#: `_margin_line` (`api/facts.py`) words a margin as a gap only at
+#: `abs(margin) >= 0.5` and otherwise returns the literal "Toss-up". So a bundle
+#: whose margin is 0.4 arrives having already been told the gap is a toss-up, and
+#: a template without this floor contradicts the bundle it was handed.
+#:
+#: The floor exists because `margin is not None` passes for `0`, and the row it
+#: gates then exists only to say nothing. It used to be worse than that -- the
+#: sentence it gated ended "It rates BOS 0 points better", a claim about a
+#: disagreement that does not exist, and that comparison has since been taken out
+#: of the sentence altogether (see the spread factor below). The floor is still
+#: load-bearing: NBA's own builder words a margin as a gap only at
+#: `abs(margin) >= 0.5` and otherwise returns the literal "Toss-up", so a bundle
+#: whose margin is 0.4 arrives having already been told the gap is a toss-up,
+#: and a template without this floor contradicts the bundle it was handed -- it
+#: would print a gap where the producer said there is none, and a reader would
+#: give a tile to a row with nothing in it. Same defect class as the clause this
+#: file once ended that sentence with -- a comparison stated rather than computed
+#: -- except the uncomputable half here is not "which of the two is bigger" but
+#: "whether there is anything to compare at all".
+#:
+#: **Only the MAGNITUDE half of NBA's rule.** NBA also requires the margin to
+#: point at the pick's own team before wording it, and that check is not
+#: available here: the bundle carries no home/away designation, so which side a
+#: margin belongs to is not derivable. A bundle whose margin disagrees with the
+#: moneyline's favourite therefore still gets its row. Fixing that needs a
+#: home/away designation in the facts, not a guess in this file.
+#:
+#: Inclusive, because a margin of exactly 0.5 is one NBA is willing to word.
+MIN_SPREAD_MARGIN = 0.5
+
+#: What the padding row says, one wording per state of the bundle. Three
+#: wordings for three different CLAIMS, keyed by what the bundle actually carries
+#: -- see the block in `explain_from_template` that chooses between them.
+#:
+#: **The old single wording was "The facts for this one are still filling in",
+#: which is a claim about FIGURES HAVEN'T ARRIVED, and that is a *worse*
+#: description for NBA than it was before this branch.** Serving NBA is what made
+#: the difference visible: an NBA bundle that reaches the padding row carries
+#: `model_margin` and `model_total`, so the model HAS a projection and the absent
+#: thing is the MARKET's quoted price. Those are two different states and one
+#: sentence cannot be true of both -- so the row says which one it is in.
+#:
+#: A third state is kept out on purpose. "The model has no settled record on this
+#: one yet" is what an earlier draft padded with, and it was withdrawn because it
+#: claims a RECORD is missing, which is false for exactly the bundles that reach
+#: here. `PADDING_NO_PROJECTION` says the same honest thing about a figure the
+#: bundle really does lack, and says nothing about the record.
+PADDING_NO_QUOTE = "So there is a model number for this one, and no quoted price to read it against."
+#: Both figures present, so nothing is missing and the row is here only because a
+#: gate kept a real row from firing. A sentence about something being absent would
+#: be false, so this one names the two and stops.
+PADDING_BOTH = "So the model and the market both have a number here, and little else to weigh."
+#: No model figure at all, which is the football case and the only one in which
+#: the old wording was accurate. It is ALSO the wording for the one state with no
+#: name of its own -- a quoted price with no model figure, where the market priced
+#: the game and the model has nothing for it -- because it is the sentence that is
+#: true there. `PADDING_BOTH` would not be.
+PADDING_NO_PROJECTION = "So there is no model number for this one yet."
+
 MAX_FACTORS = 4
 
 
@@ -79,6 +195,134 @@ def _toward(direction: str, has_pick: bool) -> str:
     return direction if has_pick else NEUTRAL
 
 
+def _quoted_line(market: dict | None, keys: tuple[str, ...]) -> str | None:
+    """The line a READER can check against a book, from whichever key this sport
+    used to put it in.
+
+    The key `line` means two different things across the family. NFL and CFB put
+    the market's line in it (`"BAL -2.5"`) and have no `market_line`. NBA puts the
+    MODEL's own projected margin there (`"BOS by 4.2"`, or the literal `"Toss-up"`
+    when the margin rounds to nothing) and the market's line in `market_line`.
+
+    Reading `line` as the market's is therefore right for two sports and wrong for
+    one, and for NBA it renders the model compared with itself: *"It rates BOS 4.2
+    points better, against a line of BOS by 4.2."* That is the same failure as
+    narrating a prediction without its timing, so the two are not adjacent
+    concerns -- they are the same rule.
+
+    **Which key holds the market's line is a per-sport fact, not a precedence
+    rule.** NFL and CFB put it in `line` and have no `market_line`; NBA puts the
+    MODEL's own wording in `line` and the market's in `market_line`. So the
+    fallback to `line` is right for two sports and wrong for one, and for NBA it
+    renders the model compared with itself.
+
+    The first version of this helper preferred `market_line` and fell back to
+    `line`, on the reasoning that a lower-priority source of the same thing is
+    harmless. It is not, because the fallback key does not hold the same thing:
+    NBA emits `market_line` only when there is a pre-tip market row, so in the
+    no-quote state -- which is NBA's common case -- the fallback reached the
+    model's own wording and produced
+
+        It rates BOS 0.2 points better, against a line of Toss-up. That is the
+        market asking for more than the model thinks the gap is worth.
+
+    (Both halves of that quotation are historical. The trailing clause was
+    removed later and for a separate reason -- it was a constant claim, since
+    nothing compares the two numbers -- and the first half was then narrowed
+    further, because it attributed the margin to the pick's team and the bundle
+    carries no home/away designation. The sentence the factor emits today names
+    neither a side nor a comparison. See the spread factor below.)
+
+    A precedence rule cannot distinguish "a worse source of the same fact" from
+    "a different fact that happens to share a key name", so the caller says which
+    is which: `MARKET_LINE_KEY` below. The end state is the two football sports
+    emitting `market_line` like NBA already does, at which point the table is
+    empty and every sport reads one key.
+
+    **Numbers are accepted, not just strings.** A total's `line` is a float --
+    `{"market": "total", "line": 45.5}` -- while a spread's is a worded string. The
+    first version of this helper type-checked for `str` and silently dropped the
+    total factor for every sport, which `test_template_covers_markets_and_the_record`
+    caught immediately. A truthy check is the honest one here: `0` and `False` are
+    not lines anything would be quoted against.
+    """
+    if not isinstance(market, dict):
+        # The module docstring promises every read here is defensive, and a
+        # non-dict market would raise on `.get`. Nothing produces one -- `by_key`
+        # is built from `_dicts(...)` -- but the promise is cheap to keep.
+        return None
+    for key in keys:
+        value = market.get(key)
+        if isinstance(value, bool):
+            # `True` is truthy and would render "against a line of True". `_num`
+            # four lines up excludes bools explicitly for the same reason.
+            continue
+        if isinstance(value, str):
+            # Stripped before the truthiness test, so a whitespace-only line falls
+            # through instead of rendering "against a line of    .". An earlier
+            # version of this loop also had an explicit
+            # `if value is None or value == "": continue`, which was dead -- the
+            # truthy test below already rejects `None`, `""`, `0` and `[]`. It
+            # survived a mutation check that reported it as covered, because
+            # removing it changed nothing at all. One check, not two.
+            value = value.strip()
+        if value:
+            return str(value)
+    return None
+
+
+def _implied_price(market: dict | None) -> float | None:
+    r"""PL's book price, from the `implied` map on its three-way `result` market.
+
+    `pl_predictor`'s own `_markets` adds `implied` to that market when
+    `has_live_odds` and at least one side has a price, as a map of team to the
+    probability the book implies. It is the market's figure for that market, and
+    the panel draws it: spec §13b governs the split bar's *market row*, which is
+    omitted unless `implied` covers every outcome the model's three-way split has
+    -- and so is never drawn for PL. The same section then says the tile's market
+    line "states `implied` **for a side that is present**", which is a different
+    surface with a different rule. A LIV pick therefore gets a key-number tile
+    showing the model's 44% with the book's 44% beneath it.
+
+    So a bundle carrying this map HAS a quoted price, and a padding row that says
+    *"no quoted price to read it against"* is denying something the reader has
+    already been shown. It is the same defect shape as the `projected` gate above
+    it -- a sentence about a bundle, decided by two of its keys while a third
+    carries the thing it denies -- and the reason the review found the first is
+    the reason this is here: the test that pinned the sentence asked whether the
+    spread and total had a `line`, and did not ask what else the family puts a
+    price in.
+
+    **The CONTENTS, not the key's presence, and that is the whole of the helper.**
+    PL's `_implied` returns `None` for a side with no price, so a map can be
+    present and hold nothing; `{"LIV": None, "ARS": None}` is a bundle with no
+    quoted price, and a gate that asked `"implied" in market` would deny nothing
+    here and everything above it. So the values are read through `_num` -- which
+    excludes bools and non-numbers, for the reason it says -- and the largest
+    surviving one is returned.
+
+    **A separate helper rather than a third key on `_quoted_line`, because the two
+    answer different questions.** `_quoted_line` returns a string to PRINT in
+    *"against a line of BOS -3.5"*, and a reader has to be able to check that
+    against a book. `implied` is a map of per-team probabilities, not a line, and
+    no row in this file narrates it -- so there is nothing to print and nothing to
+    check. What the padding row needs is only whether a price EXISTS, and giving
+    `_quoted_line` a third key would have made it return a map for a sentence that
+    interpolates it as text.
+
+    The largest value is returned rather than the first, so the answer does not
+    depend on dict ordering if this ever grows a third side. Nothing reads the
+    number: the only caller asks `is not None`.
+    """
+    if not isinstance(market, dict):
+        return None
+    implied = market.get("implied")
+    if not isinstance(implied, dict):
+        return None
+    prices = [p for p in (_num(v) for v in implied.values()) if p is not None]
+    return max(prices) if prices else None
+
+
 def explain_from_template(facts: dict) -> dict:
     """The no-model path, in the model's own shape, built from the facts."""
     facts = as_dict(facts)
@@ -123,21 +367,135 @@ def explain_from_template(facts: dict) -> dict:
 
     margin_market = by_key.get("spread") or by_key.get("handicap")
     margin = _num((margin_market or {}).get("model_margin"))
-    if margin_market is not None and margin is not None and label and margin_market.get("line"):
-        line = margin_market["line"]
-        # down: the market asking for more than the model rates the gap is a
-        # point *against* the pick, which is what `direction` means.
-        factors.append(_fact(str(margin_market["market"]), _toward("down", has_pick), "The line",
-                             f"It rates {label} {abs(margin):g} {unit} better, against a line of {line}. "
-                             f"That is the market asking for more than the model thinks the gap is worth."))
+    quoted = _quoted_line(margin_market, MARKET_LINE_KEY.get(sport, DEFAULT_MARKET_LINE_KEY))
+    # The magnitude test is the point here, not `margin is not None`: a margin of
+    # exactly 0 passes that, and the row it gated rendered "It rates BOS 0 points
+    # better, against a line of BOS -3.5" -- a disagreement of nothing, narrated
+    # as a gap. The sentence no longer claims a disagreement at all, so what is
+    # left at zero is a row whose only content is a figure of nothing, which is
+    # the emptiness the total-market gate below rules out for the same reason.
+    # Omit the row, which is what the `quoted` clause below already does when
+    # there is no line to check against, rather than word a zero.
+    #
+    # NOTE: this comment deliberately does not quote the expression on the next
+    # line. A mutation harness anchors on source text, and a comment repeating
+    # the code verbatim is a decoy that absorbs the mutation and reports it
+    # covered: the `>=`-becomes-`>` row was SILENT for exactly this reason, and
+    # the boundary test that was supposed to catch it could not run. `count=1`
+    # takes the FIRST match, so a comment above the code wins over the code.
+    big_enough = margin is not None and abs(margin) >= MIN_SPREAD_MARGIN
+    if margin_market is not None and margin is not None and label and quoted and big_enough:
+        line = quoted
+        # NEUTRAL unconditionally -- NOT `_toward(NEUTRAL, has_pick)`, which would
+        # be a no-op wrapping a no-op, and NOT `_toward("down", has_pick)`, which
+        # is what this row said before. `_toward` answers "is this direction
+        # knowable without a pick", and this row's direction is not knowable WITH
+        # one either, so it is a plain constant by main's own idiom -- the same
+        # shape as the total, `btts` and the record below.
+        #
+        # The sentence is the two numbers and nothing else, and that covers a
+        # little more than it used to.
+        #
+        # It used to end "That is the market asking for more than the model thinks
+        # the gap is worth", and carry `direction: "down"`. Both were CONSTANTS:
+        # nothing compared `model_margin` with the quoted line, so the sentence
+        # was a comparison asserted rather than computed. With a model margin of
+        # 4.2 it is false against `BOS -3.5` (the market wants 3.5, so it is
+        # asking for LESS) and against `BOS -4.2` (they agree), and true only
+        # against `BOS -6.0` -- and a confident model is usually more bullish than
+        # the market, so the shipped sentence was usually wrong.
+        #
+        # `down` was wrong in the same way and pointed the other way from the
+        # claim: `down` means "against the pick", which takes a market SOFTER than
+        # the model, and "the market is softer than the model" argues FOR the
+        # pick. A wrong mark is louder than a wrong sentence -- the panel draws a
+        # triangle and a "for the pick" / "against it" word from it -- so the
+        # mark goes before the claim does, and neither is asserted without the
+        # comparison behind it.
+        #
+        # So this row lost its direction on purpose, and that is a narrowing of
+        # what the panel draws: with a pick in hand, a reader used to be told the
+        # market was arguing against it. They are now told only what the two
+        # numbers are. A neutral row the reader can check beats a directional row
+        # they cannot, and `test_the_rows_about_the_pick_still_carry_their_direction`
+        # is what keeps the OTHER rows directional so this did not become "make
+        # everything neutral".
+        #
+        # **And the sentence named a SIDE, which is a second unsupported claim
+        # in the same breath.** `model_margin` is home-minus-away; the bundle
+        # carries no home/away designation; and NFL and CFB word the line from
+        # their own `_spread_line`, which is always attributed to the home team.
+        # So "It rates {label} N better" attributes a margin to the pick's team
+        # when the pick may be the other side, and puts it beside a quoted line
+        # that belongs to whichever team the builder chose. NFL's `_markets` makes
+        # the pair genuinely mismatched and says so itself: the moneyline comes
+        # from the pre-kickoff snapshot row and the spread from today's
+        # recomputation, because the snapshotted pick is the one that will be
+        # judged and today's model "genuinely differs". The case is built in
+        # `tests/test_template_spread_claim.py::_nfl_away_pick`; it rendered
+        # "It rates KC 2.6 points better, against a line of BAL -2.5", where the
+        # model rates BAL better and BAL -2.5 is BAL's line rather than KC's.
+        # Both figures were real; the sentence joined them to a team neither
+        # belongs to.
+        #
+        # So the attribution and the comparative go, and both figures stay:
+        # "projects a margin of N" is the model's own projection and "against a
+        # line of L" is whatever `_quoted_line` found. Nothing is claimed about
+        # which of the two is bigger, and nothing is claimed about a side.
+        #
+        # **This wording is true for every sign, every sport and every bundle,
+        # and that is the property it was chosen for.** `abs(margin)` is the
+        # magnitude of a projected margin between the two teams, which is a real
+        # projection whichever way it points, so `+4.2` and `-4.2` render the same
+        # sentence; `0` never reaches here because the floor above omits it; and
+        # the floor is inclusive, so half a point in either direction is a gap and
+        # is worded as one. `unit` is "points" for every sport that has a spread
+        # (PL's is goals, and PL has no spread market, so the row cannot fire
+        # there), and "a margin of N points" is grammatical in both. The line is
+        # whatever the sport's key held, verbatim, which is the same value the
+        # reader can check against a book. Nothing in the sentence varies with
+        # anything the sentence does not have.
+        #
+        # The `label` gate above is KEPT even though the sentence no longer reads
+        # it. Widening the row to bundles with no pick is a separate call about
+        # what the panel has to anchor on, and it is not this fix.
+        #
+        # **Deriving the comparison is a real change and is not done here.** The
+        # two numbers are `model_margin`, a float, and the quoted line, a WORDED
+        # string ("BOS -3.5", "BAL -2.5", "BOS by 4.2"). Deciding which side of
+        # the model a line sits on means parsing a magnitude and a side out of
+        # that string, and the sign convention of `model_margin` is not in the
+        # facts at all -- the bundle carries no home/away designation, so "the
+        # market wants more" is not even a well-posed question about these two
+        # fields without one. Doing it would also flip the drawn direction of a
+        # row on three already-shipping sports. A mark that is wrong is worse than
+        # no mark, so until the comparison is computed the row claims nothing.
+        #
+        # **The end state, and it is a cross-repo change.** The facts should
+        # carry the margin that belongs to the PICK -- a `pick_margin` beside
+        # `model_margin`, emitted by each sport's own `/facts` builder, signed so
+        # that positive means the pick's team and carrying the side the figure
+        # belongs to. NBA's `_margin_line` already computes the first half of that
+        # and throws it away by returning a worded string; NFL and CFB would each
+        # need the home/away designation they already have in `_markets`. Then
+        # this row can name the pick again, and the comparison is still not
+        # derivable -- the end state fixes the attribution, not the comparison,
+        # which needs the line parsed to a number and a side the same way. Until
+        # both arrive, two figures and no claims about them is the whole of what
+        # is honest.
+        factors.append(_fact(str(margin_market["market"]), NEUTRAL, "The line",
+                             f"It projects a margin of {abs(margin):g} {unit}, against a line of {line}."))
 
     total_market = by_key.get("total") or by_key.get("total_goals")
     total = _num((total_market or {}).get("model_total"))
-    if total_market is not None and total is not None and total_market.get("line") is not None:
+    total_line = _quoted_line(total_market, MARKET_LINE_KEY.get(sport, DEFAULT_MARKET_LINE_KEY))
+    if total_market is not None and total is not None and total_line is not None:
         # A projection for the game, not a claim about the pick: emitted whether
-        # or not there is one, so it can only be neutral.
+        # or not there is one, so it can only be neutral. The line is read
+        # through `_quoted_line` for the reason the spread above is, and this row
+        # is the reason that helper accepts a number as well as a string.
         factors.append(_fact(str(total_market["market"]), NEUTRAL, "The total",
-                             f"It projects {total:g} {unit} against a line of {total_market['line']}."))
+                             f"It projects {total:g} {unit} against a line of {total_line}."))
 
     btts = by_key.get("btts")
     yes = _num((btts or {}).get("yes_prob"))
@@ -166,17 +524,107 @@ def explain_from_template(facts: dict) -> dict:
 
     # Two rows minimum, so the panel is never a single lonely line. Padding only
     # ever uses the pseudo-markets, which resolve regardless of what the facts
-    # carry, and it says plainly that there is nothing there rather than
-    # inventing a reason to read it.
+    # carry, and it says plainly what there is and is not rather than inventing
+    # a reason to read it.
     if len(factors) < 2:
-        # Only `context` padding, and never a claim that something is missing when
-        # it is present: an earlier draft padded with a `record` factor saying
-        # "no settled record yet", which would have been false for exactly the
-        # bundles that reach it.
+        # Which of the bundle's states this is, so the row states a fact rather
+        # than a guess. `quoted` and `total_line` are the two values the spread
+        # and total rows above were GATED on, read here rather than re-scanned,
+        # so "the market has not quoted a price" cannot disagree with those two
+        # rows about whether a price exists. A re-scan of `by_key` for
+        # `model_margin` would be the same claim computed twice.
+        #
+        # `projected` is the OTHER question, and it is not the same one. The
+        # wording it gates is a claim about a MODEL NUMBER, so the gate has to
+        # ask about model numbers -- and there are THREE of them, not two.
+        # `margin` and `total` are the spread's and the total's. The third is
+        # the moneyline, and in every football bundle it is the model's number
+        # and the only one: NFL's and CFB's `_markets` emit the spread and the
+        # total only when the pre-kickoff prediction row carries
+        # `predicted_margin`/`predicted_total` AND the game row carries a
+        # `spread_line`/`total_line`, and for a game weeks out neither is there
+        # yet. So a football bundle is a moneyline and nothing else, and asking
+        # only about the other two made this row say
+        #
+        #     The model makes DAL the pick at 57%.
+        #     So there is no model number for this one yet.
+        #
+        # which is the padding row telling the reader the opposite of the row
+        # directly above it, over a bundle whose 57% the panel is also drawing in
+        # the moneyline tile and the split bar. Measured on real bundles built
+        # from `nfl_predictor`/`cfb_predictor`'s own `get_facts` at their
+        # `origin/main`, that pairing rendered on 555 of 888 CFB bundles and on
+        # 208 of 272 NFL ones whenever `_record()` returns `None` -- 763 rows,
+        # all 763 false. With `EXPLAINER_ENABLED=false` this row is the only
+        # prose a reader of a football game ever sees.
+        #
+        # `prob` is `pick_prob(facts)`, the same value the verdict above and the
+        # response's own `pick` are built from, so "the model has a number" and
+        # "the panel has a number to draw" cannot come apart. It is deliberately
+        # NOT `has_pick`: a bundle can carry a probability with no usable label,
+        # and the moneyline market's `model` map is in the bundle either way --
+        # across all 1,432 real bundles built for this, `pick.prob` and a
+        # moneyline/result `model` map are present together in every single one,
+        # so `prob` is a complete stand-in for "the bundle carries a number" and
+        # is one decision rather than a second scan of `by_key`.
+        #
+        # NOTE: this comment deliberately does not quote the expression on the
+        # next line, for the reason the NOTE above `big_enough` gives -- a
+        # comment repeating the code verbatim takes the `count=1` match and the
+        # mutation lands there.
+        projected = margin is not None or total is not None or prob is not None
+        # The quote test, with THREE terms for the same reason: the sentence is
+        # about a QUOTED PRICE, and this is where the family puts one. `quoted` and
+        # `total_line` are the spread's and the total's, read through the two-key
+        # helper above so NBA's `market_line` and the football `line` are both
+        # covered. The third is PL's, whose three-way `result` market has no `line`
+        # at all -- its book price arrives as a map of per-team probabilities under
+        # `implied` when the fixture has live odds. The panel draws that figure on
+        # the market's tile (see `_implied_price` for why the market ROW is a
+        # different surface with a different rule), so a row saying "no quoted
+        # price to read it against" would deny something two rows above it.
+        #
+        # Latent rather than live, and deliberately fixed anyway: 0 of 380 real PL
+        # bundles carry `implied` -- none of the 380 fixtures has `has_live_odds`
+        # set -- so nothing reachable changes today. "Nothing reachable is wrong"
+        # is how this class of defect survives to the next season's fixtures, and
+        # the end state where it is live is one PL fixture with a book price away.
+        implied = _implied_price(by_key.get("result"))
+        quoted_any = quoted is not None or total_line is not None or implied is not None
+        # `not projected` FIRST, so the one state that is reachable with a quote
+        # and no model figure -- the market priced it, the model has not -- takes
+        # the wording that is true of it. Ordering by how surprising the state is
+        # rather than by how often it happens is what keeps it from being missed.
+        if not projected:
+            padding_text = PADDING_NO_PROJECTION
+        elif quoted_any:
+            padding_text = PADDING_BOTH
+        else:
+            padding_text = PADDING_NO_QUOTE
+
         while len(factors) < 2:
             if not any(f["key"] == "context" for f in factors):
-                factors.append(_fact("context", _toward("down", has_pick), "Not much to go on",
-                                     "The facts for this one are still filling in."))
+                # NEUTRAL, always -- the same argument as the row below, with the
+                # sign reversed, and this row was `down`.
+                #
+                # `down` means "against the pick", and nothing here computes it.
+                # The row fires because the bundle carries little, and a bundle
+                # carrying little is exactly as consistent with a 99% pick as with
+                # a long shot -- so the mark was not merely unsupported, it was
+                # contradicted by the commonest case it renders in. The panel
+                # draws a triangle and the words "against the pick" from this mark,
+                # so a mark nothing supports is a wrong claim in a louder form
+                # than the sentence it sits on.
+                #
+                # NOT `_toward(NEUTRAL, has_pick)`, which is a no-op wrapping a no-
+                # op and reads like a rule. This row is a statement about the
+                # BUNDLE, and the bundle does not move when a pick is added. It is
+                # written as a constant, and `test_template_padding.py` holds that
+                # by RECORDING the calls `_toward` actually receives rather than by
+                # grepping the source -- because no rendered-output test can see a
+                # no-op, which is exactly how that survivor was found.
+                factors.append(_fact("context", NEUTRAL, "Not much to go on",
+                                     padding_text))
             else:
                 # Neutral always. "So there is little to weigh up here" is not an
                 # argument FOR a pick; it was given "up" because the row needed a
@@ -184,6 +632,16 @@ def explain_from_template(facts: dict) -> dict:
                 factors.append(_fact("context", NEUTRAL, "Where this stands",
                                      f"So there is little to weigh up here: {title}."))
 
+    # The most prominent sentence in the panel, and deliberately unadorned. It
+    # says which team is the pick and nothing else: `prompts.py` forbids the model
+    # from qualifying a pick ("a band is a word, and a word is the same defect as
+    # a number when nothing ties it to anything"), and a template that added
+    # "strong" here would put that word on screen beside the band chip the panel
+    # draws from `band_for` -- so on a 0.41 two-way pick the panel would read
+    # "strong pick" next to a `leaning` chip, at the same time, contradicting
+    # itself in the one sentence every reader sees first. The chip is the
+    # confidence; this is the name. Pinned exactly, across the band, in
+    # `test_template_padding.py`.
     verdict = f"{label} is the pick." if label and prob is not None else "There is no pick for this one yet."
     return {"verdict": verdict, "band": band_for(prob, market_shape(facts)),
             "factors": factors[:MAX_FACTORS]}
