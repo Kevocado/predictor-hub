@@ -61,6 +61,21 @@ MARKET_LINE_KEY: dict[str, tuple[str, ...]] = {
     "nba": ("market_line",),
 }
 
+#: The key list a sport gets when it is **absent** from `MARKET_LINE_KEY` above:
+#: the market's quoted key first, then the sport's own `line`, which is the
+#: market's line for every sport that has only one of the two.
+#:
+#: It is a named constant and not a default argument, and both call sites pass it
+#: explicitly. The signature used to declare the same two-key tuple as a default
+#: while BOTH callers overrode it, so the default was dead code, the value existed
+#: in three places, and nothing tied them together -- changing the default to a
+#: single key changed no rendered output and failed no test, which is the only
+#: reason it is worth writing down. Stated once here, it is reachable by the two
+#: rows that use it, and
+#: `test_a_sport_absent_from_the_table_prefers_the_quoted_key_over_the_model_key`
+#: fails if the order or the length changes.
+DEFAULT_MARKET_LINE_KEY: tuple[str, ...] = ("market_line", "line")
+
 #: How each sport names the moment the game begins. NBA says "tip-off" in its
 #: prompts (`prompts.py` `SPORT_NOTES`) and in the record label the panel renders,
 #: so a sentence reading "rebuilt after kickoff" sat next to "picks made before
@@ -75,12 +90,20 @@ _START = {"f1": "the session started", "pl": "kickoff", "nba": "tip-off"}
 #: whose margin is 0.4 arrives having already been told the gap is a toss-up, and
 #: a template without this floor contradicts the bundle it was handed.
 #:
-#: The floor exists because `margin is not None` passes for `0`, and the sentence
-#: it gates asserts a disagreement: "It rates BOS 0 points better, against a line
-#: of BOS -3.5" is a claim about a gap that does not exist. Same defect class as
-#: the clause this file once ended that sentence with -- a comparison stated
-#: rather than computed -- except the uncomputable half here is not "which of the
-#: two is bigger" but "whether there is anything to compare at all".
+#: The floor exists because `margin is not None` passes for `0`, and the row it
+#: gates then exists only to say nothing. It used to be worse than that -- the
+#: sentence it gated ended "It rates BOS 0 points better", a claim about a
+#: disagreement that does not exist, and that comparison has since been taken out
+#: of the sentence altogether (see the spread factor below). The floor is still
+#: load-bearing: NBA's own builder words a margin as a gap only at
+#: `abs(margin) >= 0.5` and otherwise returns the literal "Toss-up", so a bundle
+#: whose margin is 0.4 arrives having already been told the gap is a toss-up,
+#: and a template without this floor contradicts the bundle it was handed -- it
+#: would print a gap where the producer said there is none, and a reader would
+#: give a tile to a row with nothing in it. Same defect class as the clause this
+#: file once ended that sentence with -- a comparison stated rather than computed
+#: -- except the uncomputable half here is not "which of the two is bigger" but
+#: "whether there is anything to compare at all".
 #:
 #: **Only the MAGNITUDE half of NBA's rule.** NBA also requires the margin to
 #: point at the pick's own team before wording it, and that check is not
@@ -142,7 +165,7 @@ def _toward(direction: str, has_pick: bool) -> str:
     return direction if has_pick else NEUTRAL
 
 
-def _quoted_line(market: dict | None, keys: tuple[str, ...] = ("market_line", "line")) -> str | None:
+def _quoted_line(market: dict | None, keys: tuple[str, ...]) -> str | None:
     """The line a READER can check against a book, from whichever key this sport
     used to put it in.
 
@@ -175,8 +198,10 @@ def _quoted_line(market: dict | None, keys: tuple[str, ...] = ("market_line", "l
 
     (Both halves of that quotation are historical. The trailing clause was
     removed later and for a separate reason -- it was a constant claim, since
-    nothing compares the two numbers -- so the sentence the factor emits today is
-    only its first half. See the spread factor below.)
+    nothing compares the two numbers -- and the first half was then narrowed
+    further, because it attributed the margin to the pick's team and the bundle
+    carries no home/away designation. The sentence the factor emits today names
+    neither a side nor a comparison. See the spread factor below.)
 
     A precedence rule cannot distinguish "a worse source of the same fact" from
     "a different fact that happens to share a key name", so the caller says which
@@ -260,10 +285,13 @@ def explain_from_template(facts: dict) -> dict:
 
     margin_market = by_key.get("spread") or by_key.get("handicap")
     margin = _num((margin_market or {}).get("model_margin"))
-    quoted = _quoted_line(margin_market, MARKET_LINE_KEY.get(sport, ("market_line", "line")))
+    quoted = _quoted_line(margin_market, MARKET_LINE_KEY.get(sport, DEFAULT_MARKET_LINE_KEY))
     # The magnitude test is the point here, not `margin is not None`: a margin of
-    # exactly 0 used to pass that and render "It rates BOS 0 points better,
-    # against a line of BOS -3.5" -- a disagreement of nothing, narrated as a gap.
+    # exactly 0 passes that, and the row it gated rendered "It rates BOS 0 points
+    # better, against a line of BOS -3.5" -- a disagreement of nothing, narrated
+    # as a gap. The sentence no longer claims a disagreement at all, so what is
+    # left at zero is a row whose only content is a figure of nothing, which is
+    # the emptiness the total-market gate below rules out for the same reason.
     # Omit the row, which is what the `quoted` clause below already does when
     # there is no line to check against, rather than word a zero.
     #
@@ -283,8 +311,8 @@ def explain_from_template(facts: dict) -> dict:
         # one either, so it is a plain constant by main's own idiom -- the same
         # shape as the total, `btts` and the record below.
         #
-        # The sentence is only the two numbers, because the comparison between
-        # them is not something this file can do.
+        # The sentence is the two numbers and nothing else, and that covers a
+        # little more than it used to.
         #
         # It used to end "That is the market asking for more than the model thinks
         # the gap is worth", and carry `direction: "down"`. Both were CONSTANTS:
@@ -311,22 +339,74 @@ def explain_from_template(facts: dict) -> dict:
         # is what keeps the OTHER rows directional so this did not become "make
         # everything neutral".
         #
-        # **Deriving it is a real change and is not done here.** The two numbers
-        # are `model_margin`, a float, and the quoted line, a WORDED string
-        # ("BOS -3.5", "BAL -2.5", "BOS by 4.2"). Deciding which side of the
-        # model a line sits on means parsing a magnitude and a side out of that
-        # string, and the sign convention of `model_margin` is not in the facts at
-        # all -- the bundle carries no home/away designation, so "the market wants
-        # more" is not even a well-posed question about these two fields without
-        # one. Doing it would also flip the drawn direction of a row on three
-        # already-shipping sports. A mark that is wrong is worse than no mark, so
-        # until the comparison is computed the row claims nothing.
+        # **And the sentence named a SIDE, which is a second unsupported claim
+        # in the same breath.** `model_margin` is home-minus-away; the bundle
+        # carries no home/away designation; and NFL and CFB word the line from
+        # their own `_spread_line`, which is always attributed to the home team.
+        # So "It rates {label} N better" attributes a margin to the pick's team
+        # when the pick may be the other side, and puts it beside a quoted line
+        # that belongs to whichever team the builder chose. NFL's `_markets` makes
+        # the pair genuinely mismatched and says so itself: the moneyline comes
+        # from the pre-kickoff snapshot row and the spread from today's
+        # recomputation, because the snapshotted pick is the one that will be
+        # judged and today's model "genuinely differs". The case is built in
+        # `tests/test_template_spread_claim.py::_nfl_away_pick`; it rendered
+        # "It rates KC 2.6 points better, against a line of BAL -2.5", where the
+        # model rates BAL better and BAL -2.5 is BAL's line rather than KC's.
+        # Both figures were real; the sentence joined them to a team neither
+        # belongs to.
+        #
+        # So the attribution and the comparative go, and both figures stay:
+        # "projects a margin of N" is the model's own projection and "against a
+        # line of L" is whatever `_quoted_line` found. Nothing is claimed about
+        # which of the two is bigger, and nothing is claimed about a side.
+        #
+        # **This wording is true for every sign, every sport and every bundle,
+        # and that is the property it was chosen for.** `abs(margin)` is the
+        # magnitude of a projected margin between the two teams, which is a real
+        # projection whichever way it points, so `+4.2` and `-4.2` render the same
+        # sentence; `0` never reaches here because the floor above omits it; and
+        # the floor is inclusive, so half a point in either direction is a gap and
+        # is worded as one. `unit` is "points" for every sport that has a spread
+        # (PL's is goals, and PL has no spread market, so the row cannot fire
+        # there), and "a margin of N points" is grammatical in both. The line is
+        # whatever the sport's key held, verbatim, which is the same value the
+        # reader can check against a book. Nothing in the sentence varies with
+        # anything the sentence does not have.
+        #
+        # The `label` gate above is KEPT even though the sentence no longer reads
+        # it. Widening the row to bundles with no pick is a separate call about
+        # what the panel has to anchor on, and it is not this fix.
+        #
+        # **Deriving the comparison is a real change and is not done here.** The
+        # two numbers are `model_margin`, a float, and the quoted line, a WORDED
+        # string ("BOS -3.5", "BAL -2.5", "BOS by 4.2"). Deciding which side of
+        # the model a line sits on means parsing a magnitude and a side out of
+        # that string, and the sign convention of `model_margin` is not in the
+        # facts at all -- the bundle carries no home/away designation, so "the
+        # market wants more" is not even a well-posed question about these two
+        # fields without one. Doing it would also flip the drawn direction of a
+        # row on three already-shipping sports. A mark that is wrong is worse than
+        # no mark, so until the comparison is computed the row claims nothing.
+        #
+        # **The end state, and it is a cross-repo change.** The facts should
+        # carry the margin that belongs to the PICK -- a `pick_margin` beside
+        # `model_margin`, emitted by each sport's own `/facts` builder, signed so
+        # that positive means the pick's team and carrying the side the figure
+        # belongs to. NBA's `_margin_line` already computes the first half of that
+        # and throws it away by returning a worded string; NFL and CFB would each
+        # need the home/away designation they already have in `_markets`. Then
+        # this row can name the pick again, and the comparison is still not
+        # derivable -- the end state fixes the attribution, not the comparison,
+        # which needs the line parsed to a number and a side the same way. Until
+        # both arrive, two figures and no claims about them is the whole of what
+        # is honest.
         factors.append(_fact(str(margin_market["market"]), NEUTRAL, "The line",
-                             f"It rates {label} {abs(margin):g} {unit} better, against a line of {line}."))
+                             f"It projects a margin of {abs(margin):g} {unit}, against a line of {line}."))
 
     total_market = by_key.get("total") or by_key.get("total_goals")
     total = _num((total_market or {}).get("model_total"))
-    total_line = _quoted_line(total_market, MARKET_LINE_KEY.get(sport, ("market_line", "line")))
+    total_line = _quoted_line(total_market, MARKET_LINE_KEY.get(sport, DEFAULT_MARKET_LINE_KEY))
     if total_market is not None and total is not None and total_line is not None:
         # A projection for the game, not a claim about the pick: emitted whether
         # or not there is one, so it can only be neutral. The line is read

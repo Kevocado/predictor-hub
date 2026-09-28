@@ -224,8 +224,11 @@ def test_a_boolean_line_is_not_a_line():
     same reason, so the asymmetry was visible in the file; it just had no test.
     Found by mutation: dropping `isinstance(value, bool)` left the suite green.
     """
-    assert _quoted_line({"market": "spread", "line": True}) is None
-    assert _quoted_line({"market": "spread", "market_line": False, "line": "BOS -3.5"}) == "BOS -3.5", (
+    from explainer.template import DEFAULT_MARKET_LINE_KEY
+
+    assert _quoted_line({"market": "spread", "line": True}, DEFAULT_MARKET_LINE_KEY) is None
+    assert _quoted_line({"market": "spread", "market_line": False, "line": "BOS -3.5"},
+                         DEFAULT_MARKET_LINE_KEY) == "BOS -3.5", (
         "a boolean quoted line must fall through to the sport's own key"
     )
 
@@ -234,11 +237,13 @@ def test_an_empty_line_is_treated_as_no_line():
     """`""` and `None` mean there is no line to quote. A factor built on one would
     read "against a line of ." — and `0` is not a line either, so it is not
     rendered as one."""
-    assert _quoted_line({"market": "total", "line": ""}) is None
-    assert _quoted_line({"market": "total", "line": None}) is None
-    assert _quoted_line({"market": "total", "line": 0}) is None
-    assert _quoted_line(None) is None
-    assert _quoted_line({}) is None
+    from explainer.template import DEFAULT_MARKET_LINE_KEY
+
+    assert _quoted_line({"market": "total", "line": ""}, DEFAULT_MARKET_LINE_KEY) is None
+    assert _quoted_line({"market": "total", "line": None}, DEFAULT_MARKET_LINE_KEY) is None
+    assert _quoted_line({"market": "total", "line": 0}, DEFAULT_MARKET_LINE_KEY) is None
+    assert _quoted_line(None, DEFAULT_MARKET_LINE_KEY) is None
+    assert _quoted_line({}, DEFAULT_MARKET_LINE_KEY) is None
 
 
 def test_a_whitespace_only_line_is_treated_as_no_line():
@@ -255,8 +260,11 @@ def test_a_whitespace_only_line_is_treated_as_no_line():
     exists to catch, sitting inside the fix itself. So this pins the one check
     that is load-bearing.
     """
-    assert _quoted_line({"market": "total", "line": "   "}) is None
-    assert _quoted_line({"market": "spread", "market_line": "  ", "line": "BOS -3.5"}) == "BOS -3.5", (
+    from explainer.template import DEFAULT_MARKET_LINE_KEY
+
+    assert _quoted_line({"market": "total", "line": "   "}, DEFAULT_MARKET_LINE_KEY) is None
+    assert _quoted_line({"market": "spread", "market_line": "  ", "line": "BOS -3.5"},
+                         DEFAULT_MARKET_LINE_KEY) == "BOS -3.5", (
         "a blank quoted line must fall through to the sport's own key, not end the search"
     )
 
@@ -500,3 +508,95 @@ def test_f1s_moment_is_the_session_because_that_is_the_word_f1_uses():
 
     assert _START["f1"] == "the session started", _START
     assert "kickoff" not in _START["f1"], _START
+
+
+# --- the default key list, which was stated three times and stated nowhere ----
+
+def test_the_helper_takes_no_default_key_list():
+    """`keys` was declared with a default, and BOTH call sites overrode it.
+
+    `_quoted_line(market, keys=("market_line", "line"))` was the signature, and
+    the two callers both passed `MARKET_LINE_KEY.get(sport, ("market_line",
+    "line"))` -- the same two-key tuple, written a second time at each call site
+    rather than once. So the default was dead code, the value it held existed in
+    three places, and nothing tied them together.
+
+    **It was dead in a way a mutation could not see.** Changing the default to
+    `("line",)` is SILENT: the default is never reached, so no rendered output
+    changes and no test fails. That is the finding -- a default that cannot be
+    observed is a statement nobody is relying on, and it is one more place for
+    the two-key list to be edited in one place only.
+
+    Asserted against the signature rather than by calling the function both ways,
+    because calling it both ways cannot distinguish "the default is this" from
+    "the default is something else and both callers pass their own".
+    """
+    import inspect
+
+    from explainer.template import _quoted_line
+
+    sig = inspect.signature(_quoted_line)
+    assert "keys" in sig.parameters, f"the parameter is gone: {sig}"
+    assert sig.parameters["keys"].default is inspect.Parameter.empty, (
+        f"`keys` has a default ({sig.parameters['keys'].default!r}) and both call "
+        f"sites pass their own, so the default is dead code that can be changed "
+        f"without changing anything a reader sees"
+    )
+
+
+def test_both_call_sites_read_the_one_key_list():
+    """The list now lives once, in a named constant, and this says so.
+
+    `DEFAULT_MARKET_LINE_KEY` is what a sport absent from `MARKET_LINE_KEY` gets,
+    and it is the answer to "which key does a new sport read by default". Asserted
+    on the CALL SITES' behaviour rather than by reading `template.py`, because a
+    check that greps the source for the constant's name is satisfied by a comment
+    mentioning it.
+
+    The two call sites are the spread and the total, and they are driven here by
+    one bundle whose spread carries only `market_line` and whose total carries
+    only `market_line`, so both rows depend on the default list.
+    """
+    from explainer.template import DEFAULT_MARKET_LINE_KEY
+
+    assert DEFAULT_MARKET_LINE_KEY == ("market_line", "line"), (
+        f"the default key list is {DEFAULT_MARKET_LINE_KEY!r}, which is not "
+        f"prefers-the-quoted-then-falls-back-to-line"
+    )
+
+    # A sport that is NOT in the table and fills `market_line` only must read it.
+    quoted_only = explain_from_template(bundle("cfb", [
+        {"market": "moneyline", "model": {"BAL": 0.62, "KC": 0.38}},
+        {"market": "spread", "model_margin": 3.4, "market_line": "BAL -2.5"},
+        {"market": "total", "model_total": 47.8, "market_line": "44.5"},
+    ]))
+    assert "BAL -2.5" in factor(quoted_only, "spread")["text"], (
+        f"a sport absent from the table lost its spread factor: {quoted_only['factors']}"
+    )
+    assert "44.5" in factor(quoted_only, "total")["text"], (
+        f"a sport absent from the table lost its total factor: {quoted_only['factors']}"
+    )
+
+
+def test_a_sport_absent_from_the_table_prefers_the_quoted_key_over_the_model_key():
+    """The order matters and the default is where it lives.
+
+    A sport in NBA's shape but not yet in `MARKET_LINE_KEY` -- the state a new
+    sport is in on the day it is added -- fills both keys, with the market's in
+    `market_line` and the model's own wording in `line`. The default must read
+    `market_line` first, and reading `line` first is what the whole
+    `MARKET_LINE_KEY` table exists to prevent for NBA.
+
+    So this bites on the default being reordered or shortened, which is exactly
+    the change the reviewer found silent while the default was dead code. It bites
+    now because the value is stated once and both call sites go through it.
+    """
+    both = explain_from_template(bundle("cfb", [
+        {"market": "moneyline", "model": {"BAL": 0.62, "KC": 0.38}},
+        {"market": "spread", "model_margin": 3.4, "line": "BAL by 3.4", "market_line": "BAL -2.5"},
+        {"market": "total", "model_total": 47.8, "line": 45.0, "market_line": "44.5"},
+    ]))
+    assert "BAL -2.5" in factor(both, "spread")["text"], factor(both, "spread")
+    assert "BAL by 3.4" not in factor(both, "spread")["text"], factor(both, "spread")
+    assert "44.5" in factor(both, "total")["text"], factor(both, "total")
+

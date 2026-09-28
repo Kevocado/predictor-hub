@@ -1,4 +1,4 @@
-"""The spread factor states two numbers, and claims nothing about which is bigger.
+"""The spread factor states two numbers, and names neither a side nor a winner.
 
 The factor used to carry a second sentence that was a CONSTANT:
 
@@ -26,6 +26,13 @@ reason: `down` means "against the pick", which requires the market to be
 *softer* than the model -- and "the market is softer than the model" is a point
 FOR the pick. So the mark pointed the opposite way from the claim it was
 justifying.
+
+**And the first half of that sentence named a side, which was a second claim in
+the same breath.** `model_margin` is home-minus-away, NFL and CFB word the line
+from the home team, and the bundle carries no home/away designation -- so "It
+rates {pick} N better" attributed a margin to the pick's team when the pick may
+be the other side, and set it beside a line belonging to a third fact. The case
+is `_nfl_away_pick` below.
 
 **What the tests below pin, and why a sweep.** The fix is to say only what the
 numbers support, so the rendered sentence has to be the same for all three lines
@@ -110,7 +117,7 @@ def test_the_spread_factor_is_the_two_numbers_and_nothing_else(quoted):
     claim shipped. Equality cannot be satisfied by a superset.
     """
     assert _spread(_nba(quoted))["text"] == (
-        f"It rates BOS {MARGIN:g} points better, against a line of {quoted}."
+        f"It projects a margin of {MARGIN:g} points, against a line of {quoted}."
     )
 
 
@@ -149,8 +156,8 @@ def test_the_sentence_cannot_depend_on_the_comparison():
 
 @pytest.mark.parametrize("sport,model_margin,line,label,expected", [
     # NFL and CFB put the MARKET's line in `line` and have no `market_line`.
-    ("nfl", 3.4, "BAL -2.5", "BAL", "It rates BAL 3.4 points better, against a line of BAL -2.5."),
-    ("cfb", 3.4, "BAL -2.5", "BAL", "It rates BAL 3.4 points better, against a line of BAL -2.5."),
+    ("nfl", 3.4, "BAL -2.5", "BAL", "It projects a margin of 3.4 points, against a line of BAL -2.5."),
+    ("cfb", 3.4, "BAL -2.5", "BAL", "It projects a margin of 3.4 points, against a line of BAL -2.5."),
 ])
 def test_every_sport_that_renders_the_factor_gets_the_honest_one(sport, model_margin, line,
                                                                  label, expected):
@@ -174,7 +181,7 @@ def test_every_sport_that_renders_the_factor_gets_the_honest_one(sport, model_ma
 
 def test_a_negative_model_margin_is_written_as_a_magnitude():
     """`model_margin` is home-minus-away, so it is negative when the away side is
-    favoured, and the sentence has to read "4.2 better", never "-4.2 better".
+    favoured, and the sentence has to read "4.2", never "-4.2".
 
     Found by mutation: dropping the `abs()` left the whole suite green, because
     every bundle any test builds has a POSITIVE margin. `abs(margin)` was the only
@@ -183,14 +190,13 @@ def test_a_negative_model_margin_is_written_as_a_magnitude():
     **This asserts the FORMATTING and nothing else, on purpose.** Which team's gap
     the number belongs to is NOT pinned here, because it is not derivable from the
     bundle: the facts carry `model_margin` and a moneyline `model` dict, and no
-    home/away designation, so with `model_margin: -4.2` and a pick of BOS the
-    rendered "It rates BOS 4.2 points better" may be attributing the away side's
-    margin to the home side. NBA's own builder is where that comparison happens --
-    it returns the literal "Toss-up" when the win model and the margin model point
-    at different teams -- and all that survives into the facts is the wording, so
-    the template cannot make the call. Asserting the full sentence here would pin
-    a claim that may be false; that is a separate defect, reported rather than
-    pinned.
+    home/away designation, so the margin may belong to the side the pick is not
+    on. NBA's own builder is where that comparison happens -- it returns the
+    literal "Toss-up" when the win model and the margin model point at different
+    teams -- and all that survives into the facts is the wording, so the template
+    cannot make the call. The fix is therefore to stop naming a team at all,
+    which `test_the_spread_sentence_names_no_team` pins; this test keeps the
+    arithmetic pinned so that change does not also lose the magnitude.
     """
     facts = _nba("MIA -3.5")
     facts["markets"][1]["model_margin"] = -MARGIN
@@ -334,3 +340,149 @@ def test_the_floor_is_the_one_nba_uses():
         f"the floor is {MIN_SPREAD_MARGIN}, which is not the half-point floor "
         "NBA's own facts builder uses"
     )
+
+
+# --- the margin belongs to a SIDE, and the sentence named one ----------------
+
+def _nfl_away_pick(margin: float = 2.6) -> dict:
+    """NFL's real shape, with the pick on the away side and the line on the home
+    side -- the case two of the sentence's claims are false in at once.
+
+    Built from what NFL's own `api/facts.py` emits, not from a fixture invented
+    here, because the whole point is that the two figures come from DIFFERENT
+    sources and genuinely differ:
+
+    * `_markets(game, prediction, moneyline_from)` takes the moneyline from
+      `moneyline_from` and says why in its own docstring: the bundle's `pick` is
+      deliberately the number snapshotted before kickoff, "because that is the
+      record which will be judged", and for an upcoming game today's recompute
+      "genuinely differs". So the pick may be one side while the margin, read
+      from `prediction["predicted_margin"]`, is the other side's.
+    * `_spread_line(home_team, nflverse_spread_line)` is
+      `f"{home_team} {-line:+.1f}"` -- the quoted line is ALWAYS attributed to
+      the home team, whichever side the pick is on.
+
+    So with home BAL, away KC: the snapshot's moneyline favours KC (the pick), and
+    today's recompute has `predicted_margin: 2.6`, which is BAL minus KC, i.e. a
+    2.6-point BAL margin. The line is `nflverse` at BAL -2.5, BAL's own.
+
+    The sentence this file's previous wording rendered:
+
+        It rates KC 2.6 points better, against a line of BAL -2.5.
+
+    names KC as the side the model rates better -- the model rates BAL better --
+    and puts the sentence about KC beside a line that is BAL's, so a reader reads
+    it as KC's line. Two unsupported claims, one sentence, and it is the only
+    prose a reader sees while the deploy runs `EXPLAINER_ENABLED=false`.
+    """
+    return _bundle("nfl", [
+        {"market": "moneyline", "model": {"BAL": 0.44, "KC": 0.56}},
+        {"market": "spread", "model_margin": margin, "line": "BAL -2.5",
+         "model_cover_prob": 0.51},
+    ], label="KC")
+
+
+def test_the_spread_sentence_names_no_team():
+    """The attribution, removed. Exact equality, so anything else fails.
+
+    Both figures stay and the claim about which one is bigger stays unstated:
+    `model_margin`'s magnitude is a real projected margin for these two teams
+    whatever its sign, and the quoted line is a real market line. What is not
+    derivable -- and is not derivable from the bundle, which carries no
+    home/away designation at all -- is whose margin it is. So the sentence
+    states the projection and the line and nothing about the relationship
+    between them or about a side.
+    """
+    assert _spread(_nfl_away_pick())["text"] == (
+        "It projects a margin of 2.6 points, against a line of BAL -2.5."
+    )
+
+
+def test_the_spread_sentence_is_the_same_whichever_side_the_pick_is_on():
+    """The property behind the wording, so it cannot come back as wording.
+
+    Same two figures, same quoted line, and the only thing that changes is which
+    team the bundle calls the pick. A sentence that mentions the pick has to
+    change; a sentence that states the model's projection does not. Requiring
+    them to be equal is a statement about the CODE -- that the row does not read
+    the pick -- rather than about today's phrasing, so a future rewording that
+    drops the attribution again cannot pass by being phrased differently.
+    """
+    away = _nfl_away_pick()
+    home = _nfl_away_pick()
+    home["pick"] = {"label": "BAL", "prob": 0.44}
+    assert _spread(away)["text"] == _spread(home)["text"], (
+        "the sentence changed with the pick, so it is still naming a side: "
+        f"{_spread(away)['text']!r} vs {_spread(home)['text']!r}"
+    )
+
+
+def test_the_spread_sentence_names_a_team_only_when_the_quoted_line_does():
+    """The narrower form of the same rule, which catches a re-attribution that
+    the equality sweep above would not.
+
+    A quoted line is free to name a team -- `"BAL -2.5"` does, and `"224.5"` does
+    not -- so the sentence is allowed to contain the pick's label when the line
+    itself contains it. What it may never do is introduce a team of its own. So
+    the rule is conditional rather than a blanket ban, and it holds for a
+    re-attribution written as anything at all, including one that also changes
+    the rest of the sentence.
+    """
+    text = _spread(_nfl_away_pick())["text"]
+    line = "BAL -2.5"
+    assert "KC" not in line, "this fixture only means anything while the line names the other side"
+    assert "KC" not in text, (
+        f"the sentence named the pick, and the quoted line names the other side: {text}"
+    )
+
+
+@pytest.mark.parametrize("margin", [MARGIN, -MARGIN, AT_THE_FLOOR, -AT_THE_FLOOR],
+                         ids=["a real gap", "a real gap, negated", "at the floor",
+                              "at the floor, negated"])
+def test_the_magnitude_is_read_the_same_way_for_either_sign(margin):
+    """Negative, zero and the boundary, on the sentence's own terms.
+
+    `model_margin` is home-minus-away, so a negative value is the ordinary case
+    where the away side is favoured and must read as a gap, not as a signed
+    number. `0` never reaches this row at all -- `MIN_SPREAD_MARGIN` omits it,
+    which `test_a_margin_that_rounds_to_nothing_emits_no_spread_row` pins -- and
+    the floor itself is inclusive, so half a point in EITHER direction is worded
+    as a gap rather than dropped. One expected string for all four, so a `>` in
+    place of the `>=` the code has, and a dropped `abs()`, each change the
+    answer rather than sliding past a substring check.
+    """
+    facts = _nfl_away_pick(margin)
+    assert _spread(facts)["text"] == (
+        f"It projects a margin of {abs(margin):g} points, against a line of BAL -2.5."
+    ), _spread(facts)["text"]
+
+
+@pytest.mark.parametrize("margin", [0.51, -0.51, 3.0, -3.0, 12.0, 99.9],
+                         ids=["just over the floor", "just over, negated",
+                              "a whole number", "a whole number, negated",
+                              "double figures", "double figures the other way"])
+def test_the_magnitude_is_rendered_as_a_readable_figure_not_a_float_literal(margin):
+    """`:g` formatting, which the exact-equality tests above do not reach.
+
+    Every margin the other tests use has one decimal place, so `:g` and `str()`
+    agree and a change of format specifier would pass all of them. A margin
+    stored as `3.0` -- which is what a float from a JSON bundle routinely is --
+    has to read "3 points" and not "3.0 points", and `:g` is what does that.
+
+    **The failure this is here for, found by running the code rather than reading
+    it.** The first sweep of this fix found that a margin of `1e6` renders as
+    *"a margin of 1e+06 points"* under `:g`, which is not a figure a reader can
+    use. That is PRE-EXISTING -- the old sentence formatted the same magnitude
+    the same way -- and it is unreachable in practice: no sport's builder
+    produces a million-point margin. It is recorded here rather than fixed,
+    because a floor on `model_margin` is a decision about what a bundle may
+    carry, and this file is about what a sentence may claim.
+    """
+    text = _spread(_nfl_away_pick(margin))["text"]
+    # `abs(margin)`, not `margin`: the sentence never carries the sign, and
+    # `f"{-0.51:g}"` is "-0.51", which is the very thing the sweep exists to
+    # forbid. Comparing against the raw value here would have failed on the
+    # negated cases and taught the wrong thing about them.
+    assert text == f"It projects a margin of {abs(margin):g} points, against a line of BAL -2.5."
+    assert "e+" not in text and "e-" not in text, f"a float literal reached a reader: {text}"
+    assert "points. points" not in text and "  " not in text, text

@@ -56,7 +56,19 @@ class Settings(BaseSettings):
     daily_cap: int = Field(default=900, validation_alias="EXPLAINER_DAILY_CAP")
     db_path: str = Field(default="/data/explainer.sqlite", validation_alias="EXPLAINER_DB_PATH")
     enabled: bool = Field(default=True, validation_alias="EXPLAINER_ENABLED")
-    prompt_version: str = "v2"
+    #: Part of the cache key (`Cache.key`, called from `service.explain`) and a
+    #: hit is served verbatim, so this is a deploy precondition rather than a
+    #: label: a change to how a body is WRITTEN under a version the deployed
+    #: cache already holds ships nothing a reader sees. The frame was changed in
+    #: the same commit as this move, so the two are one change.
+    #:
+    #: What the deployed cache holds was measured on the VPS on 2026-09-27 and is
+    #: `v1`/`v2`, so both are spent. `tests/test_prompt_version.py` holds that
+    #: floor and fails if this stops being above it, and
+    #: `tests/test_prompt_version_moves_with_the_prompt.py` fails if the prompt
+    #: text moves without this moving. Two rules, two files: one bounds the
+    #: version against production, the other against the writer.
+    prompt_version: str = "v3"
     sport_api_pl: str | None = None
     sport_api_f1: str | None = None
     sport_api_nfl: str | None = None
