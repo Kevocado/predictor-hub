@@ -269,6 +269,14 @@
      the sport's colour, and is what this page already does. */
   .slot { display: flex; flex-direction: column; gap: 0.5rem; }
   .teaser {
+    /* flex: none is load-bearing, not tidiness. .teaser is a flex item in a
+       column .slot, and the default flex-shrink: 1 let it compress below its
+       own content: every panel measured 10-28px short (scrollHeight 102 vs
+       clientHeight 91 on PL), so the freshness line rendered BELOW the panel's
+       bottom border, outside the box it belonged to. min-height does not
+       prevent this — it only sets a floor of 4.5rem, and the content is
+       taller than that. The panel takes its natural height. */
+    flex: none;
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
