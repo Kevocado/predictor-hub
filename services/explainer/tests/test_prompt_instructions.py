@@ -52,6 +52,9 @@ answer for a change to no behaviour.
 from __future__ import annotations
 
 import re
+import sys
+
+import pytest
 
 from explainer.config import SERVED_SPORTS
 from explainer.prompts import SPORT_NOTES, SYSTEM, messages
@@ -74,10 +77,20 @@ FIGURES_RULE = (
     "which number is bigger."
 )
 
-#: Nothing. There was meant to be a list of comparatives here, and it was
-#: deleted because the sentence that forbids a comparison has to name one. See
-#: `test_the_figures_rule_offers_no_sentence_to_imitate`.
-COMPARATIVES: tuple[str, ...] = ()
+#: Nothing used to live here, and its absence is worth writing down rather than
+#: leaving a gap someone fills.
+#:
+#: There was a `COMPARATIVES: tuple[str, ...] = ()` on this line -- a ban list
+#: that was empty, pre-existing, and referenced zero times repo-wide. An empty
+#: tuple annotated as a list of comparatives reads as *"the ban list, currently
+#: empty"*, and the next person to fill it in writes the phrase blacklist that
+#: this file's own docstring rejects in the same breath: a keyword list over the
+#: model's prose rejects the honest sentences and lets the forbidden one through
+#: on the day it is worded differently. `validate._verdict_problems` says so, and
+#: `test_the_figures_rule_offers_no_sentence_to_imitate` exists because a first
+#: version of this file wrote exactly that list and failed on the replacement
+#: instruction. So the constant is gone and the reason is on `_quotes` below,
+#: which is where a reader deciding what to quote needs it.
 
 # --- rule 2, and the example sentence it used to hand the model --------------
 #
@@ -178,13 +191,48 @@ def _rules() -> list[str]:
 
 
 def _quotes(rule: str) -> list[str]:
-    """Every double-quoted chunk of a rule, in the order it appears.
+    r"""Every quoted chunk of a rule, in the order it appears.
 
-    Splitting on the quote character and taking the odd segments, which is the same
-    read the figures-rule test uses -- so one definition of "what the frame quotes"
-    rather than two that can disagree about the edge cases.
+    **Both quote characters, and that is the whole fix.** The first version of this
+    function split on `"` and took the odd segments, which is a complete answer to
+    "what does the frame quote" for as long as the frame only uses one kind of
+    quote -- and the guard's docstring advertised a total it did not have. A
+    `'`-quoted example slipped past BOTH quote guards:
+    `test_rule_two_quotes_the_banned_terms_and_nothing_else` would have read rule
+    2's six banned terms and reported that the rule quotes nothing else, while the
+    rule sat there holding a seventh quoted thing in single quotes. It was caught
+    elsewhere -- the whole-frame inventory compares the flat list, and a reworded
+    prompt also moves the prompt digest -- so the SYSTEM held. The GUARD did not,
+    and a guard advertised as total which is not is a shape this repo keeps paying
+    for.
+
+    **A tokenizer, and not a split -- a split on `'` is worse than no guard at
+    all.** `rule.split("'")[1::2]` invents a chunk out of every contraction in the
+    frame: rule 3 says *"isn't counted"*, so the naive read reports a quoted thing
+    that is not there and breaks `FRAME_QUOTES` for a reason that has nothing to
+    do with the prompt. A guard that cries wolf on the text that actually ships is
+    a guard that gets deleted, and deleting it takes the real check with it.
+
+    So an opening quote has to be told from an apostrophe, and the only signal in
+    running English is the character in front of it: the apostrophe in `isn't`
+    and `model's` follows a letter, and a quoted phrase follows a space, a bracket,
+    a colon or nothing at all. `(?<![A-Za-z])` is that test, and it is named in
+    prose here rather than left inside the pattern so the next reader knows which
+    word it is protecting.
+
+    Its own limit, stated: a quoted phrase beginning immediately after a letter is
+    not found, and neither is a nested quote of the other kind. The frame has
+    neither, and a rule that grew one would be a rule whose quoting this reader
+    cannot see -- which is the honest way for it to fail, because it shows up as a
+    chunk that is MISSING rather than a chunk that is wrong.
+
+    One pass over both characters, so the order is the order they appear in the
+    sentence rather than "all the doubles, then all the singles" -- which would be
+    a different order from the one `FRAME_QUOTES` records, and would report a
+    reordering that had not happened.
     """
-    return [chunk.strip(' "“”') for chunk in rule.split('"')[1::2]]
+    return [a or b for a, b in
+            re.findall(r"(?<![A-Za-z])'([^']*)'|\"([^\"]*)\"", rule)]
 
 
 def _rule_two() -> str:
@@ -208,22 +256,19 @@ def test_rule_two_says_exactly_this():
     )
 
 
-def test_rule_two_quotes_the_banned_terms_and_nothing_else():
-    """**The structural guard for this whole section**, and it reads the LIVE
-    constant rather than the copy above -- so it does not go quiet when `RULE_TWO`
-    is edited to match a prompt.
+def _assert_rule_two_quotes_only_the_banned_terms() -> None:
+    """The body of the rule-2 quote guard, as a function rather than a test body.
 
-    Rule 2 is the one rule that has to quote, because a ban nobody names is not a
-    ban: it has to list the six words. What it may not do -- what it used to do --
-    is quote anything else, and there is no honest way for it to: a quoted sentence
-    in the rule whose subject is what the prose may not say is a sentence the model
-    is being shown how to say.
+    **A test that only runs against the shipped prompt cannot prove the guard
+    WORKS** -- only that the prompt is currently clean, and "the prompt is
+    currently clean" is exactly the state the guard was in while it was blind. So
+    the assertion is a named function, the test below calls it against the live
+    `SYSTEM`, and this file's other test calls it against a prompt that HAS a
+    quote in it. One body, two prompts: a copy of the assertion would be a second
+    thing to keep in step, and the copy is what would drift.
 
-    An exact list equality, not a keyword test. It rejects nothing on the grounds
-    of what a word MEANS, so it cannot reject an honest sentence -- the objection
-    `validate._verdict_problems` raises against a phrase blacklist and raises
-    correctly. It says only: these six quoted things, in this order, and no
-    seventh.
+    It reads `_rule_two()`, and `_rules()` reads the module-global `SYSTEM`, which
+    is what lets a test substitute a prompt for it.
     """
     assert _quotes(_rule_two()) == list(BANNED_TERMS), (
         f"rule 2 quotes {_quotes(_rule_two())!r}, and the only things it may quote "
@@ -233,6 +278,89 @@ def test_rule_two_quotes_the_banned_terms_and_nothing_else():
         f"model-vs-market comparison the service cannot compute, and this is what "
         f"stops it returning in any wording."
     )
+
+
+def test_rule_two_quotes_the_banned_terms_and_nothing_else():
+    """**The structural guard for this whole section**, and it reads the LIVE
+    constant rather than the copy above -- so it does not go quiet when `RULE_TWO`
+    is edited to match a prompt.
+
+    Rule 2 is the one rule that has to quote, because a ban nobody names is not a
+    ban: it has to list the six words. What it may not do -- what it used to do --
+    is quote anything else, and there is no honest way for it to do that: a quoted
+    sentence in the rule whose subject is what the prose may not say is a sentence
+    the model is being shown how to say.
+
+    An exact list equality, not a keyword test. It rejects nothing on the grounds
+    of what a word MEANS, so it cannot reject an honest sentence -- the objection
+    `validate._verdict_problems` raises against a phrase blacklist and raises
+    correctly. It says only: these six quoted things, in this order, and no
+    seventh.
+    """
+    _assert_rule_two_quotes_only_the_banned_terms()
+
+
+def test_the_quote_guard_catches_an_example_written_in_single_quotes(monkeypatch):
+    """**The hole, closed and demonstrated.** A `'`-quoted example in rule 2 is
+    caught by the rule-2 quote guard ITSELF, not only by the wider inventory.
+
+    The example is the one this file already documents: the model-vs-market
+    comparison `origin/main` used to tell the model to SAY, in single quotes,
+    sitting in the rule whose whole job is to say what the prose may not write.
+    It is the most expensive possible thing for this guard to miss -- a model handed
+    an example produces something close to it, and this comparison is one the
+    service cannot compute and cannot check.
+
+    **The old reader could not see it, and that is why this is a test and not just
+    a change to the helper.** It split on `"` and took the odd segments, so a rule
+    holding a seventh quoted thing in single quotes reported only its
+    double-quoted content: the shipped `SYSTEM` has no single-quoted chunk, so the
+    guard read rule 2's six banned terms and called the rule clean. The SYSTEM
+    held anyway -- the whole-frame inventory is a flat ordered snapshot and the
+    prompt digest moves with any reword -- so the defect was a guard advertised as
+    total which was not, which is the class this repo keeps re-learning.
+
+    The frame is substituted rather than the rule, because `_rules()` reads
+    `SYSTEM` and that is the wiring: a guard reading a local string would pass
+    while the constant the model is actually sent went unread.
+
+    **`pristine` is captured BEFORE the first `setattr`, and that is not tidiness.**
+    `SYSTEM` here is the module global, so a restore written as
+    `monkeypatch.setattr(..., "SYSTEM", SYSTEM)` after the patch has already
+    installed the tainted copy re-installs the tainted copy -- and the control at
+    the bottom silently becomes an assertion about the wrong prompt. It is the
+    "read the live constant, not a copy" rule pointed the other way: the copy has
+    to be taken while the thing being copied is still the real one.
+    """
+    pristine = SYSTEM
+    tainted = pristine.replace(
+        RULE_TWO,
+        RULE_TWO + " Say 'the model rates BAL a little better than the line does' "
+        "when they differ.",
+    )
+    assert tainted != pristine, "the substitution did not apply, so this tests nothing"
+    monkeypatch.setattr(sys.modules[__name__], "SYSTEM", tainted)
+
+    with pytest.raises(AssertionError, match="the only things it may quote"):
+        _assert_rule_two_quotes_only_the_banned_terms()
+
+    # And the reader says WHY, naming the chunk rather than merely disagreeing --
+    # a guard that fails without saying what it found is a guard the next person
+    # works around.
+    found = _quotes(_rule_two())
+    assert "the model rates BAL a little better than the line does" in found, found
+
+    # **The control, and it is the half that could have gone wrong quietly.** The
+    # SHIPPED frame has to be clean under the new reader, and rule 3 contains
+    # "isn't counted" -- so a tokenizer that treated that apostrophe as an opening
+    # quote would invent a chunk, break `FRAME_QUOTES`, and fail every prompt test
+    # in this file. This is asserted rather than left to them: a reader who has
+    # just replaced a split with a regular expression wants to know the
+    # contractions survived, and the assertion is where that is said.
+    monkeypatch.setattr(sys.modules[__name__], "SYSTEM", pristine)
+    assert "isn't counted" not in _quotes(_rule_two())
+    assert _quotes(_rule_two()) == list(BANNED_TERMS)
+
 
 
 def test_the_frame_quotes_only_what_it_quotes_today():

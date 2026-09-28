@@ -50,8 +50,16 @@ those shipped inside a commit.
   `BITES (collection error)`, i.e. as the good outcome -- so an anchor or
   replacement that did not parse was recorded as *having bitten*, which is the
   one thing a mutation table must never say about a row that never ran.
-* **It refuses a table whose anchors hold a DOTALL-unsafe `.`**, before the
-  baseline run and before anything is written. See `unescaped_dots`.
+* **It refuses a table whose anchors cannot be applied safely, before the baseline
+  run and before anything is written.** Two checks, and the second exists because
+  the first was testing a spelling rather than the property it names. See
+  `unescaped_dots` for the `.` scan and `newline_crossings` for the measurement
+  that catches `[\\s\\S]*`, `(?:.|\\n)*` and `\\W*` -- the three spellings a reader
+  writes *after* being told not to use a bare dot, each of which destroys more of
+  a source file than `.*` does and none of which the scan can see. A third check,
+  `invalid_patterns`, refuses a pattern the engine will not compile, which
+  otherwise escapes as a traceback out of the tool meant to report problems
+  readably.
 """
 import os
 import pathlib
@@ -298,12 +306,85 @@ MUTATIONS = [
      'PADDING_NO_PROJECTION = "The facts for this one are still filling in."'),
     # The state CHOICE rather than a wording: with the projection test forced on,
     # a bundle carrying no model figure at all is told it has one.
+    #
+    # The anchor is the WHOLE current line, `count=1`, and the line has three
+    # terms. It used to have two, and this row's anchor was left pointing at the
+    # old text when the third was added -- which is `NOT APPLIED`, the one
+    # outcome that is neither a bite nor a pass and that the loop files as a
+    # silent mutation. It is the same failure as the spread gate's `big_enough`
+    # (an anchor that matched a prefix kept applying and silently stopped
+    # testing the whole gate), and it is why the anchor is the whole line.
     ("the padding row assumes a model projection is always there",
-     r'^        projected = margin is not None or total is not None$',
+     r'^        projected = margin is not None or total is not None or prob is not None$',
      "        projected = True"),
+    # **The critical's own mutation, and the row that did not exist while it
+    # shipped.** Dropping the `prob` term is the edit that turns the row back into
+    # "So there is no model number for this one yet" over a bundle whose moneyline
+    # the panel is drawing -- 555 of 888 CFB bundles and 208 of 272 NFL ones,
+    # measured. The row above it does not catch this: forcing `projected = True`
+    # and dropping a term are different failures, and only one of them was
+    # guarded. A fix whose regression test lives only in the pytest file is a fix
+    # whose test can be deleted with the same commit; this row cannot be satisfied
+    # by editing a test.
+    ("the padding row stops asking about the moneyline",
+     r'^        projected = margin is not None or total is not None or prob is not None$',
+     "        projected = margin is not None or total is not None"),
+    # The other end of the same gate: forcing it off denies a number to every
+    # bundle, which is the same false sentence by the other route. Kept because
+    # the two rows above are the two ways to get this wrong and only one of them
+    # is "too permissive".
+    ("the padding row assumes the model never has a number",
+     r'^        projected = margin is not None or total is not None or prob is not None$',
+     "        projected = False"),
     ("the padding row ignores a quoted price",
-     r'^        quoted_any = quoted is not None or total_line is not None$',
+     r'^        quoted_any = quoted is not None or total_line is not None or implied is not None$',
      "        quoted_any = False"),
+    # The finding's own mutation: the gate stops being able to see PL's book
+    # price, so a bundle carrying `implied` is told there is no quoted price to
+    # read its number against. Latent today (0 of 380 real PL bundles carry
+    # `implied`) and that is exactly why it needs a row: a defect nothing
+    # currently reaches is a defect nothing currently catches, and the harness is
+    # the only guard here that cannot be satisfied by editing a test.
+    ("the padding row stops asking about the book's price",
+     r'^        quoted_any = quoted is not None or total_line is not None or implied is not None$',
+     "        quoted_any = quoted is not None or total_line is not None"),
+    # And the other half of the same helper, which is the mutation a reader is
+    # most likely to write: "does the market have an `implied` key" rather than
+    # "does that map hold a price". PL's `_implied` writes `None` for a side with
+    # no price, so a key-presence check denies nothing for a bundle that has
+    # none -- and the paired test is the one that catches it.
+    ("the padding row counts an empty implied map as a price",
+     r'^        implied = _implied_price\(by_key\.get\("result"\)\)$',
+     '        implied = 1.0 if "result" in by_key else None'),
+    # **A survivor, and it carries the expected-silent mark because it is one.**
+    # Rewriting `projected` to read the moneyline market's `model` MAP rather than
+    # the pick's probability is a different key for the same decision. Verified out
+    # of process rather than assumed: with this row applied, all 1,432 real NFL and
+    # CFB bundles plus 380 real PL ones render 0 false rows, exactly as the shipped
+    # code does -- because `pick.prob` and a moneyline/result `model` map are
+    # present together in every one of them. No builder in the family ever
+    # separates them, so no test over a bundle can either.
+    #
+    # Marked rather than deleted, and the mark is the mechanism working as designed:
+    # a row silent because a property holds is a pass, a row silent because nothing
+    # covers an input is a failure, and this is the first kind. `classify` checks
+    # the label against the run, so a future change to any `_markets` that made the
+    # two disagree would make this row BITES and fail the run loudly -- which is
+    # the correct outcome, because the property would no longer be true. Deleting
+    # the row would have left the survivor undocumented and the run green, which is
+    # the state this row was added to end.
+    (f"the padding row asks the moneyline market instead of the pick "
+     f"[{EXPECTED_SILENT_MARK}: the two keys are never separated by any builder]",
+     r'^        projected = margin is not None or total is not None or prob is not None$',
+     "        projected = margin is not None or total is not None or any("
+     "isinstance(m.get('model'), dict) and m['model'] for m in by_key.values())"),
+    # And `has_pick` instead of `prob`, which the hunt found IS caught -- by the
+    # record test, whose bundle carries a probability with no usable label. Kept
+    # because the two are close enough to look interchangeable on a football
+    # bundle, and because the row that catches it is not obviously about this.
+    ("the padding row asks has_pick instead of the probability",
+     r'^        projected = margin is not None or total is not None or prob is not None$',
+     "        projected = margin is not None or total is not None or has_pick"),
     # The mark. `down` means "against the pick", nothing computes it, and the row
     # fires beside a 99% pick. A keyword absence would not catch this; the emitted
     # value is what `test_template_padding.py` compares.
@@ -355,6 +436,15 @@ MUTATIONS = [
     (f"SERVED_SPORTS reordered [{EXPECTED_SILENT_MARK}: order-independence is the design]",
      r'SERVED_SPORTS = \("pl", "nfl", "cfb", "nba"\)', 'SERVED_SPORTS = ("nba", "pl", "nfl", "cfb")'),
 ]
+
+
+#: The flags every anchor is applied with, named once. `re.S` is the whole reason
+#: a pattern can reach past the end of its line, and it is applied in `main` and
+#: in the static checks below -- so a check that used different flags would be
+#: measuring a different regex from the one that runs. A named constant rather than
+#: a literal repeated in five places because the two sets drifting apart is the
+#: same defect this whole file exists to catch.
+FLAGS = re.M | re.S
 
 
 def unescaped_dots(pattern: str) -> list[str]:
@@ -426,21 +516,240 @@ def dot_problems(rows=None) -> list[tuple[str, str]]:
             for fragment in unescaped_dots(pattern)]
 
 
-def _report_dot_problems() -> bool:
-    """Print every DOTALL-unsafe anchor and say whether the run may proceed."""
-    problems = dot_problems()
-    if not problems:
+# --- the same check, asked as a property rather than as a spelling ----------
+#
+# `unescaped_dots` above reads the PATTERN and asks whether the character `.` is
+# in it where the engine will read it as "any character". That is a spelling rule,
+# and it is blind to every other way of writing the same property -- which is the
+# problem, because the spellings below are what a reader writes *after* being told
+# not to use a bare dot:
+#
+#     r"^    for key in keys:[\s\S]*$"     a character class meaning "anything"
+#     r"^    for key in keys:(?:.|\n)*$"   the alternation, spelled out
+#     r"^}\W*$"                            a non-word run, which includes \n
+#
+# All three report zero dots to the scan and are accepted by it, and the first two
+# destroy 26,090 of `template.py`'s 40,396 characters -- byte for byte as
+# destructive as `.*`, which the scan does catch. The old check could not produce a
+# false PASS (`BROKEN` catches the run and exits 1), but its stated job is to
+# refuse the table *before the baseline and before anything is written*, and for
+# these spellings it did not.
+#
+# So the scan STAYS -- it is what names the character, which is the message a
+# person can act on -- and this is added next to it: run the pattern against the
+# real sources and refuse if what it matched contains a line break the pattern did
+# not ask for.
+
+#: The escape that means "this pattern wants a newline here", as it is spelled in
+#: a source string. A pattern containing it is ALLOWED to match across a line,
+#: because that is a deliberate multi-line anchor and the table has one: the
+#: `'"nba": \("market_line"\),\n'` row, which matches a line AND the newline after
+#: it on purpose. Reading the two characters `\n` out of the source rather than
+#: testing for a compiled flag is deliberate -- it is what the person editing the
+#: table can see.
+_SPELLED_NEWLINE = "\\n"
+
+
+def matched_spans(pattern: str, sources=None) -> list[tuple[str, int]]:
+    """`(file, span length)` for the first match of `pattern` in each source.
+
+    `re.search`, not `re.subn`, and the same `FLAGS`: the first match is the one
+    `re.subn(..., count=1)` would replace, and matching it here is the only way to
+    know how much the row would really touch. A pattern that matches nothing
+    appears as no entry at all -- which is a `NOT APPLIED` row, reported by the
+    loop, not a static-check failure.
+
+    **A pattern the engine will not compile returns nothing rather than raising.**
+    `re.search` is a different call from `re.compile` in exactly the way that
+    matters here: it raises where the compile check would have reported. So the
+    compile is done first and the row is skipped, and `invalid_patterns` is what
+    reports it -- otherwise a table holding one bad pattern produces a traceback
+    from inside the check that exists to prevent tracebacks, which is a worse
+    failure than the one it was written for.
+    """
+    try:
+        re.compile(pattern)
+    except re.error:
+        return []
+    out: list[tuple[str, int]] = []
+    for path, text in (ORIGINALS if sources is None else sources).items():
+        found = re.search(pattern, text, flags=FLAGS)
+        if found is not None:
+            out.append((path.name, found.end() - found.start()))
+    return out
+
+
+def newline_crossings(rows=None, sources=None) -> list[tuple[str, str]]:
+    """(label, detail) for every anchor whose MATCH swallows a line break.
+
+    **The property, measured rather than guessed: does what this pattern matched
+    contain MORE line breaks than the pattern asked for?** Asked against the real
+    `template.py`, `config.py` and `prompts.py` with the flags `main` uses, so the
+    answer is about the files the run is about to mutate.
+
+    **The count, and not a yes/no, and here is why.** The obvious rule is "refuse
+    if the match contains a newline and the pattern does not spell `\\n`", because
+    the table has a row whose anchor is `'"nba": \\("market_line"\\),\\n'` and a
+    yes/no would refuse a correct row. It also has a hole the size of the class
+    this check exists for: `r"^    for key in keys:(?:.|\\n)*$"` spells `\\n` once
+    and matches 26,089 line breaks, and a yes/no waves it through. So the test is
+    the COUNT -- matched newlines above spelled ones -- which accepts the NBA row
+    (one spelled, one matched) and refuses both the alternation and `\\W*`, and
+    does it with no pattern analysis anywhere: nothing in this function knows what
+    `*` or `\\W` mean to the engine.
+
+    `(?:.|\\n)*` is caught by the `.` scan as well, since it holds a bare dot, so
+    it was never going to reach a mutation. But it got through *this* check, and a
+    check with a hole a reader can find by writing the pattern the check is about
+    is not a check -- the whole reason this function exists is that the previous
+    one could be defeated by `\\W*`.
+
+    **A refusal here can be conservative, and that is the direction that is safe.**
+    The property is "the match reaches further than the row's own `\\n`", not "the
+    row is wrong": an anchor that swallows the newline at the end of the last line
+    in a file is harmless to apply and is still refused. A false refusal costs a
+    re-anchored row and a printed line; a false pass costs 26,090 characters of
+    somebody's source file. The detail gives the span size precisely so a reader
+    can tell the two apart in one look.
+
+    Its own limit, stated twice because it is the part a reader will assume away.
+    This measures the MATCH, not what the pattern could do: `\\W*` on an anchor
+    followed by a word character stops at the first space and is accepted --
+    correctly, because on that anchor it replaces one line. And a row whose anchor
+    matches nothing is a `NOT APPLIED` row, which the loop reports and this check
+    has nothing to say about. `unescaped_dots` is what catches the pattern that is
+    merely wrong today, and both are kept.
+    """
+    out: list[tuple[str, str]] = []
+    sources = ORIGINALS if sources is None else sources
+    for label, pattern, _ in (MUTATIONS if rows is None else rows):
+        spelled = pattern.count(_SPELLED_NEWLINE)
+        for name, span in matched_spans(pattern, sources):
+            body = next(t for p, t in sources.items() if p.name == name)
+            found = re.search(pattern, body, flags=FLAGS)
+            assert found is not None  # matched_spans just reported it
+            matched = found.group(0).count("\n")
+            if matched > spelled:
+                out.append((label, f"matches {span} characters of {name} "
+                                   f"({span / max(len(body), 1):.0%} of the file), "
+                                   f"crossing {matched} newline(s) the pattern "
+                                   f"spells {spelled} of"))
+    return out
+
+
+def invalid_patterns(rows=None) -> list[tuple[str, str]]:
+    """(label, detail) for every anchor the regex engine will not compile.
+
+    **A third failure mode, and the one that produced a traceback.** `unescaped_dots`
+    walks the pattern as a string, so a pattern that does not compile passes it
+    untouched; then `main` reaches `re.subn` and `re.error` propagates out of the
+    tool. The reader gets a stack trace from the thing whose entire job is to
+    report problems readably, with no table, no exit code and no `.bak` cleanup --
+    and an uncompilable pattern is a bad row whichever way it is wrong, so it
+    belongs beside the other two rather than as a crash.
+
+    Compiled inside the check rather than trusted, which also means the compiler is
+    the authority: this does not re-implement what `re` accepts, it asks `re`.
+    """
+    out: list[tuple[str, str]] = []
+    for label, pattern, _ in (MUTATIONS if rows is None else rows):
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            out.append((label, f"does not compile: {exc}"))
+    return out
+
+
+def anchor_problems(rows=None, sources=None) -> list[tuple[str, str, str]]:
+    """Every static reason to refuse a table, as `(label, kind, detail)`.
+
+    **The single union, and it is single on purpose.** The three checks are
+    gathered here and nowhere else, because the first version of this file had the
+    reporter compute its own union of the same three lists -- and a survivor hunt
+    found the consequence: setting `broken = []` in this function changed no test
+    at all, because the reporter never asked this function, it asked
+    `invalid_patterns` directly. Two implementations of "everything wrong with
+    this table" is one more thing than there should be, and the one that survives
+    is always the one the tests happen to call.
+
+    The `kind` is the bucket, carried rather than re-derived, so the reporter can
+    print three different fixes for three different mistakes without matching on
+    the text of a message -- which is how a wording change silently reclassifies a
+    finding.
+
+    **The compile check runs FIRST and short-circuits**, because the other two need
+    a pattern the engine will accept. Ordered by dependency rather than by
+    severity, and stated because an ordering that looks arbitrary in the list is an
+    ordering somebody will "tidy" -- and tidying it puts a `re.error` back on the
+    path to the refusal.
+    """
+    broken = invalid_patterns(rows)
+    if broken:
+        # One finding per bad row and nothing else: the other two checks cannot
+        # say anything true about a pattern that does not parse, and a report that
+        # mixed a real crossing with a compile error would send the reader to fix
+        # the wrong row.
+        return [(label, "invalid", detail) for label, detail in broken]
+    return ([(label, "dot", detail) for label, detail in dot_problems(rows)]
+            + [(label, "crossing", detail)
+               for label, detail in newline_crossings(rows, sources)])
+
+
+def _report_anchor_problems() -> bool:
+    """Print every static finding and say whether the run may proceed.
+
+    **Every finding comes from `anchor_problems` and nothing else**, bucketed by
+    the `kind` it carries. That is the whole contract: the reporter decides what a
+    finding LOOKS like, and the function above decides what there is. A reporter
+    with its own copy of the three checks is a second answer to the same question,
+    and the survivor hunt found exactly that -- `anchor_problems` could stop
+    refusing an uncompilable anchor without a single test noticing, because the
+    reporter was not calling it.
+
+    The refusal is still total: nothing has been written when this returns False,
+    and it returns False before the baseline run. A row that is merely unusual and
+    a row that would destroy the file are both refused, and the message says which
+    is which by giving the span size.
+    """
+    found = anchor_problems()
+    if not found:
         return True
-    print(f"  {len(problems)} anchor(s) in the table hold a `.`, which under re.S "
-          f"means 'any character")
-    print("  including a newline' -- so the match runs to the end of the file and")
-    print("  `re.subn(count=1)` replaces everything after it:")
-    for label, fragment in problems:
-        print(f"    - {label}: ...{fragment}...")
-    print("  Every row would report a collection error, which is not a bite, so the")
-    print("  table would report coverage for rows that never ran. Write the anchor")
-    print("  whole-line (`^...$`), spell any run as `[^\\n]*`, or escape the dot as")
-    print("  `\\.`. No mutation has been written; the run stops here on purpose.")
+    by_kind: dict[str, list[tuple[str, str, str]]] = {}
+    for label, kind, detail in found:
+        by_kind.setdefault(kind, []).append((label, kind, detail))
+
+    if "dot" in by_kind:
+        print(f"  {len(by_kind['dot'])} anchor(s) in the table hold a `.`, which under "
+              f"re.S means 'any character")
+        print("  including a newline' -- so the match runs to the end of the file and")
+        print("  `re.subn(count=1)` replaces everything after it:")
+        for label, _, fragment in by_kind["dot"]:
+            print(f"    - {label}: ...{fragment}...")
+        print("  Every row would report a collection error, which is not a bite, so")
+        print("  the table would report coverage for rows that never ran. Write the")
+        print("  anchor whole-line (`^...$`), spell any run as `[^\\n]*`, or escape the")
+        print("  dot as `\\.`. No mutation has been written; the run stops here on purpose.")
+    if "crossing" in by_kind:
+        rows = by_kind["crossing"]
+        print(f"  {len(rows)} anchor(s) in the table match ACROSS A NEWLINE the "
+              f"pattern did not ask for.")
+        print("  The spelling is not the problem -- `[\\s\\S]*`, `(?:.|\\n)*` and `\\W*` all")
+        print("  cross a newline and none of them holds a bare dot, so the scan above")
+        print("  cannot see them. Measured here against the real sources:")
+        for label, _, detail in rows:
+            print(f"    - {label}: {detail}")
+        print("  `re.subn(count=1)` would replace all of it. Write the anchor")
+        print("  whole-line (`^...$`) and spell any run as `[^\\n]*`; if the row really")
+        print("  means to match a line break, spell it as `\\n` and it is allowed. No")
+        print("  mutation has been written; the run stops here on purpose.")
+    if "invalid" in by_kind:
+        rows = by_kind["invalid"]
+        print(f"  {len(rows)} anchor(s) in the table are not valid regexes:")
+        for label, _, detail in rows:
+            print(f"    - {label}: {detail}")
+        print("  `re.subn` would raise `re.error` out of this tool and the run would")
+        print("  die with a traceback instead of a table. No mutation has been written;")
+        print("  the run stops here on purpose.")
     return False
 
 
@@ -579,7 +888,7 @@ def main() -> int:
     # first row is wrong would otherwise cost a full sweep to discover, and a
     # refusal that came after the mutations had been applied would have put 30
     # mutated files on disk with the `.bak` as the only way back.
-    if not _report_dot_problems():
+    if not _report_anchor_problems():
         return 1
     base_failed, base_passed, base_errored = run()
     if base_errored or base_failed:

@@ -271,6 +271,58 @@ def _quoted_line(market: dict | None, keys: tuple[str, ...]) -> str | None:
     return None
 
 
+def _implied_price(market: dict | None) -> float | None:
+    r"""PL's book price, from the `implied` map on its three-way `result` market.
+
+    `pl_predictor`'s own `_markets` adds `implied` to that market when
+    `has_live_odds` and at least one side has a price, as a map of team to the
+    probability the book implies. It is the market's figure for that market, and
+    the panel draws it: spec §13b governs the split bar's *market row*, which is
+    omitted unless `implied` covers every outcome the model's three-way split has
+    -- and so is never drawn for PL. The same section then says the tile's market
+    line "states `implied` **for a side that is present**", which is a different
+    surface with a different rule. A LIV pick therefore gets a key-number tile
+    showing the model's 44% with the book's 44% beneath it.
+
+    So a bundle carrying this map HAS a quoted price, and a padding row that says
+    *"no quoted price to read it against"* is denying something the reader has
+    already been shown. It is the same defect shape as the `projected` gate above
+    it -- a sentence about a bundle, decided by two of its keys while a third
+    carries the thing it denies -- and the reason the review found the first is
+    the reason this is here: the test that pinned the sentence asked whether the
+    spread and total had a `line`, and did not ask what else the family puts a
+    price in.
+
+    **The CONTENTS, not the key's presence, and that is the whole of the helper.**
+    PL's `_implied` returns `None` for a side with no price, so a map can be
+    present and hold nothing; `{"LIV": None, "ARS": None}` is a bundle with no
+    quoted price, and a gate that asked `"implied" in market` would deny nothing
+    here and everything above it. So the values are read through `_num` -- which
+    excludes bools and non-numbers, for the reason it says -- and the largest
+    surviving one is returned.
+
+    **A separate helper rather than a third key on `_quoted_line`, because the two
+    answer different questions.** `_quoted_line` returns a string to PRINT in
+    *"against a line of BOS -3.5"*, and a reader has to be able to check that
+    against a book. `implied` is a map of per-team probabilities, not a line, and
+    no row in this file narrates it -- so there is nothing to print and nothing to
+    check. What the padding row needs is only whether a price EXISTS, and giving
+    `_quoted_line` a third key would have made it return a map for a sentence that
+    interpolates it as text.
+
+    The largest value is returned rather than the first, so the answer does not
+    depend on dict ordering if this ever grows a third side. Nothing reads the
+    number: the only caller asks `is not None`.
+    """
+    if not isinstance(market, dict):
+        return None
+    implied = market.get("implied")
+    if not isinstance(implied, dict):
+        return None
+    prices = [p for p in (_num(v) for v in implied.values()) if p is not None]
+    return max(prices) if prices else None
+
+
 def explain_from_template(facts: dict) -> dict:
     """The no-model path, in the model's own shape, built from the facts."""
     facts = as_dict(facts)
@@ -476,13 +528,69 @@ def explain_from_template(facts: dict) -> dict:
     # a reason to read it.
     if len(factors) < 2:
         # Which of the bundle's states this is, so the row states a fact rather
-        # than a guess. `margin`, `total`, `quoted` and `total_line` are the four
-        # values the spread and total rows above were GATED on, read here rather
-        # than re-scanned, so "the market has not quoted a price" cannot disagree
-        # with those two rows about whether a price exists. A re-scan of `by_key`
-        # for `model_margin` would be the same claim computed twice.
-        projected = margin is not None or total is not None
-        quoted_any = quoted is not None or total_line is not None
+        # than a guess. `quoted` and `total_line` are the two values the spread
+        # and total rows above were GATED on, read here rather than re-scanned,
+        # so "the market has not quoted a price" cannot disagree with those two
+        # rows about whether a price exists. A re-scan of `by_key` for
+        # `model_margin` would be the same claim computed twice.
+        #
+        # `projected` is the OTHER question, and it is not the same one. The
+        # wording it gates is a claim about a MODEL NUMBER, so the gate has to
+        # ask about model numbers -- and there are THREE of them, not two.
+        # `margin` and `total` are the spread's and the total's. The third is
+        # the moneyline, and in every football bundle it is the model's number
+        # and the only one: NFL's and CFB's `_markets` emit the spread and the
+        # total only when the pre-kickoff prediction row carries
+        # `predicted_margin`/`predicted_total` AND the game row carries a
+        # `spread_line`/`total_line`, and for a game weeks out neither is there
+        # yet. So a football bundle is a moneyline and nothing else, and asking
+        # only about the other two made this row say
+        #
+        #     The model makes DAL the pick at 57%.
+        #     So there is no model number for this one yet.
+        #
+        # which is the padding row telling the reader the opposite of the row
+        # directly above it, over a bundle whose 57% the panel is also drawing in
+        # the moneyline tile and the split bar. Measured on real bundles built
+        # from `nfl_predictor`/`cfb_predictor`'s own `get_facts` at their
+        # `origin/main`, that pairing rendered on 555 of 888 CFB bundles and on
+        # 208 of 272 NFL ones whenever `_record()` returns `None` -- 763 rows,
+        # all 763 false. With `EXPLAINER_ENABLED=false` this row is the only
+        # prose a reader of a football game ever sees.
+        #
+        # `prob` is `pick_prob(facts)`, the same value the verdict above and the
+        # response's own `pick` are built from, so "the model has a number" and
+        # "the panel has a number to draw" cannot come apart. It is deliberately
+        # NOT `has_pick`: a bundle can carry a probability with no usable label,
+        # and the moneyline market's `model` map is in the bundle either way --
+        # across all 1,432 real bundles built for this, `pick.prob` and a
+        # moneyline/result `model` map are present together in every single one,
+        # so `prob` is a complete stand-in for "the bundle carries a number" and
+        # is one decision rather than a second scan of `by_key`.
+        #
+        # NOTE: this comment deliberately does not quote the expression on the
+        # next line, for the reason the NOTE above `big_enough` gives -- a
+        # comment repeating the code verbatim takes the `count=1` match and the
+        # mutation lands there.
+        projected = margin is not None or total is not None or prob is not None
+        # The quote test, with THREE terms for the same reason: the sentence is
+        # about a QUOTED PRICE, and this is where the family puts one. `quoted` and
+        # `total_line` are the spread's and the total's, read through the two-key
+        # helper above so NBA's `market_line` and the football `line` are both
+        # covered. The third is PL's, whose three-way `result` market has no `line`
+        # at all -- its book price arrives as a map of per-team probabilities under
+        # `implied` when the fixture has live odds. The panel draws that figure on
+        # the market's tile (see `_implied_price` for why the market ROW is a
+        # different surface with a different rule), so a row saying "no quoted
+        # price to read it against" would deny something two rows above it.
+        #
+        # Latent rather than live, and deliberately fixed anyway: 0 of 380 real PL
+        # bundles carry `implied` -- none of the 380 fixtures has `has_live_odds`
+        # set -- so nothing reachable changes today. "Nothing reachable is wrong"
+        # is how this class of defect survives to the next season's fixtures, and
+        # the end state where it is live is one PL fixture with a book price away.
+        implied = _implied_price(by_key.get("result"))
+        quoted_any = quoted is not None or total_line is not None or implied is not None
         # `not projected` FIRST, so the one state that is reachable with a quote
         # and no model figure -- the market priced it, the model has not -- takes
         # the wording that is true of it. Ordering by how surprising the state is

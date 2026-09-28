@@ -427,3 +427,124 @@ def _nba_facts_source() -> str:
         )
     assert src.strip(), "NBA's facts.py came back empty; the check would pass vacuously"
     return src
+
+
+# --- the half of NBA's rule this repo adopts, checked from HERE ----------------
+#
+# **Why a second file, and what it does and does not buy.** The claim that
+# `MIN_SPREAD_MARGIN` is NBA's floor and not a number this repo picked is asserted
+# in `test_template_spread_claim.py`, derived by running NBA's real `_margin_line`.
+# Those two assertions lived in one file, and one file cannot defend itself: delete
+# both and the suite is green and the claim has no witness anywhere -- not the
+# harness, not `config.py`, not the README. A reviewer is right that no assertion
+# can defend itself against its own deletion; what they are also right about is the
+# specific residual, and the cheap fix for a residual is a second witness in a file
+# the first file's deletion does not touch.
+#
+# So this is one derived assertion, in a file that already reads NBA's git through
+# `_nba_facts_source` and already owns the "run NBA's builder rather than grep it"
+# method. **It is a DERIVATION and not a grep**, which is the part that matters: a
+# regex over NBA's source would be satisfied by NBA's docstring, which quotes
+# `Toss-up` and the whole rule in prose, and by any comment above the line. This
+# cuts the function out and RUNS it, so a comment cannot answer it.
+#
+# **It is not a replacement.** `test_template_spread_claim.py` still holds the
+# literal, the boundary sweep at and just under the floor, the anti-vacuity checks
+# on the probe, and the decoy that moves NBA's floor and asserts the probe notices.
+# This one asserts the single thing whose loss would leave the claim unwitnessed.
+#
+# **It is in this file because this file is on `origin/main`**, so adding a witness
+# is an addition to something a reader already has rather than a fourth file whose
+# only content is a copy of another file's assertion.
+
+#: How finely the witness sweeps, and why a thousandth is the right step. Every
+#: floor a sports builder plausibly writes -- 0.25, 0.3, 0.5, 0.6 -- lands exactly
+#: on a step, so the derived value is the floor rather than an approximation of it,
+#: which is what lets the comparison below be exact equality. And the sweep is
+#: BEHAVIOURAL, so a floor NBA writes as `0.5` on one line and `1.0 / 2` on another
+#: is the same number to this witness.
+_FLOOR_STEP = 0.001
+_FLOOR_MAX = 2.0
+
+#: The word NBA emits for a margin that is not a gap. Read out of the function's
+#: own output rather than written here, because a literal is the kind of copy this
+#: derivation exists to remove -- if NBA renames it, a witness holding `"Toss-up"`
+#: would compare against a string NBA no longer emits and report a floor of "the
+#: first margin that is not that string", which happens to still be right. So it is
+#: derived: a margin of 0 is a non-gap, and that string is what the function calls
+#: one.
+def _nba_floor_from_its_own_function() -> float:
+    """The smallest margin NBA's own `_margin_line` words as a gap, found by
+    running it. Raised from, not re-implemented from."""
+    source = _nba_facts_source()
+    cut = re.search(r"^def _margin_line\(.*?(?=^def |\Z)", source, re.S | re.M)
+    assert cut, (
+        "NBA's facts.py has no `_margin_line` on origin/main, so the claim that this "
+        "template's floor is NBA's is UNVERIFIED rather than true. The function is "
+        "the authority: it decides whether a projected margin is worded as a gap or "
+        "as a toss-up, and a bundle it called a toss-up arrives here already "
+        "described as one."
+    )
+    env: dict = {}
+    exec(compile("from __future__ import annotations\n" + cut.group(0),
+                 "<nba _margin_line>", "exec"), env)
+    margin_line = env["_margin_line"]
+
+    # The side gate is made a non-question, so what the sweep measures is the
+    # MAGNITUDE half of NBA's rule and nothing else: `home_prob = 0.62` puts the
+    # pick at home, a non-negative margin puts the projection at home too, so "is
+    # this margin pointed at the pick's team" holds at every magnitude. The other
+    # half is not adoptable here at all -- the bundle carries no home/away
+    # designation -- and that limit is `test_template_spread_claim.py`'s to state in
+    # full. All this witness claims is the number.
+    not_a_gap = margin_line("BOS", "MIA", 0.62, 0.0)
+    assert not not_a_gap.startswith("BOS by"), (
+        f"NBA words a zero margin as a gap ({not_a_gap!r}), so there is no boundary "
+        f"to find and any floor this file reports would be an artefact"
+    )
+    assert margin_line("BOS", "MIA", 0.62, _FLOOR_MAX).startswith("BOS by"), (
+        f"NBA does not word a {_FLOOR_MAX}-point margin as a gap naming a team, so "
+        f"the word this sweep is looking for is not the word NBA uses"
+    )
+    for i in range(int(round(_FLOOR_MAX / _FLOOR_STEP)) + 1):
+        value = round(i * _FLOOR_STEP, 6)
+        if margin_line("BOS", "MIA", 0.62, value) != not_a_gap:
+            return value
+    raise AssertionError(
+        f"NBA's `_margin_line` called every margin up to {_FLOOR_MAX} a toss-up, so "
+        f"it sets no magnitude floor and whatever this repo used would be a second "
+        f"disagreement with the bundle's producer."
+    )
+
+
+def test_this_services_margin_floor_is_the_one_nbas_own_function_sets():
+    """The one derived assertion, here so it is not only in the other file.
+
+    `explainer.template.MIN_SPREAD_MARGIN` is the threshold below which this
+    template stops narrating a projected margin at all, on the stated ground that
+    NBA's own builder words a smaller one as the literal `Toss-up` and a bundle
+    carrying it has therefore already been told there is no gap. If that ground is
+    wrong the template contradicts the producer of its own data, in the direction
+    that prints a gap the sport said there was not.
+
+    **Derived by running NBA's function, over a thousand margins.** Not a literal --
+    a literal is a copy of the number, and against a decoy NBA whose floor is `0.6`
+    the copy passes with the template disagreeing with its data by a tenth of a
+    point. Not a regex over NBA's source -- NBA's docstring quotes `Toss-up` and
+    the whole rule in prose, and `count=1`-style first-match readers are satisfied
+    by a comment. RUNNING it is the only read that cannot be answered by prose, and
+    it is why this is here rather than a second copy of the other file's assertion.
+    """
+    from explainer.template import MIN_SPREAD_MARGIN
+
+    derived = _nba_floor_from_its_own_function()
+    assert derived == MIN_SPREAD_MARGIN, (
+        f"NBA's own `_margin_line` words a margin as a gap from {derived} and this "
+        f"template's floor is {MIN_SPREAD_MARGIN}. One of the two is a copy of the "
+        f"other and the copy is wrong: a bundle whose margin NBA called a toss-up "
+        f"arrives here already described as one, and a template with a different "
+        f"floor contradicts the producer of its own data. NBA's docstring says the "
+        f"function ports `marginLine`; the floor is not a number this repo gets to "
+        f"choose."
+    )
+

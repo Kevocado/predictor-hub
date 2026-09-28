@@ -415,6 +415,380 @@ def test_the_dot_check_reads_the_pattern_the_way_the_regex_will(pattern, expecte
     )
 
 
+# --- the static check: an anchor may not CROSS A NEWLINE --------------------
+#
+# **The character scan was testing a spelling, not the property it names.**
+# `unescaped_dots` looks for a literal `.`. It cannot see "this pattern can match
+# a newline", and the spellings that can are not rare -- they are what a reader
+# writes after being told not to use a bare dot:
+#
+#     r"^    for key in keys:[\s\S]*$"     the character class that means "anything"
+#     r"^    for key in keys:(?:.|\n)*$"   the alternation, spelled out
+#     r"^}\W*$"                            the non-word run, which includes \n
+#
+# All three report zero dots under `unescaped_dots` and are accepted. The first
+# two destroy 26,090 of `template.py`'s 40,396 characters -- byte-for-byte as
+# destructive as `.*`, which the scan does catch. The old check could not produce
+# a FALSE PASS (`BROKEN` catches the run and exits 1) but the check's stated job
+# is to refuse the table *before the baseline and before anything is written*, and
+# for these spellings it did not.
+#
+# So the scan stays, for the error message it gives -- "you have a dot here" points
+# at the character, and this is a check people read at 2am when a run refuses -- and
+# a second check is added for the property: **run the pattern against the real
+# sources, and refuse if what it matched contains a newline the pattern did not
+# ask for.** That is a measurement rather than a spelling rule, so it also accepts
+# the three safe spellings the table documents, and it has the property that
+# matters: a false refusal costs a re-anchored row and a false pass costs the
+# file.
+
+#: `(pattern, crosses)`, the six spellings that decide the check. The `sources`
+#: are the real `ORIGINALS` unless a case says otherwise, because the question is
+#: what the pattern does to THESE files -- not what it would do in the abstract.
+CROSSING_CASES = [
+    # --- the three that must be refused -------------------------------------
+    pytest.param(r"^    for key in keys:[\s\S]*$", True,
+                 id=r"[\s\S]* -- the class that means any character"),
+    pytest.param(r"^    for key in keys:(?:.|\n)*$", True,
+                 id=r"(?:.|\n)* -- the same thing, spelled out"),
+    # `\W*` is the subtle one, and this anchor is the reviewer's. On THIS line it
+    # does not cross: `\W` cannot consume a word character, so it stops at the
+    # first space before the next line's indentation and `$` is then nowhere to
+    # land. It is still a member of the dangerous class, and the class is caught
+    # -- on an anchor where the text after it really is all non-word. `template.py`
+    # ends `}` then a newline, so this one does cross. Reported rather than hidden:
+    # a check that measured the property accepted the reviewer's own spelling on
+    # their own anchor, and saying so is more use than a clean 3-for-3.
+    pytest.param(r"^}\W*$", True,
+                 id=r"\W* -- a non-word run, on the anchor where it really crosses"),
+    # --- the three that must be accepted ------------------------------------
+    pytest.param(r"^    for key in keys:[^\n]*$", False,
+                 id=r"[^\n]* -- the DOTALL-safe run the table documents"),
+    pytest.param(r"^MIN_SPREAD_MARGIN = 0\.5$", False,
+                 id=r"\. -- an escaped literal dot"),
+    pytest.param(r"^MARK[.]{1}A = 1$", False,
+                 id=r"[.] -- a dot inside a character class is a literal"),
+]
+
+
+@pytest.mark.parametrize("pattern,crosses", CROSSING_CASES,
+                         ids=[p.id for p in CROSSING_CASES])
+def test_the_anchor_check_measures_the_match_and_not_the_spelling(pattern, crosses):
+    r"""The property check, on the six spellings that decide it.
+
+    Asked a different question from `unescaped_dots` on purpose. The scan reads the
+    pattern and asks "is there a character here the engine will read as any
+    character"; this one RUNS the pattern against the real `template.py`,
+    `config.py` and `prompts.py` with the same `re.M | re.S` `main` uses, and asks
+    "did what it matched swallow a line break". A pattern that spells `\n` is
+    allowed to match one -- that is a deliberate multi-line anchor, and the table
+    has one (`r'    "nba": \("market_line"\),\n'`) that has to keep working.
+
+    The mutation this kills is the one the scan cannot see, and it is the one a
+    reader writes *because* of the scan: told "do not use a bare dot", the
+    obvious repair is `[\s\S]*`, which is worse and looks safer.
+    """
+    problems = harness.anchor_problems(rows=[("a probe row", pattern, "MARKER = 1")])
+    assert bool(problems) is crosses, (
+        f"{pattern!r}: expected the anchor check to "
+        f"{'REFUSE' if crosses else 'accept'} it, and it "
+        f"{'refused' if problems else 'accepted'} it"
+        + (f" -- findings: {problems}" if problems else "")
+        + f". Matched spans: {harness.matched_spans(pattern)!r}"
+    )
+
+
+def test_the_union_is_computed_in_one_place_and_the_reporter_uses_it():
+    """**A survivor, found and closed.** The reporter and the union were the same
+    question answered twice, and the copy was the one nothing tested.
+
+    `main` refuses through `_report_anchor_problems`; the whole-table guard reads
+    `anchor_problems`. The reporter used to gather `dot_problems()`,
+    `newline_crossings()` and `invalid_patterns()` itself rather than calling the
+    union -- so a survivor hunt found that setting `broken = []` inside
+    `anchor_problems` changed no test at all, because the reporter never asked it.
+    The compile check read as covered and was covered only on the path nothing
+    called. That is the exact shape of the padding-row finding, one layer down in a
+    tool instead of a product: a rule that looks load-bearing and is not.
+
+    So there is ONE union, it carries a `kind` so the reporter can bucket without
+    matching on the text of a message, and this asserts the direction that matters
+    -- a union that stops reporting a class of finding has to be noticed by the
+    only caller that sees every row.
+    """
+    assert harness.anchor_problems() == [], (
+        f"the union is not empty on the shipped table: {harness.anchor_problems()}"
+    )
+    # An uncompilable anchor IS in the union, and it is there as `invalid` rather
+    # than as one of the other two kinds: a pattern that does not parse cannot be
+    # said to cross a newline, and a report that mixed the two would send the
+    # reader off to fix the wrong row.
+    uncompilable = r"^MARKER = ([x$"
+    bad = harness.anchor_problems(rows=[("an uncompilable row", uncompilable, "M")])
+    assert len(bad) == 1 and bad[0][0] == "an uncompilable row" and bad[0][1] == "invalid", bad
+
+    # **And the short-circuit is a property, not an accident of ordering.** A table
+    # holding an uncompilable anchor reports ONLY that, because the other two checks
+    # cannot say anything true about a pattern that does not parse, and a report
+    # mixing a real crossing with a compile error sends the reader to fix the wrong
+    # row. The cost is that a second, perfectly good problem in the same table waits
+    # for the next run -- which is the right trade, and is only a decision if it is
+    # written down.
+    short = harness.anchor_problems(rows=[
+        ("a bare dot", r"^MARKER = 1\..*$", "M"),
+        ("not a regex", uncompilable, "M"),
+    ])
+    assert [kind for _, kind, _ in short] == ["invalid"], short
+
+    # The two compiling kinds are distinguishable, because the reporter prints two
+    # different fixes and matching on the text of a message is how a wording change
+    # silently reclassifies a finding.
+    both = {kind for _, kind, _ in harness.anchor_problems(rows=[
+        ("a bare dot", r"^MARKER = 1\..*$", "M"),
+        ("a crossing run", r"^}\W*$", "M"),
+    ])}
+    assert both == {"dot", "crossing"}, both
+
+
+def test_every_row_in_the_table_survives_the_anchor_check():
+    """The whole table, both checks, on the real sources. This is the guard.
+
+    Read from `MUTATIONS` rather than from a checked-in copy, so deleting rows does
+    not make the check vacuous -- and so a row added later is covered by the same
+    run that covers the old ones. `ORIGINALS` is the real capture of the three
+    source files, taken at import, so this is measured against the files the
+    harness is about to mutate rather than against a fixture.
+    """
+    assert harness.dot_problems() == [], "the dot scan found something; see its own test"
+    problems = harness.anchor_problems()
+    assert problems == [], (
+        "an anchor in the table is not safe to apply -- it either holds a bare `.`, "
+        "matches across a line break it did not ask for, or is not a valid regex, so "
+        "`re.subn(count=1)` would replace more than the row means to, or raise:\n"
+        + "\n".join(f"  [{kind}] {label}: {detail}" for label, kind, detail in problems)
+        + "\nWrite the anchor whole-line (`^...$`) and spell any run as `[^\\n]*`, or "
+          "spell the line break explicitly as `\\n` if the row really means to cross one."
+    )
+
+
+def test_a_crossing_anchor_is_refused_before_the_baseline_and_before_any_write(tmp_path):
+    """The consequence, so the check is not a helper nothing calls.
+
+    The same three assertions the dot demonstration makes, because they are the
+    three that matter and the new check has to make all of them: it refuses, it
+    refuses with the row named, and it refuses **before the baseline pytest run** --
+    a table that is wrong in its first row would otherwise cost a full sweep to
+    discover, and a refusal that came after the mutations had been applied would
+    have put mutated files on disk with the `.bak` as the only way back.
+    """
+    rows = [SILENT_CANARY, ("an anchor that swallows the file",
+                            r"^    for key in keys:[\s\S]*$", "MARKER = 1")]
+    baks = _baks(tmp_path)
+
+    code, printed = _run_main(rows, [(0, 300, 0)] * 3, tmp=tmp_path)
+
+    assert code == 1, f"a table with a newline-crossing anchor exited {code}\n{printed}"
+    assert "an anchor that swallows the file" in printed, printed
+    # The finding has to say how much it would have destroyed, or the reader has to
+    # go and measure it themselves to decide whether the row is wrong or the
+    # pattern is merely unusual.
+    assert "newline" in printed.lower(), printed
+    assert "baseline" not in printed, f"the static check ran after the baseline:\n{printed}"
+    assert "BITES" not in printed, printed
+    for bak in baks:
+        assert not bak.exists(), f"{bak} was written by a run that refused the table"
+
+
+def test_a_pattern_that_does_not_compile_is_a_clean_refusal_not_a_traceback(tmp_path):
+    r"""An invalid regex is a refusal, and this is the third thing it must be.
+
+    `unescaped_dots` walks the pattern as a string, so a pattern that will not
+    compile passes it untouched -- it has no metacharacter to complain about, or it
+    has one it reads differently from the engine. Then `main` reaches
+    `re.subn(pattern, ...)`, which raises `re.error`, and the run dies with a
+    traceback: no table, no exit code, no `.bak` cleanup, and the reader left
+    staring at a stack trace inside a tool whose entire purpose is to report
+    problems in a readable form.
+
+    So the pattern is COMPILED inside the check, and a `re.error` is a finding
+    alongside the other two. The row is named, the refusal happens before the
+    baseline, and the exit code is 1 -- the same contract as a dot, which is the
+    point: a bad pattern is a bad table whichever way it is wrong.
+    """
+    rows = [SILENT_CANARY, ("an anchor that is not a regex", r"^MARKER = ([unclosed$",
+                            "MARKER = 1")]
+    baks = _baks(tmp_path)
+
+    code, printed = _run_main(rows, [(0, 300, 0)] * 3, tmp=tmp_path)
+
+    assert code == 1, f"a table holding an uncompilable anchor exited {code}\n{printed}"
+    assert "an anchor that is not a regex" in printed, printed
+    assert "Traceback" not in printed, (
+        f"an invalid pattern escaped as a traceback rather than a refusal:\n{printed}"
+    )
+    assert "baseline" not in printed, printed
+    for bak in baks:
+        assert not bak.exists(), f"{bak} was written by a run that refused the table"
+
+
+def test_the_dot_scan_and_the_crossing_check_are_not_the_same_check():
+    """Why both survive, stated as an assertion rather than as a preference.
+
+    The scan's job is the MESSAGE: it says "there is a `.` at this offset in this
+    pattern", which points at the character, and a person reading a refused run at
+    2am acts on that in a way they cannot act on "the match was 26,090 characters
+    long". The crossing check's job is the PROPERTY: it catches the spellings the
+    scan is blind to, and it is a measurement so it accepts `[^\n]*` and `[.]`.
+
+    Collapsing them loses one or the other. A test that only held the scan would
+    pass with `[\\s\\S]*` in the table. A test that only held the crossing check
+    would still accept a pattern with a bare `.` that happens not to cross on
+    today's file -- so the scan is what tells the next person to fix it before the
+    file grows a line that makes it cross.
+    """
+    scan_only = r"^MARKER = 1\.5$"        # a dot, escaped -> scan clean
+    assert harness.dot_problems(rows=[("x", scan_only, "")]) == []
+    assert harness.anchor_problems(rows=[("x", scan_only, "")]) == []
+
+    # A bare dot the scan catches, and the crossing check agrees is harmless --
+    # because `.*` with nothing after it stays on the line. That disagreement is
+    # the reason there are two checks, and it is asserted here so the second one
+    # can never quietly become the only one.
+    bare = r"^MARKER = 1\..*$"
+    assert harness.dot_problems(rows=[("x", bare, "")]), "the scan stopped seeing a bare dot"
+    assert harness.newline_crossings(rows=[("x", bare, "")]) == [], (
+        "this anchor stays on its line, so the crossing check correctly says nothing"
+    )
+
+
+# --- the two paths a refactor would break first ------------------------------
+#
+# **Both fail safe, and that is exactly why they need driving.** Every other exit
+# in `main` has a test that reaches it, because every other exit is reachable from
+# a table that is merely wrong. These two are reachable from a table that is
+# RIGHT, or from the machine the run happens on, which is why no run of a good
+# table ever produces them:
+#
+# * `NOT APPLIED` -- a row whose anchor is in no file. The anchor stopped matching
+#   because the code it mutates was renamed, reformatted or deleted, which is the
+#   single most common thing that happens to a mutation table in a living
+#   repository. Nothing about the run is wrong, so nothing draws attention to it.
+# * the red baseline -- the suite is already failing when the harness starts.
+#   Every mutation would then "bite" for free and the table would be meaningless,
+#   so `main` refuses. This path fired for real during the last review, which is
+#   the strongest argument for pinning it: a path that has actually fired once and
+#   has no test is a path that has been lucky.
+#
+# This repo\'s thesis is that an unexercised rule is a comment, and a comment is
+# how the padding row shipped a sentence denying the row above it. These two are
+# the last rules in the tool with no test.
+
+
+def test_a_row_whose_anchor_is_in_no_file_is_reported_as_not_applied(tmp_path):
+    """The row, named, and not filed under any of the four other verdicts.
+
+    `NOT APPLIED` is its own outcome, and it is the one a reader most needs to see:
+    the row did not test anything, and a table that silently drops a row is a
+    table that shrinks its own coverage as the code moves. It is filed with the
+    silent mutations -- so the run exits 1 -- but the report says WHICH it was, in
+    the row\'s own line and again in the summary, because "did not bite" on its own
+    reads as "nothing covers this" when the truth is "this row never ran".
+
+    **And it is neither a bite nor `BROKEN`**, which is the pair of mistakes this
+    file exists to prevent and is what the assertion is really about: a collection
+    error once reported as `BITES (collection error)`, and a row that never
+    applied must not be reported as one either. A row that did not run has proved
+    nothing, and `BITES` is the one cell in the table that means something did.
+    """
+    rows = [SILENT_CANARY,
+            ("a row whose anchor has stopped matching",
+             r"^NOT_AN_ANCHOR_ANYWHERE_AT_ALL$", "MARKER = 1")]
+    baks = _baks(tmp_path)
+
+    code, printed = _run_main(rows, [(0, 300, 0)] * 3, tmp=tmp_path)
+
+    assert code == 1, f"a NOT APPLIED row exited {code}\n{printed}"
+    assert "NOT APPLIED" in printed, printed
+    assert "a row whose anchor has stopped matching" in printed, printed
+    assert "every mutation bit" not in printed, (
+        f"the success line printed with a row that never ran:\n{printed}"
+    )
+    # Not a bite, and not a broken row. Both read as coverage.
+    assert "BITES" not in printed, printed
+    assert "BROKEN" not in printed, printed
+    # Reported, not dropped: it is in the summary and marked as what it was.
+    report = printed.split("restored:")[-1]
+    assert "did not bite" in report, report
+    assert "[not applied]" in report, (
+        f"the row was not marked as never having run, so a reader of the summary "
+        f"would take it for a coverage gap rather than a stale anchor:\n{report}"
+    )
+    # The restore still ran, so the tree is right, and the recovery copies are
+    # still litter: a row that never ran wrote nothing to recover.
+    assert "restored:" in printed, printed
+    for bak in baks:
+        assert not bak.exists(), f"{bak} was left behind by a run that restored"
+
+
+@pytest.mark.parametrize("answer,expected", [
+    pytest.param((5, 0, 0), "BASELINE IS RED: 5 failed, 0 errored",
+                 id="the suite is already failing"),
+    # `run()` returns `(-1, 0, 1)` on a non-zero pytest exit, so the message reads
+    # "BASELINE IS RED: -1 failed, 1 errored" -- and it always will, because what
+    # is asserted is the SENTENCE and the errored count beside it, not the number.
+    # That is deliberate, and worth saying rather than pinning the string: `-1` is
+    # a sentinel meaning "do not read this as a count", and printing a sentinel
+    # where a count goes is a small wrongness in the one message an operator sees
+    # when the tool refuses. It is recorded here instead of pinned, so a future fix
+    # to the wording does not have to edit this test -- and so the oddity is
+    # written down where a reader meets it rather than rediscovered from a log.
+    pytest.param((-1, 0, 1), "BASELINE IS RED:", id="the suite does not even collect"),
+], ids=lambda v: str(v))
+def test_a_red_baseline_refuses_the_table_before_anything_is_written(tmp_path, answer,
+                                                                     expected):
+    """The refusal, and the three things that together make it one.
+
+    *It refuses at all*, with the numbers in the message. A run whose baseline is
+    red cannot say anything about any row: every mutation would report a bite for
+    free and the table would be a page of green ticks that means nothing. This is
+    the one refusal in the tool that is not about the table at all.
+
+    *It refuses before anything is written.* The `.bak` files are written AFTER
+    this check, so a red baseline leaves the tree exactly as it found it. Asserted
+    rather than assumed, because the other ordering is a natural one to write and
+    it would leave three untracked files behind on the machine most likely to have
+    a red suite -- which is the machine where somebody is already stuck.
+
+    *It refuses before the table is printed.* The header naming the mutation count
+    is printed after the check, so a reader who sees it knows the run went ahead.
+    Asserting its ABSENCE is what pins the ordering; asserting the exit code alone
+    would pass just as well with the whole table printed and every row reported.
+
+    Both refusals are driven because they are two different messages reaching the
+    same place -- a failing suite and a suite that will not collect are the two
+    ways a baseline is not green, and only the first was ever exercised.
+    """
+    baks = _baks(tmp_path)
+
+    code, printed = _run_main([SILENT_CANARY], [answer], tmp=tmp_path)
+
+    assert code == 1, f"a red baseline exited {code}\n{printed}"
+    assert expected in printed, printed
+    if answer[2]:
+        # The count that IS a count, asserted separately, because the one beside it
+        # is a sentinel and pinning the pair would pin the sentinel.
+        assert "1 errored" in printed, printed
+    assert "mutations against" not in printed, (
+        f"the table was printed despite a red baseline:\n{printed}"
+    )
+    assert "every mutation bit" not in printed, printed
+    for bak in baks:
+        assert not bak.exists(), (
+            f"{bak} was written by a run that refused before mutating anything"
+        )
+
+
+
 def test_a_table_holding_a_dot_anchor_is_refused_before_any_mutation_is_written(tmp_path):
     """The demonstration, as a test, so it does not depend on anyone remembering
     to add the row by hand.

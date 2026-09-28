@@ -3,12 +3,49 @@ every reader of a thin bundle actually sees.
 
 Two rows exist only so the panel is never a single lonely line, and the verdict
 is the one sentence above them. Measured reach, which is why they are worth
-pinning rather than describing:
+pinning rather than describing. **Every number below is a measurement and the
+query that produced them is here**, because this table used to carry four cells no
+build has ever reproduced:
 
-| row | bundles that render it |
-|---|---|
-| `"Not much to go on"` | NFL 271/272, CFB 555/888, NBA 373/1760 |
-| `"So there is little to weigh up here: {title}."` | CFB 331, NFL 47, NBA 231, PL 50 |
+| row | CFB | NFL | PL |
+|---|---|---|---|
+| `"Not much to go on"` | 555/888 | **208/272 cold · 0/272 warm** | 0/380 |
+| `"So there is little to weigh up here: {title}."` | 256/888 | 47/272 cold · 0/272 warm | 0/380 |
+
+**The NFL split is the whole of the NFL row, and it is worth being precise about.**
+`_record()` reads the tracking DB; a settled pre-kickoff record produces the record
+FACTOR, which fills the second slot on its own, and the padding loop then never
+runs. So the row is at its most frequent exactly when the tracking DB is cold --
+which on this service's own deploy is the NORMAL state, the DB being ephemeral
+local container disk that a cold start wipes. The `271/272` this table used to
+claim is reproduced by nothing: it is 208 without a record and 0 with one, and a
+cell that reports a number no build produces is a cell nobody can check. The other
+three that did not survive are corrected here too -- the second row was `CFB 331`,
+`NFL 47` and `PL 50`, and it is 256, 47 and 0. Only NFL's 47 was right.
+
+The query, so the table can be re-derived rather than believed. In a throwaway
+worktree of each sport at its `origin/main` -- their local `main` branches are
+stale, NFL's by 100+ commits -- with `PUBLIC_MODE=true`, so nothing touches the
+network:
+
+```python
+import json, pathlib, sys
+sys.path.insert(0, "src")
+from nfl_predictor.api import facts              # or cfb_ / pl_
+snap = json.loads(pathlib.Path("data/public_snapshot.json").read_text())
+# NFL/CFB: snap["weeks"][*]["games"][*]["game_id"]        -> 272 and 888 ids
+# PL:      snap["fixtures_by_gameweek"][*]["fixtures"][*]["event_id"]  -> 380 ids
+ids = [...]                                       # de-duplicated, order kept
+bundles = [facts.get_facts(i) for i in ids]      # 0 errors on all three
+```
+
+then render each through `explain_from_template` and count
+`[f for f in out["factors"] if f["headline"] == "Not much to go on"]`. The cold-NFL
+figure additionally needs `data/tracking.db` absent -- deleting it is what makes
+`_record()` return `None`, and that is the entire difference between 208 and 0.
+`test_the_padding_row_never_denies_a_number_the_bundle_carries` carries the same
+counts for the sentence this table is about, and the fixture at the top of this
+file is one of the 208.
 
 So for a bundle with little in it, these are not padding in the disposable sense
 -- they are most of the panel. Four edits to them were silent before this file:
@@ -104,6 +141,43 @@ VERDICT = "BOS is the pick."
 NO_PICK_VERDICT = "There is no pick for this one yet."
 
 
+# --- the football bundle, built by NFL's and CFB's OWN `_markets` -----------
+#
+# **The critical's shape, as a fixture.** A football bundle that reaches the
+# padding row is a moneyline and nothing else: NFL's and CFB's `_markets` emit
+# the spread and the total only when the pre-kickoff prediction row carries
+# `predicted_margin`/`predicted_total` AND the game row carries a
+# `spread_line`/`total_line`, and for a game weeks out neither is there yet. So
+# the market list is `[{"market": "moneyline", "model": {...}}]` and the pick's
+# probability IS the model's number for this bundle.
+#
+# **The numbers below are a real bundle, not a shape.** `NFL_Predictor` at
+# `origin/main`, `PUBLIC_MODE=true`, `get_facts("2026_05_TB_DAL")` on a cold
+# tracking DB (`_record()` -> `None`), rendered through
+# `explain_from_template`:
+#
+#     verdict  DAL is the pick.
+#     [The pick]           The model makes DAL the pick at 57%.
+#     [Not much to go on]  So there is no model number for this one yet.
+#
+# 208 of 272 NFL bundles render that pair on a cold DB and 555 of 888 CFB ones
+# do on a warm one -- 763 rows, every one of them false, and every one of them
+# sitting directly under a row quoting the number it denies. See
+# `test_the_padding_row_never_denies_a_number_the_bundle_carries` for the
+# property and the count.
+NFL_FOOTBALL_PROB = 0.5701846721782629
+NFL_FOOTBALL_BUNDLE = {
+    "sport": "nfl", "id": "2026_05_TB_DAL", "title": "TB at DAL",
+    "starts_at": "2026-10-09T00:15:00Z", "status": "upcoming",
+    "pick_timing": "pre_kickoff",
+    "pick": {"label": "DAL", "prob": NFL_FOOTBALL_PROB},
+    "markets": [{"market": "moneyline", "model": {"DAL": NFL_FOOTBALL_PROB,
+                                                  "TB": 1 - NFL_FOOTBALL_PROB}}],
+    "drivers": [], "context": {}, "players": [],
+    "record": None, "result": None,
+}
+
+
 def _bundle(sport: str = "nfl", markets: list | None = None, label: str | None = "BOS",
             prob: float = LOW_PROB, **over) -> dict:
     """A bundle with as little in it as the padding loop will accept.
@@ -170,11 +244,26 @@ def test_the_first_padding_row_says_which_state_the_bundle_is_in():
 def test_the_padding_row_distinguishes_the_three_states_it_can_be_in():
     """All three, in one sweep, so no state can be left describing another.
 
-    The states are derived, not asserted: `model_margin`/`model_total` for the
+    The states are derived, not asserted: the model's own figures for the
     projection and the sport's own market-line key for the quote. A row that
     reported one wording for all of them would pass a test that only built the NBA
-    bundle, which is why this is a sweep over the three bundles rather than three
-    separate one-line tests with three separate chances to be written loosely.
+    bundle, which is why this is a sweep over the bundles rather than separate
+    one-line tests with separate chances to be written loosely.
+
+    **The third case used to be called "neither" and expected
+    `PADDING_NOT_PROJECTED`, and it was wrong.** Its bundle carried a moneyline
+    and a pick at 41%, so it was not "neither" of anything -- the model had a
+    number, and this row said it had none. The reason the case was written that
+    way is the reason it is worth spelling out: the sentence is about a MODEL
+    NUMBER, and the comment reasoned from whether there was a **margin or a
+    total**, which is a different question with two of the three answers. Two of
+    the three model figures were being asked about and the third was not, and for
+    a football bundle the third is the only one there is.
+
+    So the case is now the moneyline-only bundle rendered as what it is -- a model
+    number and no quoted price -- and the genuinely empty state moved to its own
+    test, where a bundle with no number of any kind is the premise rather than an
+    accident of which keys the gate reads.
     """
     quoted = {"market": "spread", "model_margin": 4.2,
               "line": "BOS by 4.2", "market_line": "BOS -3.5"}
@@ -184,38 +273,209 @@ def test_the_padding_row_distinguishes_the_three_states_it_can_be_in():
     # a name of their own -- and it is the case that decides the ORDER of the
     # branches in `template.py`. It has to take `PADDING_NO_PROJECTION`, because
     # that is the sentence that is true of it: the model genuinely has nothing
-    # here, and `PADDING_BOTH` would be false.
+    # here, and `PADDING_BOTH` would be false. The pick is ABSENT as well as the
+    # figures, which is what makes this a real instance of the state rather than a
+    # bundle with a probability the gate might reasonably count as a number.
     quote_only = {"market": "spread", "market_line": "BOS -3.5"}
 
     moneyline = {"market": "moneyline", "model": {"BOS": LOW_PROB, "MIA": 1 - LOW_PROB}}
 
     cases = {
-        # (markets, pick present, expected)
+        # (markets, label, prob, expected)
         # The second and fourth cases are the reason a bundle with no PICK is
         # needed. The spread row is gated on `label`, so with a pick in hand the
         # quoted line renders as a real row, the panel has two factors and no
         # padding fires at all -- which is correct, and is why a quote is
         # reachable in the padding row only where the `label` gate closed the row
         # it would otherwise have had.
-        "a projection and no quote": ([moneyline, projected], True,
+        "a projection and no quote": ([moneyline, projected], "BOS", LOW_PROB,
                                       PADDING_PROJECTED_UNQUOTED),
-        "both, which is not a gap in the data": ([moneyline, projected, quoted], False,
+        "both, which is not a gap in the data": ([moneyline, projected, quoted], None, None,
                                                  PADDING_PROJECTED_QUOTED),
-        "neither, which is the old wording's only true case": ([moneyline], True,
-                                                              PADDING_NOT_PROJECTED),
+        # The football case, and the one this branch exists to correct. A moneyline
+        # and a pick and no spread and no total: the model has a number, the market
+        # has not quoted one, and this is the sentence that is true of that. The
+        # NBA case above reaches the same wording by a different route, which is
+        # the point -- two sports, one state, one sentence.
+        "a moneyline and nothing else, which is the football case": (
+            [moneyline], "BOS", LOW_PROB, PADDING_PROJECTED_UNQUOTED),
+        # The order case. A quote, and no model figure, no moneyline and no
+        # probability, so there is genuinely nothing for the model to have said
+        # here. It takes the first branch, not the second: the market priced this
+        # game and the model did not, and a row that says the model has a number
+        # would be inventing one.
+        #
+        # **`prob=None` is load-bearing and is the point of the case.** Clearing
+        # the label alone is not enough: the gate asks whether the bundle carries
+        # a MODEL NUMBER, and a pick with a probability and no usable label is
+        # still one -- the moneyline tile draws it either way. So this case clears
+        # all three, and a version of it that left the probability behind would
+        # be asserting that a bundle the panel draws a 41% for has no model
+        # number, which is the exact false claim this sweep exists to keep out.
         "a quote and no model figure, which is the model having nothing": (
-            [moneyline, quote_only], False, PADDING_NOT_PROJECTED),
+            [quote_only], None, None, PADDING_NOT_PROJECTED),
     }
-    for name, (markets, has_pick, expected) in cases.items():
-        got = _padding(_bundle("nba", markets,
-                               label="BOS" if has_pick else None))["text"]
+    for name, (markets, label, prob, expected) in cases.items():
+        got = _padding(_bundle("nba", markets, label=label, prob=prob))["text"]
         assert got == expected, (
             f"{name}: the row reads {got!r} rather than {expected!r}. These are "
             f"different claims about the bundle and one sentence cannot be true of "
             f"all of them -- and the last case is the one that fixes the order the "
-            f"branches are tested in, because a quote with no model figure must not "
-            f"be told the model has a number."
+            f"branches are tested in, because a quote with no model figure, no "
+            f"moneyline and no probability must not be told the model has a number."
         )
+
+
+def test_the_padding_row_never_denies_a_number_the_bundle_carries():
+    """**The critical.** A bundle carrying a moneyline must not be told the model
+    has no number for it.
+
+    The sentence `PADDING_NO_PROJECTION` makes is *"So there is no model number for
+    this one yet."* -- a claim about a **model number**, and in every football
+    bundle the moneyline IS the model's number. The gate that chose this wording
+    asked a different question: whether the bundle carries a **margin or a total**.
+    Those are two of the three model figures, and the third one -- the pick's own
+    probability, which the moneyline row above quotes verbatim and the panel draws
+    in the moneyline tile and the split bar -- was never asked about. So the row
+    said "no model number" directly beneath *"The model makes DAL the pick at
+    57%."*, which is the padding row telling the reader the opposite of the row
+    immediately above it.
+
+    This is the same defect class the rest of this repo is about, and it is the
+    version that survives a guard: the two tests that pinned this wording both
+    reasoned correctly from the premise they had and drew a conclusion the premise
+    did not support. *"The model genuinely has no margin or total for this one"* is
+    true of this bundle. *"So there is no model number for this one yet"* does not
+    follow from it. That is why this test asserts the property over a SPREAD of
+    bundles rather than one more case in the sweep: the sweep's cases were chosen
+    by whoever wrote them, and a case list that omits the moneyline is satisfied by
+    a gate that cannot see the moneyline.
+
+    **Asserted as a property over four bundles, each carrying a DIFFERENT model
+    figure, and each pinned to the wording that is true of it.** One case is the
+    regression; the other three are there so the fix cannot be a special case for
+    the moneyline. Which is which, stated rather than implied:
+
+    * **the football moneyline alone** -- the measured bundle, and the only one of
+      the four the old gate got wrong. It is the case worth 763 rows.
+    * a moneyline beside a *quoted* total with no model total -- the quote
+      branch. Fixing the denial by making `projected` constant would pass the first
+      case and turn this into a different falsehood, and this is what catches it.
+    * an NBA spread and a total, no quote -- the state this branch was born for,
+      unchanged, so "the football case now works" cannot be paid for by breaking
+      the NBA one.
+    * PL's three-way `result` map -- a fourth sport, a four-outcome vocabulary
+      (`_outcome_key` resolves it to `result` rather than `moneyline`), and the
+      shape the next sport added will look like.
+
+    **The one thing this cannot distinguish, said here rather than left for the
+    next reader to assume it does.** The fix reads the pick's *probability*. A
+    different fix could read the moneyline market's `model` map instead, and on
+    every bundle this service can produce the two are the same decision: across all
+    1,432 real bundles built from `nfl_predictor`/`cfb_predictor`'s `get_facts` for
+    this finding, there is not one with a `pick.prob` and no moneyline/result
+    `model` map, nor one with the map and no probability. They are observationally
+    identical here, so a spread built to separate them would be testing a bundle no
+    sport emits. `prob` is the one that was chosen because it is the same value the
+    verdict and the band are built from, so "the model has a number" and "the panel
+    has a figure to draw" are one decision rather than two scans that can come
+    apart -- and that reasoning is the guard, not the key.
+
+    **The measured reach, so the number is a fact rather than an adjective.**
+    Bundles built from `nfl_predictor`/`cfb_predictor`'s own `get_facts` at their
+    `origin/main`, `PUBLIC_MODE=true`, rendered through this function:
+
+    | sport | bundles | render the sentence | of those, false |
+    |---|---|---|---|
+    | CFB | 888 | 555 | **555** |
+    | NFL, cold tracking DB | 272 | 208 | **208** |
+    | NFL, settled record in the DB | 272 | 0 | 0 |
+
+    763 false rows, all 763 sitting directly under a `The pick` row. The NFL row
+    is conditional on `_record()` returning `None` -- with a settled pre-kickoff
+    record in the tracking DB the record factor fills the second slot and the
+    padding row never fires, which is the whole of the difference between 208 and
+    0. With `EXPLAINER_ENABLED=false` this row is the only prose a reader of a
+    football game ever sees.
+    """
+    cases = {
+        "the football moneyline alone": (NFL_FOOTBALL_BUNDLE, PADDING_PROJECTED_UNQUOTED),
+        "a moneyline beside a quoted total and no model total": (_bundle("nfl", [
+            {"market": "moneyline", "model": {"BOS": 0.62, "MIA": 0.38}},
+            {"market": "total", "line": 45.5},
+        ], prob=0.62), PADDING_PROJECTED_QUOTED),
+        "an NBA spread and a total, no quote": (_bundle("nba", [
+            {"market": "moneyline", "model": {"BOS": LOW_PROB, "MIA": 1 - LOW_PROB}},
+            {"market": "spread", "model_margin": 4.2, "line": "BOS by 4.2"},
+            {"market": "total", "model_total": 226.5},
+        ]), PADDING_PROJECTED_UNQUOTED),
+        "PL's three-way result map": (_bundle("pl", [
+            {"market": "result", "model": {"LIV": 0.44, "D": 0.26, "ARS": 0.30}},
+        ], label="LIV", prob=0.44), PADDING_PROJECTED_UNQUOTED),
+    }
+    for name, (bundle, expected) in cases.items():
+        got = _padding(bundle)["text"]
+        assert got != PADDING_NOT_PROJECTED, (
+            f"{name}: the padding row reads {got!r} over a bundle that carries a "
+            f"model number. The claim is about a MODEL NUMBER, and the row above it "
+            f"just quoted one -- for the football case, 'The model makes DAL the "
+            f"pick at 57%' sits directly above 'So there is no model number for "
+            f"this one yet', and the panel draws the same 57% in the moneyline tile "
+            f"and the split bar. Measured, this row was FALSE for 555 of 888 CFB "
+            f"bundles and 208 of 272 NFL ones."
+        )
+        # Exact equality, not "not the false one": the denial is one of three
+        # failures this row can make, and a rewrite that claimed a different
+        # falsehood would pass an inequality. The expected string is a second
+        # object, copied at the top of this file rather than imported.
+        assert got == expected, (
+            f"{name}: the padding row reads {got!r} rather than {expected!r}. "
+            f"Three wordings, three states, and the state is derived from what the "
+            f"bundle carries -- a model number with no quoted price, both, or "
+            f"neither. This bundle is in the first or the second."
+        )
+
+
+def test_the_football_moneyline_row_renders_the_two_figures_state():
+    """The one real bundle, end to end, pinned exactly.
+
+    The property above says the row must not deny a number. This says what it says
+    INSTEAD for the bundle the finding was measured on, and it is here because
+    "not the false sentence" is satisfied by any of an unbounded number of other
+    sentences -- including tomorrow's. The expected string is a second object:
+    `PADDING_NO_QUOTE` is copied at the top of this file rather than imported, so
+    a renderer edited to match its own constant fails here.
+    """
+    out = explain_from_template(NFL_FOOTBALL_BUNDLE)
+    assert out["verdict"] == "DAL is the pick.", out["verdict"]
+    assert [f["headline"] for f in out["factors"]] == ["The pick", PADDING_HEADLINE], out
+    assert _padding(NFL_FOOTBALL_BUNDLE)["text"] == PADDING_PROJECTED_UNQUOTED, (
+        "a football bundle carrying a moneyline and no spread and no total has a "
+        "model number and no quoted price, which is the state this wording is for. "
+        "It is the same state an NBA bundle with `model_margin` and `model_total` "
+        "and no `market_line` is in, and the row directly above -- the moneyline -- "
+        "says so in the model's own words."
+    )
+
+
+def test_a_bundle_with_no_model_number_at_all_still_says_so():
+    """The other end, because the fix must not make `PADDING_NO_PROJECTION`
+    unreachable -- and a gate that always says "projected" is a gate that can only
+    be wrong in one direction, which is how a fix for a denial becomes a different
+    denial.
+
+    A genuinely empty bundle: no pick, no markets, no record. NFL's and CFB's
+    `_markets` return `[]` for a started game with no stored pick, and 4 of 272
+    NFL bundles and 256 of 888 CFB ones are exactly this. There is no number here
+    of any kind, so this is the one state the sentence is true of.
+    """
+    empty = _bundle("nfl", [], label=None, prob=None, record=None, result=None)
+    assert _padding(empty)["text"] == PADDING_NOT_PROJECTED, (
+        f"a bundle with no pick, no markets and no record rendered "
+        f"{_padding(empty)['text']!r}. There is no model number in that bundle of "
+        f"any kind, so this is the one state the sentence is true of, and 4 of 272 "
+        f"real NFL bundles and 256 of 888 real CFB ones are in it."
+    )
 
 
 def test_the_padding_row_never_claims_a_settled_record_is_missing():
@@ -223,8 +483,8 @@ def test_the_padding_row_never_claims_a_settled_record_is_missing():
 
     That is the specific trap the comment above the padding loop records: "never a
     claim that something is missing when it is present". A record IS present here,
-    the row still has to render (the pick is absent, so the record is the only
-    factor), and what it must not say is that the record is missing.
+    the row still has to render (the pick has no usable label, so the record is
+    the only factor), and what it must not say is that the record is missing.
 
     A first version of this file asserted the removed sentence is absent as a
     substring, which is a keyword test and would have been satisfied by *"The
@@ -233,12 +493,20 @@ def test_the_padding_row_never_claims_a_settled_record_is_missing():
     is therefore carried by the exact-equality sweep above: three wordings, and a
     fourth has to be written and pinned on purpose.
 
-    **What this test cannot do.** It cannot see a sentence making the same claim
-    in other words -- no test on prose can, and `validate._verdict_problems`
-    rejects that shape in its own words. What it does is make the three pinned
-    wordings the only three, and the harness table carries a row that turns the
-    first of them into "the model has no settled record on this one yet", which
-    fails on the mutation rather than on the wording.
+    **This case expected `PADDING_NO_PROJECTION` and was reasoning from the wrong
+    premise, which is the same error as the critical one row up.** The bundle's
+    moneyline carries `{"BOS": 0.41, "MIA": 0.59}` -- the model HAS a number for
+    this one, the panel is drawing it in the split bar, and `PADDING_NO_PROJECTION`
+    denies it. The comment's stated reason, *"the model genuinely has no margin or
+    total for this one"*, is true and irrelevant: the sentence is about a model
+    NUMBER, and the moneyline is one. So the expected wording is now the one that
+    is true of this bundle -- a model number, and no quoted price -- and the
+    record-claim prohibition rides on it unchanged.
+
+    The record being present is what makes this test worth having over the sweep:
+    it is the one bundle in the file where a *third* thing is present that the row
+    has no word for, so the row has to pick its wording from the two it does know
+    and get it right about the other two.
     """
 
     def _one_pick_bundle_with_record():
@@ -249,15 +517,100 @@ def test_the_padding_row_never_claims_a_settled_record_is_missing():
         return facts
 
     text = _padding(_one_pick_bundle_with_record())["text"]
-    assert text == PADDING_NOT_PROJECTED, (
+    assert text == PADDING_PROJECTED_UNQUOTED, (
         f"a bundle with a record present rendered {text!r}. The record is here and "
-        f"is not missing, and the model genuinely has no margin or total for this "
-        f"one -- which is what this wording says and what the removed one did not."
+        f"is not missing. The model also has a number -- the moneyline carries "
+        f"{{'BOS': {LOW_PROB}, 'MIA': {1 - LOW_PROB}}} and the panel draws it -- so "
+        f"the row is in the model-number-and-no-quote state, which is what this "
+        f"wording says. Saying the model has no number here would be false of a "
+        f"bundle the reader has already been shown a number from."
     )
     assert "record" not in text.lower(), (
         f"the row comments on the record: {text!r}. An earlier draft padded with a "
         f"`record` factor saying no settled record yet, which was false for exactly "
         f"the bundles that reach this loop."
+    )
+
+
+def test_a_pl_bundle_with_a_book_price_is_not_told_there_is_none():
+    """**The second finding.** `PADDING_NO_QUOTE` says *"no quoted price to read it
+    against"*, and PL's `result` market carries the book's price in a key nothing
+    read.
+
+    **The decision, and the argument for it: the template reads `implied`.** The
+    alternative was to declare PL's book price out of scope in a comment, and the
+    argument for that is spec §13b -- the split bar's *market row* is omitted
+    unless `implied` covers every outcome the model's split has, and PL's real
+    `implied` covers only the two sides of a three-way market, so that row is
+    never drawn. That argument does not survive one more sentence of the same
+    spec:
+
+        The same rule governs the tile's market line: it states `implied` **for a
+        side that is present**, and is omitted when the side it would name has no
+        `implied`.
+
+    The tile is a different surface from the market row, and §13b does not govern
+    it. A LIV pick with `implied: {LIV: 0.44, ARS: 0.30}` gets a key-number tile
+    showing the model's 44% with the market's 44% beneath it. So the reader has the
+    price on screen, in the panel's most prominent figure surface, two rows above
+    the sentence denying there is one -- and a "deliberately out of scope" comment
+    would be a claim about the product that the product contradicts. "Latent"
+    would be true (0 of 380 real PL bundles carry `implied`; none of the 380 has
+    `has_live_odds`) and latent is not the same as honest.
+
+    **Both directions, and the second is the one that makes the first a guard.** A
+    gate that asked "does the market have an `implied` KEY" would pass the case
+    above and then deny a price for a bundle carrying `implied: {LIV: null}` --
+    which PL's own `_implied` can produce, since it writes a per-side value that is
+    `None` whenever that side has no price and only adds the map when at least one
+    side does. So the second case is a map with no number in it, and it must still
+    be told there is no quoted price. A gate that read the key's presence rather
+    than its contents is the mutation this pair exists to kill.
+
+    The bundle is the reviewer's, kept as built: `implied` on the `result` market,
+    a `total_goals` market at 2.6, no `btts`, and a LIV pick at 44%. Those last
+    two details are what make the padding row fire at all -- a PL bundle with a
+    `btts` market gets that row and never reaches here, which is why 0 of 380 real
+    bundles do.
+    """
+    priced = {
+        "sport": "pl", "id": "g1", "title": "ARS at LIV",
+        "starts_at": "2026-10-20T00:00:00Z", "status": "upcoming",
+        "pick_timing": "pre_kickoff",
+        "pick": {"side": "home_win", "label": "LIV win", "prob": 0.44},
+        "markets": [
+            {"market": "result",
+             "model": {"home_win": 0.44, "draw": 0.26, "away_win": 0.30},
+             "implied": {"LIV": 0.44, "ARS": 0.30}},
+            {"market": "total_goals", "model_total": 2.6},
+        ],
+        "drivers": [], "context": {}, "players": [],
+        "record": None, "result": None,
+    }
+    got = _padding(priced)["text"]
+    assert got == PADDING_PROJECTED_QUOTED, (
+        f"a PL bundle whose result market carries `implied` -- the book's price -- "
+        f"rendered {got!r}. The tile for that market draws the market's own figure "
+        f"beside the model's (spec §13b, the tile's market line), so the reader has "
+        f"the price on screen and this row says there is none. A `quote_only` bundle "
+        f"two keys away and PL's `result` market are the same sentence about a "
+        f"bundle, and reading two of its keys is how the denial got here."
+    )
+
+    # The other direction. Same bundle, a map with no number in it -- which is what
+    # PL's `_implied` writes for a side that has no price, and it is why the gate
+    # has to read the CONTENTS rather than the key's presence.
+    unpriced = {**priced, "markets": [
+        {"market": "result",
+         "model": {"home_win": 0.44, "draw": 0.26, "away_win": 0.30},
+         "implied": {"LIV": None, "ARS": None}},
+        {"market": "total_goals", "model_total": 2.6},
+    ]}
+    assert _padding(unpriced)["text"] == PADDING_PROJECTED_UNQUOTED, (
+        f"a bundle whose `implied` map holds no number rendered "
+        f"{_padding(unpriced)['text']!r}. There is no price in that map, so the "
+        f"row is right to say so -- and a gate that asked whether the KEY is present "
+        f"would fail here while passing the case above, which is why both are here."
     )
 
 
