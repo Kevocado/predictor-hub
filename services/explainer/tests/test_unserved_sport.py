@@ -371,7 +371,28 @@ def test_a_refusal_does_not_look_like_a_missing_fixture(tmp_path, respx_mock, un
     # And it must not read as "no such game", which is the OTHER refusal on this
     # route: a reader (or a caller retrying) has to be able to tell "this sport has
     # no panel" from "that game does not exist".
-    assert "no such game" not in message.lower(), message
+    #
+    # **On the real wording.** This read `"no such game" not in message.lower()`,
+    # and that string appears nowhere in the codebase -- so the assertion could
+    # not fail, while having the shape of a check that distinguishes the two
+    # refusals. The missing-fixture refusal is `service.py:92`,
+    # `f"{sport} has no facts for {id!r}"`, and that is the wording to exclude.
+    # `service.py:86`'s `no sport API configured for ...` is a third refusal and
+    # is not what this is about: it is a misconfiguration, not a missing
+    # fixture, and a caller should be able to tell that apart too.
+    assert "has no facts" not in message.lower(), (
+        f"the refusal reads like a missing fixture rather than an un-served "
+        f"sport, so a caller retrying cannot tell the two apart: {message!r}. The "
+        f"missing-fixture refusal is `f\"{{sport}} has no facts for {{id!r}}\"` at "
+        f"service.py:92, and this branch must not produce it."
+    )
+    # Positive, so the negative above is not satisfied by a message that says
+    # nothing at all -- which is the other way this pair of assertions could pass
+    # while being useless.
+    assert "not served" in message.lower(), (
+        f"the refusal does not say the sport is not served, so it names neither "
+        f"state to the caller: {message!r}"
+    )
 
 
 # --- NBA now serves ------------------------------------------------------

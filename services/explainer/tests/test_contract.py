@@ -67,7 +67,19 @@ def test_the_vocabularies_are_closed():
     # because the panel's MARK table is keyed on the literal; if the two ever
     # diverge, this is where it shows.
     assert NEUTRAL in DIRECTIONS and NEUTRAL == "neutral"
-    assert PSEUDO_MARKETS == ("record", "context")
+    # Four, pinned with `==` for the reason the directions above are: the only
+    # place the vocabulary is decided is the only place that can notice a fifth.
+    #
+    # `pick` and `outcome` joined the two because `_outcome_key` can fall through
+    # -- every served sport's builder can emit a bundle with no recognised pick
+    # market, and all five can emit `markets: []` outright; the measured
+    # table is in `tests/test_factor_keys.py`. The two rows that call it pass
+    # their OWN name as the default, so they do not share a key with each other
+    # and neither lands on `context`, which the padding loop uses as its own
+    # "have I emitted one yet" sentinel. Ordering is the append order the
+    # fall-through reads in, and it is pinned because a reorder is a change to
+    # what the panel resolves first, not a cosmetic edit.
+    assert PSEUDO_MARKETS == ("record", "context", "pick", "outcome")
 
 
 def test_clean_verdict_coerces_and_never_invents_a_key():

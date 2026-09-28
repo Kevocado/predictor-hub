@@ -71,20 +71,23 @@ import sys
 TARGET = pathlib.Path("explainer/template.py")
 CONFIG = pathlib.Path("explainer/config.py")
 PROMPTS = pathlib.Path("explainer/prompts.py")
+CONTRACT = pathlib.Path("explainer/contract.py")
 SUITE = "tests/"  # the whole suite, on purpose -- see the docstring
 #: Every file a row may mutate, with its original text captured at import.
 #:
-#: A dict rather than three module-level names, because three names meant three
-#: places to add a file and three places to forget one: `prompts.py` joined
-#: because the prompt is a writer too, and a row that reinstates the figures rule
-#: the template no longer supports has to be applied to the file that holds it.
+#: A dict rather than four module-level names, because four names meant four
+#: places to add a file and four places to forget one: `prompts.py` joined
+#: because the prompt is a writer too, and `contract.py` joined because
+#: `PSEUDO_MARKETS` is the vocabulary a factor `key` must resolve against --
+#: dropping a name from it does not raise, it silently DROPS the row, so a row
+#: about it has to be applied to the file that holds it.
 #:
 #: The originals are read ONCE, at import, and the `config.py` entry used to be
 #: ``write_text(read_text())`` -- writing back what it had just read, so an
 #: exception between the write and the restore left the file mutated. Capturing
 #: the text is the only version of this that is not a no-op.
 ORIGINALS: dict[pathlib.Path, str] = {
-    path: path.read_text() for path in (TARGET, CONFIG, PROMPTS)
+    path: path.read_text() for path in (TARGET, CONFIG, PROMPTS, CONTRACT)
 }
 
 #: Expected to be silent, with the reason recorded. Surviving because a property
@@ -257,6 +260,53 @@ MUTATIONS = [
     # `tests/test_factor_keys.py`.
     ("_outcome_key's win case is inverted, so F1's pick falls back to context",
      r'^    if "win" in by_key:$', '    if "win" not in by_key:'),
+
+    # --- the two fall-through defaults, which is where the THIN case lives ---
+    # `_outcome_key`'s `default` is an argument rather than a `"context"`
+    # constant because the fall-through is REACHABLE on every served sport, and
+    # the two rows have to be told apart when it happens. The table proving that
+    # is in `tests/test_factor_keys.py`; it reads each builder on its
+    # `origin/main` and lists the branch that returns without the market.
+    #
+    # Both rows below put `context` back, which is the exact pre-fix behaviour
+    # and the most likely edit a reader makes -- it is the shorter name, it is
+    # already in `PSEUDO_MARKETS`, and it looks like the neutral choice. On a
+    # thin bundle it puts the pick row back on the padding row's key, and the
+    # padding loop uses that key as its own "have I emitted one yet" sentinel,
+    # so the two collide.
+    ("the pick row's fall-through key goes back to context",
+     r'^        factors\.append\(_fact\(_outcome_key\(by_key, "pick"\), "up", "The pick",$',
+     '        factors.append(_fact(_outcome_key(by_key, "context"), "up", "The pick",'),
+    ("the outcome row's fall-through key goes back to context",
+     r'^        factors\.append\(_fact\(_outcome_key\(by_key, "outcome"\), _toward\("up", has_pick\), "How it finished", text\)\)$',
+     '        factors.append(_fact(_outcome_key(by_key, "context"), _toward("up", has_pick), "How it finished", text))'),
+    # And the other direction, which is the one the docstring warns about: a
+    # default that became the COMMON case would replace a live collision with a
+    # silent one, since every row on every game would be a pseudo-market that
+    # lights no figure. Dropping the recognised `win` case is the shortest way
+    # to make F1 always take it.
+    ("F1 always takes the fall-through, so its rows light no figure",
+     r'^    if "win" in by_key:$', '    if "result" in by_key and False:'),
+    # A pseudo-market a factor points at has to survive `resolve_factors`, or
+    # the row is DROPPED rather than rendered -- so the vocabulary is a contract
+    # and not a list. Removing a name outright is a `TypeError` at import if a
+    # call site still passes it, so the mutation is to a NAME.
+    #
+    # **And the first version of this comment said the row that bites is
+    # `tests/test_template_v2.py`, which was false.** That file does require
+    # every factor to survive resolution, but it renders a FULL bundle, where
+    # `_outcome_key` never falls through -- so `pick` and `outcome` are never
+    # emitted there and the assertion is never asked about them. Measured:
+    # dropping `"pick"` failed `test_contract.py::test_the_vocabularies_are_
+    # closed` and NOTHING else. The literal pin is the only thing that noticed.
+    #
+    # `test_factor_keys.py::test_every_key_this_file_sees_survives_resolution` is
+    # the behavioural half of that pin, over the bundles that do reach the
+    # fall-through, and it is what this row should be read as testing. A pin
+    # cannot notice a row that vanished.
+    ("the pick pseudo-market is dropped from the vocabulary",
+     r'^PSEUDO_MARKETS = \("record", "context", "pick", "outcome"\)$',
+     'PSEUDO_MARKETS = ("record", "context", "outcome")'),
 
     # --- the spread factor's claims: about the market, about a side ---
     # A row for text that was DELETED is what stops it coming back. The three

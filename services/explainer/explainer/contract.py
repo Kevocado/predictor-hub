@@ -39,7 +39,27 @@ NEUTRAL = "neutral"
 #: meaning used to be given one anyway, and the one it was given was "up".
 DIRECTIONS = ("up", "down", NEUTRAL)
 #: Things a factor may point at that are not markets in `facts["markets"]`.
-PSEUDO_MARKETS = ("record", "context")
+#:
+#: **`pick` and `outcome` are here because `_outcome_key` can fall through, and
+#: the two rows that call it have to be told apart when it does.** A served
+#: sport's bundle can carry no market at all, or none of the three names
+#: `_outcome_key` recognises -- each builder guards its pick market rather than
+#: always emitting it, and ALL FIVE also have a `markets: [] if (started and
+#: ...)` arm that returns an empty list outright, so this is reachable rather
+#: than hypothetical. The measured table is in `tests/test_factor_keys.py`.
+#:
+#: The two rows pass their own name as `_outcome_key`'s `default`, which is what
+#: stops them sharing a key: `FactorList` renders
+#: `data-testid={`factor-${factor.key}`}` and lights on
+#: `highlighted === factor.key`, so two factors under one key render two
+#: elements with the same testid and light together. They are NOT allowed to
+#: fall back to `context`, which is the padding and rebuilt-disclosure rows' key
+#: and the padding loop's own "have I emitted one yet" sentinel.
+#:
+#: A factor keyed `pick` or `outcome` lights no figure, exactly as one keyed
+#: `record` or `context` does. That is the honest outcome: the row says there is
+#: a pick, and there is no market in the bundle for the panel to point at.
+PSEUDO_MARKETS = ("record", "context", "pick", "outcome")
 
 #: The band thresholds from spec §13a. Two-way and three-way differ because
 #: no-edge is 0.50 when the pick's market has two outcomes and about 0.333 when
