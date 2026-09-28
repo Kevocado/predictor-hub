@@ -278,3 +278,136 @@ That is a legitimate outcome, not a failure. Cost if wrong: none.
 5. **Check that a test's fixture can actually fail.** Every offline test supplied its own
    `team` column, which is why a function that had never run on real data was fully green.
 6. **A timeout on a job that warms a cache can deadlock it.** See PL.
+
+
+## Review round, 2026-09-28 — four adversarial reviewers, one per repo
+
+Each was given the working tree, the test command, and a standing instruction to
+**assume the commit messages are overconfident and verify every claim**, with the
+recurring defect class named explicitly. All four found real defects. So did I, on
+myself: the reviewers were right that several of the claims *I* wrote were false.
+
+**The pattern across all four reviews: I asserted a mechanism or a fact I had not
+checked, and wrote it down as a finding.** Four instances, all now corrected:
+
+| Claim I made | Reality |
+|---|---|
+| "`hub_cache.cached_frame` returns an empty frame on the 404" | `player_stats` does not import `hub_cache`; its own bare `except` does it |
+| "the model projects exactly one yardage market per position (`POSITION_MARKETS`)" | that symbol is a `dict[str, list[str]]` whose comment says positions can have *multiple* markets — and this was in a **customer-visible string** |
+| "`deploy-azure.yml` fires on push to main and deploys" | it had been `workflow_dispatch`-only for two commits (`f490633`); I copied the comment from the other repos' workflows without checking this one |
+| "`errors="coerce"` degrades one row's features to NaN" | **`NaT` matches `NaT`**, so it duplicates rows; and `merge_asof` *raises* on a null key, so at 4 of 6 sites the coercion caused the crash it was meant to avoid |
+
+Ruling: a mechanism is not a finding until it has been traced to the line that does it.
+Three of these four were one grep away from being caught and none was.
+
+### Fixed in this round
+
+**CFB `822e45d`** (264 tests)
+- The `max <= 35` assertion I said in a commit message I had *removed* was still there.
+  My "restore the backup" step restored the mutant and I committed without re-reading;
+  a comment described a p99 assertion that did not exist, and the module docstring
+  claimed the test "deliberately does not assert a bound on the maximum".
+- `add_total_yards` guarded with `.notna()`, so CFBD's `totalYards: 0` was accepted as
+  real. 48 team-games across 2004-2025 are recorded at **zero** total yards while
+  CFBD's own components for the same row sum to hundreds. This **invalidated the
+  headline of my own retraction**: the largest residual in 22 seasons was a team-game at
+  `total_yards = 0` against a player sum of 550 — a missing value, not a disagreement.
+  Corrected: p99 **50** (not 54), max **337** (not 550), mean 3.39, within-35 98.4%.
+- "The residual is not one-directional" was wrong in aggregate: **91.9%** of 16,863
+  non-zero residuals run one way. I had read it off 2023 week 1, where it happened to
+  be even.
+- `_summarize_games` still counted fabricated `ats_hit` rows in `pct_ats_correct` while
+  the per-game verdict showed no ATS market — the same game, two opposite answers.
+- A test that could not fail: `total_yards=550, net=308, rush=242` has
+  `308 + 242 == 550`, so both candidates were identical.
+
+**NFL `6762edb`** (236 tests)
+- The wrong-module claim above, and the WARNING's flat "404 upstream" assertion — the
+  branch is reached by at least three causes, and a permanent log line naming one is a
+  guess presented as a diagnosis.
+- **A bug that made the absence permanent**, and which would have broken this work's own
+  remediation plan: `fetch_weekly_player_stats` wrote the per-season parquet
+  unconditionally including when empty, while the cache check was a bare `path.exists()`.
+  An empty pull is exactly the pre-publication shape, so it was cached and returned
+  forever — prop reconciliation could never recover even after nflverse published.
+- The aggregate gap, and a read path that required only the probabilities where the
+  write path required the probabilities *and* the line, which is the "silent
+  contradiction inside one verdict object" its own comment said could not happen.
+- The document contradicted itself: it opened "blocked on an upstream data gap" and said
+  thirty lines later that the pre-kickoff window "is the binding constraint, not the
+  404". Resolved, and the window's evidence marked as inference (a 33-game *game*-data
+  sample) rather than measurement.
+
+**Sports_Predictor `04aad6e`** (189 tests, merged as #9)
+- The `POSITION_MARKETS` claim above, in a user-facing string.
+- Swapping two labels in `MARKET_LABEL` passed **all 11** tests, producing real rendered
+  output reading "Ravens Rush yds 280" for a quarterback. The one defect the relabelling
+  exists to prevent was the one the tests could not see. Two tests now pin the binding.
+
+**PL `f3ccb68`**
+- The two criticals above, fixed with three helpers rather than one, because the two join
+  types genuinely disagree about null keys. See the table in that commit.
+- A lesson worth keeping: the first version of those tests exercised the *helpers*, not
+  the call sites, and a mutant that removed `drop_unmatchable` from `streaks` passed
+  them. And the fan-out needs **two** unreadable rows for one team — with one, the NaT
+  key matches 1:1 and the defect hides.
+
+### Open from the review, not yet fixed
+
+Recorded rather than quietly dropped. All are in the named files.
+
+- **PL `promotion_rule.py`**: gate 2 uses the most recent **shared** fold, not the most
+  recent season, so a candidate missing the newest season is still promoted (demonstrated
+  `promoted=True, complete=True`). `noise=0.0` neuters gate 1c. A single fold satisfies
+  "majority of folds". The gate-1c strictness test has a **surviving mutant** (`>` to
+  `>=`) because its fixture's improvement is 3x smaller than its threshold, not equal.
+- **PL `test_blend_validation.py`**: the "tripwire" that is supposed to fire if someone
+  unifies the two unions cannot fire — it asserts on a dict literal the test itself
+  defines, and on a `hasattr` for a function name that appears nowhere else in the tree.
+  The same defect makes "the fitted weight is recorded on the model" unpinned.
+- **PL `date_keys.py`**: `astype("datetime64[ns]")` raises `OutOfBoundsDatetime` for
+  year-2500 dates, so it is not total. It raises rather than corrupting, which is the
+  right direction, but the docstring implied otherwise.
+- **PL `player_goals.py`**: the documented `None` fallback is now unreachable, and
+  reaching it would blend 50/50 against an uncalibrated union rather than using the
+  direct model alone — an undisclosed behaviour change.
+- **PL `docs/AI_CONTINUITY.md`**: quotes the gate as "improvement +0.000787 vs noise
+  half-width 0.000161" where the code compares against `noise / sqrt(folds)`, so the
+  advertised "about 4.9x the noise" is really 9.8x. The verdict passes either way.
+- **PL CI**: my deadlock explanation named the wrong mechanism. `actions/cache` has no
+  job-status check — it saves on failure. What suppresses the save on timeout is
+  *cancellation*. The conclusion holds; the reason did not, and the "check the cache
+  first" heuristic is timeout-specific.
+- **CFB/NFL**: `ats_hit` values the old build wrote are still unrepaired; the rows are
+  identifiable and a migration is separate work.
+- **CFB `test_team_stats.py`**: the 22-season table describes the pre-`attach_schedule_weeks`
+  population (42,190); the attach path drops 13.4% and has different figures. Neither
+  docstring says which.
+- **CFB `scripts/backfill_team_stats.py`**: duplicate `--weeks` doubles output rows, and
+  `--weeks 0 -1 99` spends three billed calls before CFBD rejects them.
+- **SP**: tracked `tsconfig.*.tsbuildinfo` build artefacts are not gitignored, and the
+  committed copy lists deleted files. `src/lib/playerRank.ts` still repeats the
+  `POSITION_MARKETS` claim.
+
+## Upstream reconciliation, 2026-09-28
+
+Other agents' work landed during this session and was checked against, not assumed
+compatible.
+
+- `origin/main` moved in all four repos: `v2-wire` (#5) in Sports_Predictor and PL,
+  `ghcr-guard` (#13/#15) in NFL and CFB, and `ci/vps-auto-deploy` merged into PL and
+  open in Sports_Predictor.
+- **Suites re-run on current `main` with this work merged in:** NFL **245 passed**
+  (was 231), CFB **272 passed** (was 259, ruff clean), Sports_Predictor **176 passed**
+  (was 142). All green — the other agents' work and this work coexist.
+- **Merge simulation for their open PRs.** Sports_Predictor #3 merges clean (187 pass)
+  and #6 clean (183 pass), with this work's changes intact in both. Their branches are
+  cut from an older `main` and lack this work, so they are stale — worth telling whoever
+  merges them. PL #7 merges clean onto current `main`; none of the 69 new commits touch
+  `features/`, `models/`, `evaluate/`, `pyproject.toml` or `workflows/tests.yml`.
+- PL's full suite on the merged result was **not** completed — the run was killed twice
+  (SIGTERM, most likely resource pressure alongside the other worktrees). The combined
+  result is unverified locally; CI on PR #7 is the check, and it is cold-running.
+- **PL #7's CI is now stale.** It last ran against a base 69 commits behind `main`. The
+  branch was updated with the review fixes, which re-triggered it; the current run is
+  the one to trust.
