@@ -181,8 +181,25 @@ export async function main({
       + "pass. In GitHub Actions GITHUB_TOKEN is provided automatically; locally, run "
       + "SITE_REPOS_TOKEN=$(gh auth token) node scripts/check-site-sync.mjs.";
     warn("Vendored UI freshness SKIPPED", reason);
+    if (enforce) {
+      // An ENFORCED run that compares nothing must fail. This is the hole that
+      // only opens once ENFORCE_SITE_SYNC is "1": before that, exiting 0 here
+      // was right, because a developer with no token should not be blocked by
+      // a check they cannot run. Under enforcement the meaning inverts -- the
+      // build is claiming the sites are current, and it did not look. A guard
+      // that reports success without verifying is worse than no guard, because
+      // it is believed. So: fail, and say that it failed for want of a
+      // credential rather than for want of a current site.
+      error("Vendored UI freshness could not run",
+        `ENFORCE_SITE_SYNC is "1" and this run compared 0 of ${sites.length} sites, so it `
+        + "proved nothing about any of them. This fails on purpose. "
+        + "In GitHub Actions GITHUB_TOKEN is provided automatically; if this fired there, the "
+        + "token cannot read the site repositories and SITE_REPOS_TOKEN (a PAT with contents: read "
+        + "on the site repos) is the fix. Do not silence it by turning enforcement off -- that "
+        + "restores a check that cannot fail.");
+    }
     say(`site-sync: SKIPPED — 0 of ${sites.length} sites compared. ${reason}`);
-    return { code: 0, rows: [], want, skipped: reason };
+    return { code: enforce ? 1 : 0, rows: [], want, skipped: reason };
   }
 
   const rows = [];
