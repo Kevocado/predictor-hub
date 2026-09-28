@@ -220,3 +220,40 @@ describe("BoxScore — edges", () => {
     expect(screen.getByTestId("box-score-row").textContent).toMatch(/MIA/);
   });
 });
+
+describe("BoxScore — values that are not real numbers", () => {
+  it("renders NaN as an em-dash, never as the text NaN", () => {
+    // Found while wiring A4: a consumer multiplying a missing probability by
+    // 100 produced NaN, which reached a public cell as the literal string
+    // "NaN". A component that renders it is helping a caller ship garbage.
+    render(
+      <BoxScore
+        columns={[{ key: "td", label: "TD %" }]}
+        groups={[group([row({ values: [NaN] })])]}
+      />,
+    );
+    const cell = within(screen.getAllByTestId("box-score-row")[0]).getByRole("cell");
+    expect(cell.textContent).toBe("—");
+    expect(cell.textContent).not.toMatch(/NaN/);
+  });
+
+  it("treats Infinity as absent too", () => {
+    render(
+      <BoxScore
+        columns={[{ key: "td", label: "TD %" }]}
+        groups={[group([row({ values: [Infinity] })])]}
+      />,
+    );
+    expect(within(screen.getAllByTestId("box-score-row")[0]).getByRole("cell").textContent).toBe("—");
+  });
+
+  it("keeps a real number, so the guard did not swallow everything", () => {
+    render(
+      <BoxScore
+        columns={[{ key: "yds", label: "Yds" }]}
+        groups={[group([row({ values: [42.5] })])]}
+      />,
+    );
+    expect(within(screen.getAllByTestId("box-score-row")[0]).getByRole("cell").textContent).toBe("42.5");
+  });
+});

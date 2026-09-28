@@ -51,7 +51,11 @@ export interface BoxScoreProps {
 const EM_DASH = "—";
 
 function cellText(value: number | null | undefined): string {
-  if (value === null || value === undefined) return EM_DASH;
+  // The finite check is not defensive padding. A consumer that computes a
+  // value from missing data produces NaN, and NaN here would render as the
+  // literal text "NaN" in a public table. Anything that is not a real number is
+  // "no value", so it gets the em-dash like any other absence.
+  if (value === null || value === undefined || !Number.isFinite(value)) return EM_DASH;
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
