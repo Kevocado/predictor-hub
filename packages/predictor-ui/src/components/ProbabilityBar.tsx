@@ -286,8 +286,6 @@ export function ProbabilityBar({
    *  item 4 put it, and this is the note so the next person does not re-open it
    *  without measuring first. */
   expandable?: boolean;
-  /** The market's own figures, rendered only when it covers every outcome
-   *  `segments` has (§13b). */
   /** §13c's step through the figures. **This is also what makes the segment
    *  labels operable**: with it, each label is a real button that reports its
    *  own focus here, and `highlightKey` lights the figure a factor named. With
