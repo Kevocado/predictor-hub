@@ -82,3 +82,15 @@ test("tabular data lines up", () => {
   assert.match(html, /font-variant-numeric:\s*tabular-nums/,
     "figures in the cards should be tabular so columns align");
 });
+
+test("the current page in a nav is marked, not styled like a link out", () => {
+  // aria-current="page" with no visual treatment is a control that lies: it
+  // claims you are here and looks exactly like the four links that leave. The
+  // five sport sites mark the current site in AppFrame with an accent fill, so
+  // the hub matching that is the point, not a nicety.
+  assert.match(html, /nav a\[aria-current="page"\]/,
+    "aria-current has no rule, so the current page is indistinguishable from the others");
+  const rule = html.match(/nav a\[aria-current="page"\]\s*\{([^}]*)\}/)[1];
+  assert.match(rule, /background/, "the current page is not visually distinguished");
+  assert.match(rule, /--color-pr-accent/, "and it does not use the family accent");
+});

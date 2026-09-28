@@ -128,6 +128,14 @@
     text-decoration: none;
   }
   nav a:hover { color: var(--color-pr-text); }
+  /* The page you are on, marked the way the five sport sites mark it in
+     AppFrame: accent fill, stage-coloured ink. Without this the Home tab is
+     styled identically to the four links that leave the page, which is worse
+     than either showing it or omitting it. */
+  nav a[aria-current="page"] {
+    background: var(--color-pr-accent);
+    color: var(--color-pr-accent-ink);
+  }
 
   h1 {
     margin: 0;
@@ -337,6 +345,12 @@
       <div class="frame-top">
         <span class="wordmark">Predictor</span>
         <nav aria-label="Sports">
+          <!-- Home first, matching the sport switchers on the five sites. On
+               the hub it is a self-link, which is the one thing it is not on
+               the others -- but Kevin wants the way back to the root to be in
+               the same place on every page of the family, and a consistent
+               control is worth more than a minimal one. -->
+          <a href="/" aria-current="page">Home</a>
           <a href="https://pl.40-160-91-131.sslip.io">PL</a>
           <a href="https://f1.40-160-91-131.sslip.io">F1</a>
           <a href="https://sports.40-160-91-131.sslip.io/?sport=nfl">NFL</a>

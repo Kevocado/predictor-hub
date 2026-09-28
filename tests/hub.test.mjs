@@ -17,7 +17,13 @@ test("carries the family frame: wordmark and a switcher to every sport", () => {
   assert.match(html, /class="wordmark">Predictor</);
   const nav = html.match(/<nav aria-label="Sports"[\s\S]*?<\/nav>/);
   assert.ok(nav, "sport switcher nav");
-  assert.deepEqual([...nav[0].matchAll(/>(\w+)<\/a>/g)].map((m) => m[1]), ["PL", "F1", "NFL", "CFB", "NBA"]);
+  // Home first, then the five sports. Home leads because on the sport sites
+  // the switcher's job is to let a visitor leave, and leaving should not
+  // require scrolling past five places they could also go; the hub keeps the
+  // same order so the control sits in the same place on every page.
+  assert.deepEqual([...nav[0].matchAll(/>(\w+)<\/a>/g)].map((m) => m[1]), ["Home", "PL", "F1", "NFL", "CFB", "NBA"]);
+  // ...and the page you are on is marked, not styled like the four links out.
+  assert.match(nav[0], /<a href="\/" aria-current="page">Home<\/a>/);
 });
 
 test("one card per sport, each in its own accent", () => {
