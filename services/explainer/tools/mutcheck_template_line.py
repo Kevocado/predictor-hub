@@ -410,9 +410,47 @@ MUTATIONS = [
 
     # --- config.SERVED_SPORTS, via the module that reads it ---
     ("SERVED_SPORTS loses nba",
-     r'SERVED_SPORTS = \("pl", "nfl", "cfb", "nba"\)', 'SERVED_SPORTS = ("pl", "nfl", "cfb")'),
-    ("SERVED_SPORTS regains f1",
-     r'SERVED_SPORTS = \("pl", "nfl", "cfb", "nba"\)', 'SERVED_SPORTS = ("pl", "nfl", "cfb", "nba", "f1")'),
+     r'SERVED_SPORTS = \("pl", "nfl", "cfb", "nba", "f1"\)', 'SERVED_SPORTS = ("pl", "nfl", "cfb")'),
+    # The row this replaces was "SERVED_SPORTS regains f1", anchored on the
+    # pre-reversal tuple. It could not simply be re-anchored: with f1 already
+    # served the replacement IS the source, so `re.subn` would have written a file
+    # byte-identical to the one it read and the row would have reported a BITE for
+    # a mutation that changed nothing -- the one outcome worse than silence,
+    # because it is credited with coverage it never had. So the row is now the
+    # mirror of the decision rather than a copy of it: F1 un-served, which is the
+    # reversal being undone by accident, and which `tests/test_f1_served.py`
+    # bites.
+    ("SERVED_SPORTS loses f1 -- the reversal undone",
+     r'SERVED_SPORTS = \("pl", "nfl", "cfb", "nba", "f1"\)', 'SERVED_SPORTS = ("pl", "nfl", "cfb", "nba")'),
+    # **Two survivors, marked rather than deleted because the silence is a
+    # property and not a gap.** Both ask the spread and total rows to read a
+    # market F1's own facts do not have -- its `win` probability map and its
+    # `podium` map -- and neither changes a single rendered factor, because those
+    # rows are gated on a FIGURE (`model_margin`, `model_total`) that neither
+    # market carries. The property is therefore: **no market NAME can make the
+    # spread or the total row fire; a figure has to be there.** That is the same
+    # gate the NBA rows above were written to hold, and `test_f1_served.py` is a
+    # witness for it on the one sport whose facts carry neither figure.
+    #
+    # The mark is checked against the run, so this is documentation and not a lid:
+    # a facts builder that gave `win` a `model_margin`, or a reader who made these
+    # rows read a figure off a probability map, would make one of these BITES and
+    # fail the run loudly -- which is what should happen if the property stops
+    # being true.
+    #
+    # Its own limit, stated because the property leans on something this repo does
+    # not own. It is true of F1's facts AS THEY ARE, so the mark is ultimately a
+    # claim about a sibling repo: a builder that changed that shape would fail
+    # this row with nothing in this service being wrong. That is a false alarm,
+    # and it is the safe direction.
+    (f"the spread row reads f1's `win` market "
+     f"[{EXPECTED_SILENT_MARK}: the row is gated on model_margin, which `win` does not carry]",
+     r'^    margin_market = by_key\.get\("spread"\) or by_key\.get\("handicap"\)$',
+     '    margin_market = by_key.get("spread") or by_key.get("handicap") or by_key.get("win")'),
+    (f"the total row reads f1's `podium` market "
+     f"[{EXPECTED_SILENT_MARK}: the row is gated on model_total, which `podium` does not carry]",
+     r'^    total_market = by_key\.get\("total"\) or by_key\.get\("total_goals"\)$',
+     '    total_market = by_key.get("total") or by_key.get("total_goals") or by_key.get("podium")'),
     # The one row that carries the expected-silent mark, and the reason it is
     # still here rather than deleted.
     #
@@ -434,7 +472,7 @@ MUTATIONS = [
     # row marked expected-silent can no longer hide a bite. It cannot tell you
     # WHY nothing depends on the order, only that nothing does.
     (f"SERVED_SPORTS reordered [{EXPECTED_SILENT_MARK}: order-independence is the design]",
-     r'SERVED_SPORTS = \("pl", "nfl", "cfb", "nba"\)', 'SERVED_SPORTS = ("nba", "pl", "nfl", "cfb")'),
+     r'SERVED_SPORTS = \("pl", "nfl", "cfb", "nba", "f1"\)', 'SERVED_SPORTS = ("nba", "pl", "nfl", "cfb", "f1")'),
 ]
 
 
