@@ -294,6 +294,12 @@ caught, verified by mutation.
       (see Step 2's evidence) — the 404 is not. Nothing is blocking it except the
       decision itself, so the useful next step is for you to pick (a), (b) or (c).
 
+> **RETRACTED 2026-09-28 — do not act on this step, and do not pick (a), (b) or (c).** The
+> "binding constraint" ruling above is wrong: `min-replicas: 0` does not describe the live
+> deployment, which is a Compose service that cannot scale to zero, and pre-kickoff
+> capture is demonstrably working (14 resolved on 2026 week 3). This step is a no-op.
+> See "Correction 2026-09-28" at the end of this plan.
+
 The tracking loop runs on startup and every `_TRACKING_INTERVAL_SECONDS` after. On Azure
 Container Apps with min-replicas 0, a scale-down means the next tick happens after
 kickoff, so nothing is snapshotted. Options, cheapest first:
@@ -328,6 +334,11 @@ container reported 30 resolved for the same 33 games.
       so fixing the 404 alone would produce `n_resolved: 0` still. Sequence matters:
       Step 1 first, then let real snapshots accumulate for a gameweek, then prop accuracy
       exists. Do not backfill to fill the gap.
+
+> **RETRACTED 2026-09-28.** The paragraph above inverts the constraint order: the 404 *is*
+> the binding constraint, and the window it describes is not the live deployment. Fix the
+> 404 first — which is what this step's own measurement says — then let snapshots
+> accumulate. See "Correction 2026-09-28" at the end of this plan.
 
 nflverse returns 404 for `player_stats_2025.parquet` and `player_stats_2026.parquet`
 (re-verified independently 2026-09-27). `reconcile_player_prop_predictions` therefore
@@ -817,3 +828,54 @@ scores. The choice was never the problem. The reported quantity was.
 > - The workflows set `PYTHONPATH` explicitly, because the editable install silently
 >   no-ops on this machine — verified again this session when a run without it failed
 >   collection on a test that passes with it.
+
+## Correction 2026-09-28 — Task 3: `hub_cache` is not the mechanism, and the window is not the constraint
+
+> **Read this before acting on Task 3 Step 1 or Step 2.** Two claims in Task 3 were
+> retracted after re-verification in NFL_Predictor against `origin/main` and the live VPS.
+> The full reasoning is in the ledger
+> (`ledgers/2026-09-28-player-model-accuracy-remediation.md`, section "Correction
+> 2026-09-28 (after the ledger merge) — two retractions of *reasoning*"), which is the
+> record of decision. This is the pointer; the ledger is the argument.
+
+**1. The empty frame is `player_stats`'s own, not `hub_cache`'s.** Step 2's claim
+
+> "It **fails silently** — `hub_cache.cached_frame` returns an empty frame by design
+> (dashes, not an error), so `n_resolved: 0` is four hops from a 404 with no log line
+> above the default threshold."
+
+names the wrong function. `src/nfl_predictor/data/player_stats.py` does not import
+`hub_cache`; the empty frame comes from its own bare `except Exception` at line 64, which
+logs at `logger.info` on line 65, `continue`s on line 66, and falls through to
+`return pd.DataFrame(columns=KEEP_COLUMNS)` on line 72. The level and the consequence were
+both right, so only the owner was wrong. `hub_cache.cached_frame` does log at INFO on
+`hub_cache.py:27` and does return an empty frame on its own nflverse path — a different
+function on a different path, which is exactly why the claim survived a review round.
+
+**2. Step 1 is not the binding constraint; the 404 is.** Step 1's claim
+
+> "**The window, not the file, is the binding constraint.** Even with the data published,
+> `min-replicas: 0` means no genuine pre-game snapshot exists to resolve, so fixing the
+> 404 alone would produce `n_resolved: 0` still."
+
+rests on a deployment that is switched off. `deploy-azure-nfl.yml` is deleted from NFL
+`origin/main`; the only `--min-replicas 0` left is `deploy.yml:91,103`, inside a job gated
+`if: vars.DEPLOY_AZURE == 'true'` (`deploy.yml:72`), and `DEPLOY_AZURE` is unset. The live
+service is a Compose service under `restart: unless-stopped` — it cannot scale to zero.
+Production `/api/track-record` for 2026 week 3 currently reports `n_resolved: 14`
+(0.786 / 0.714 / 0.571) with `n_rebuilt: 33` counted separately, and every one of the 14
+is a pre-kickoff snapshot. Pre-kickoff capture is working. **Task 3 Step 1 is a no-op, not
+an open decision** — options (a), (b) and (c) are not to be executed; there is no
+`min-replicas` knob on the deployment that is live.
+
+**3. What is *not* resolved, and must not be recorded as resolved.** Whether next-week
+inclusion in `_games_to_snapshot` (`ee1d3ef`) closed the Thursday-night gap is still open.
+The single backfilled week-3 game *is* the Thursday night game (`2026_03_ATL_GB`), and it
+kicked off 45.6h before that commit landed, so it is evidence about pre-fix code. Week 4's
+Thursday game, `2026_04_PIT_CLE`, reports `pre_kickoff` but has not kicked off, and an
+ungraded upcoming game reports `pre_kickoff` by construction. It is the first clean test
+and the result is not in.
+
+**The outcome is unchanged.** nflverse still 404s on `player_stats_2025` and
+`player_stats_2026`; prop accuracy is still unmeasurable; Step 2 is still the first thing
+that has to happen. Only the mechanism and the constraint ordering were wrong.

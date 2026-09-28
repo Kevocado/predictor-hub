@@ -77,6 +77,23 @@ Sports_Predictor) and PL's `323114e` terminology refactor are all still as they 
    kickoff, so no genuine pre-game snapshot exists. This is the **binding constraint** on
    prop accuracy — fixing the 404 alone changes nothing. (a) min-replicas 1 (costs money),
    (b) a timer-triggered pre-kickoff tick, (c) accept it.
+
+   > **CORRECTED 2026-09-28 — this is no longer an open decision; drop it from the list.**
+   > The ruling quoted above was retracted. `min-replicas: 0` does not describe the live
+   > deployment (the Azure workflow is deleted, the remaining `--min-replicas 0` sits behind
+   > an unset `DEPLOY_AZURE`, and the live service is Compose under
+   > `restart: unless-stopped`), and pre-kickoff capture is working — production reported
+   > `n_resolved: 14` for 2026 week 3 when re-checked. None of (a), (b) or (c) should be
+   > executed. The 404 is the binding constraint, so the next thing that has to happen is
+   > the one in the bullet above this list.
+   >
+   > The reasoning and the evidence are in the ledger, which is the record of decision:
+   > `ledgers/2026-09-28-player-model-accuracy-remediation.md`, "Correction 2026-09-28
+   > (after the ledger merge) — two retractions of *reasoning*", Retraction B. This
+   > handoff is orientation, so it points there rather than restating the argument. The
+   > same correction also names a second stale claim in the ledger's PR #11 ruling
+   > (`hub_cache` credited with an empty frame it does not produce) — Retraction A.
+
 2. **CFB container starts cold.** Needs an operator step or an idempotent startup job.
    Related: the Azure workflow does not pass `CFBD_API_KEY` and does not invoke the script.
 3. **PL gate depends on three third parties.** FPL, ClubElo and football-data.co.uk. The
