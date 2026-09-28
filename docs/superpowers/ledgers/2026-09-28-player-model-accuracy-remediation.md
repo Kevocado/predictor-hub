@@ -608,3 +608,164 @@ exhaustive sweep.
 resolve it as "the check is stale" is cheap, feels like rigour, and cost a live
 defect a full pass. The tell was available immediately: the check's own comment
 said what it was protecting, and I had not read the aggregate it protects.
+
+## Correction 2026-09-28 (after the ledger merge) — two retractions of *reasoning*
+
+Re-verified in NFL_Predictor against `origin/main` (`01ed33c`) and against the live VPS,
+not against the plan or the earlier session's notes. Both rulings below are retracted as
+**reasoning**. Neither outcome is retracted: nflverse still returns 404 for the current
+season, prop accuracy is still unmeasurable, and Step 2 of the remediation sequence is
+still the thing that has to happen first. What was wrong was the account of *which
+mechanism* was doing the work and *which constraint* was binding.
+
+These are recorded here and not edited into place, per the append-only rule at the top of
+this file. Both were found by the same re-verification that produced NFL PR #16, and both
+were already partly recorded in this ledger's own review-round table (line 295) without
+ever being carried back to the rulings they contradicted.
+
+### Retraction A — the empty frame is `player_stats`' own, not `hub_cache`'s
+
+Ruling retracted, at the "Shipped → NFL PR #11" section above:
+
+> "Ruling: it fails silently — `hub_cache.cached_frame` returns an empty frame by design
+> (dashes, not an error), so `n_resolved: 0` sits four hops from a 404 with no log line
+> above the default threshold. `hub_cache` keeps its own failure at INFO (per season per
+> tick; WARNING would flood) and the tick reports the consequence at WARNING once per
+> tick."
+
+`NFL_Predictor/src/nfl_predictor/data/player_stats.py` **does not import `hub_cache` at
+all**. Its entire import block is `__future__`, `logging`, `pandas`, `pathlib.Path` and
+`..config.PLAYER_STATS_CACHE_DIR` (lines 4, 6, 8, 9, 11). `grep -c hub_cache` on the file
+returns **0**. The empty frame comes from its own bare handler inside
+`fetch_weekly_player_stats`:
+
+| line | code |
+|---|---|
+| 64 | `except Exception:` |
+| 65 | `logger.info("No weekly player stats available yet for season=%s", season)` |
+| 66 | `continue` |
+| 72 | `return pd.DataFrame(columns=KEEP_COLUMNS)` |
+
+The season is dropped by the `continue`, `frames` stays empty, and control falls through to
+the empty-frame return at 72. (Those are the line numbers on `origin/main`; they are the
+ones quoted above because the file is the *same blob* at `a50302b` and at `origin/main` —
+`7fd78b6` — so the ruling was written against the code that is deployed. Beware a stale
+local checkout: the local `main` in that repo is 61 commits behind and sits two lines
+higher in the file, 63/64/65/71, having dropped one `from pathlib import` line.)
+
+What survives the retraction, and is worth keeping:
+
+- **The log level was right.** `player_stats.py:65` is `logger.info`, below the default
+  WARNING threshold. Nothing is missing from normal output.
+- **The consequence is right.** The tick *does* report it at WARNING once per tick, at
+  `routes.py:812`, inside the `if actual_stats.empty:` branch opened at `routes.py:794`.
+- **The hop count is right.** nflverse 404 → empty frame at `player_stats.py:72` →
+  `build_features_for_player` returns `None` for every rostered player (the roster
+  fallback at `routes.py:458-464` finds them and then discards them, because a player with
+  no usage history in the season has no honest feature row) → `continue` at `routes.py:483`
+  → `_get_player_props_live` returns `[]` at `routes.py:495` →
+  `record_player_prop_predictions([])` returns 0 without writing a row.
+
+**Why it was easy to get wrong, and why it survived the review round.** `hub_cache.py`
+really does exist at `src/nfl_predictor/data/hub_cache.py`, and `cached_frame` really does
+have `logger.info("hub fetch failed for %s: %s", ...)` at **`hub_cache.py:27`**, on a path
+that catches an nflverse failure and returns an empty frame on purpose. It is a real INFO
+log on a real empty-frame path — just not on this one. Two unrelated logs, one of them on
+the path that actually fails, at the same level, with the same consequence. `cached_frame`
+is imported by `player_season.py:8` and `team_efficiency.py:9`, and by nothing in the
+player-stats path. A grep for "empty frame + INFO + nflverse" lands on the right sentence
+about the wrong function.
+
+This is the same failure the review round recorded and did not propagate: the correction
+is at line 295 of this same file, in a table, eleven sections below the ruling it
+contradicts. **A correction recorded in one section does not correct the section it
+contradicts.** That is the new caution, and it is the real defect here.
+
+One instance survives in NFL source, deliberately not fixed (NFL PR #16 is docs-only): the
+comment at `api/routes.py:795`, inside the very `try` block that calls
+`fetch_weekly_player_stats` at `routes.py:793`, still names `hub_cache`. Comment only — no
+behaviour, no test — but it is inside the failure path and it is what a reader will believe
+next.
+
+Cost if this retraction is wrong: the log line already exists and already fires at the
+level already described, so the only thing at risk was the module name in a document. The
+verifiable cost of leaving it wrong is higher: the name pointed at a file whose failure
+path is not this one, so anyone sent to "fix the silent swallow" would have edited
+`hub_cache` and changed nothing.
+
+### Retraction B — the 404 was the binding constraint. The window was not.
+
+Ruling retracted, at the same "Shipped → NFL PR #11" section above:
+
+> "Ruling: Task 3 Step 1 reclassified from 'blocked' to 'your decision'. … Step 1 is an
+> operations choice with a cost, and it is the **binding constraint** — with
+> `min-replicas: 0` there is no genuine pre-game snapshot to resolve, so fixing the 404
+> alone would still give `n_resolved: 0`. Cost if wrong: prop accuracy stays unmeasurable
+> one season longer."
+
+The instinct was reasonable and the instinct was not baseless. Only the mechanism was
+wrong, and the mechanism was wrong in a way that made the whole operations menu moot.
+
+**1. The deployment it blames is switched off.** `.github/workflows/deploy-azure-nfl.yml`
+is **absent from NFL `origin/main`** — deleted in `c04e6f9` ("ci: deploy to the VPS on
+merge to main"). The only `--min-replicas 0` left anywhere in NFL's workflows is
+`deploy.yml:91` and `deploy.yml:103`, both inside the `deploy-azure:` job declared at
+`deploy.yml:69` and gated `if: vars.DEPLOY_AZURE == 'true'` at `deploy.yml:72`.
+`gh variable list` on `Kevocado/NFL_Predictor` returns exactly one variable, `VPS_HOST`.
+`DEPLOY_AZURE` is **unset**, so that job has not run since the cutover. The live path is
+the `vps:` job (`deploy.yml:111`, gated `if: vars.VPS_HOST != ''` at `deploy.yml:114`).
+
+**2. The live service cannot scale to zero, and is not scaling to zero.**
+`vps-stack/compose.yml:69-77` is the `nfl:` service, merging the `x-app: &app` anchor
+(`compose.yml:20`) which carries `restart: unless-stopped` at `compose.yml:21`. Compose
+has no scale-to-zero, and the VPS is rented around the clock whether the container is busy
+or not. Confirmed on the host: `docker inspect stack-nfl-1` reports
+`RestartPolicy=unless-stopped`, `Running=true`, `StartedAt=2026-09-28T19:18:23Z`. The
+"don't pay for idle" argument was an Azure argument, and Azure is off.
+
+**3. Pre-kickoff capture is working, and measurably so.** Production
+`/api/track-record?season=2026&week=3` returns, re-read today:
+
+```
+games.n_resolved            14
+games.pct_moneyline_correct 0.7857142857142857
+games.pct_ats_correct       0.7142857142857143
+games.pct_totals_correct    0.5714285714285714
+games.n_rebuilt             33          (counted separately)
+player_props.*.n_resolved    0          (every market)
+```
+
+And the 14 are pre-kickoff **by construction, not by luck**: `store.py:114-120`
+(`_require_pre_kickoff`) raises when `kickoff <= now`, so `record_game_predictions`
+cannot write a post-kickoff snapshot at all, and `store.py:690`
+(`_snapshotted_after_kickoff`) returns `True` on unparseable timestamps — it fails closed.
+Walking all sixteen week-3 games through `/facts/{game_id}`: of the 15 final, **14 are
+`pre_kickoff` and 1 is `rebuilt`**, and every one of the 14 kicked off at or after
+`2026-09-27T17:00Z`. The remaining game, `2026_03_PHI_CHI` (Monday night), is `pre_kickoff`
+and not yet played.
+
+So the same store, the same loop, the same pre-kickoff rule that the old ruling declared
+unable to produce anything has **14 live pre-game snapshots on the record right now**, while
+the only thing sitting at zero is the prop path. The 404 is the live constraint. That is
+what this ledger's own original blocker measurement always said.
+
+**4. What is still open, and is NOT closed by this retraction.** Whether next-week
+inclusion in `_games_to_snapshot` (commit `ee1d3ef`, 2026-09-26T21:52:27Z) closed the
+**Thursday-night** gap is unresolved, and stays unresolved here. The one `rebuilt` week-3
+game *is* the Thursday night game — `2026_03_ATL_GB`, `starts_at 2026-09-25T00:15:00Z` —
+and it kicked off **45.6 hours before** `ee1d3ef` landed. It is therefore evidence about
+the *pre-fix* code, and cannot be read either way about the fix. Week 4's Thursday game is
+`2026_04_PIT_CLE` (`starts_at 2026-10-02T00:15:00Z`) and it currently reports
+`pick_timing: pre_kickoff` — but per `api/facts.py:461-466` a game with a stored snapshot
+and no live row probabilities is labelled `pre_kickoff` *by construction*, so an ungraded
+upcoming game tells you nothing. Its label only becomes evidence once it has kicked off and
+been reconciled. **Week 4's Thursday game is the first clean test and the result is not
+in.** Do not record it as closed before then.
+
+Net effect on the sequence: the 404 is the binding constraint, so the remediation order
+stands as Step 2-then-accumulate. Task 3 Step 1 stops being an open decision with an
+operations menu and becomes a no-op — the thing it would have bought is already running.
+Cost if wrong: a reader spends effort re-opening an operations question against a
+deployment that does not exist. The larger cost of leaving it wrong, which is what this
+retraction removes, is the reverse — a season of work sequenced around a constraint that
+was not binding, with the real one filed under "upstream, not actionable".
