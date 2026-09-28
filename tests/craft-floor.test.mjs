@@ -82,3 +82,39 @@ test("tabular data lines up", () => {
   assert.match(html, /font-variant-numeric:\s*tabular-nums/,
     "figures in the cards should be tabular so columns align");
 });
+
+test("the current page in a nav is marked, not styled like a link out", () => {
+  // aria-current="page" with no visual treatment is a control that lies: it
+  // claims you are here and looks exactly like the four links that leave. The
+  // five sport sites mark the current site in AppFrame with an accent fill, so
+  // the hub matching that is the point, not a nicety.
+  assert.match(html, /nav a\[aria-current="page"\]/,
+    "aria-current has no rule, so the current page is indistinguishable from the others");
+  const rule = html.match(/nav a\[aria-current="page"\]\s*\{([^}]*)\}/)[1];
+  assert.match(rule, /background/, "the current page is not visually distinguished");
+  assert.match(rule, /--color-pr-accent/, "and it does not use the family accent");
+});
+
+// A teaser row that is itself a link must not keep the browser's underline.
+//
+// paintRow makes the row an <a> when the row carries an href. The rule
+// `.teaser-row a` only reaches an anchor NESTED INSIDE a row, so it does not
+// apply to a row that is itself the link -- and the row fell back to the UA
+// default underline on a page that themes selection, scrollbars, the caret and
+// the focus ring.
+//
+// Same class of miss as the NBA /api path on this project: the code built a
+// different element than the CSS assumed, and nothing noticed because the row
+// still rendered and was still clickable.
+test("a teaser row that is itself a link is not left on the browser's underline", () => {
+  assert.match(
+    html,
+    /a\.teaser-row\s*\{[^}]*text-decoration:\s*none/,
+    "a row-level link keeps the browser's default underline",
+  );
+  assert.match(
+    html,
+    /a\.teaser-row:hover\s*\{[^}]*text-underline-offset/,
+    "and its hover underline has no offset, unlike every other link on this page",
+  );
+});

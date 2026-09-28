@@ -129,6 +129,14 @@
     text-decoration: none;
   }
   nav a:hover { color: var(--color-pr-text); }
+  /* The page you are on, marked the way the five sport sites mark it in
+     AppFrame: accent fill, stage-coloured ink. Without this the Home tab is
+     styled identically to the four links that leave the page, which is worse
+     than either showing it or omitting it. */
+  nav a[aria-current="page"] {
+    background: var(--color-pr-accent);
+    color: var(--color-pr-accent-ink);
+  }
 
   h1 {
     margin: 0;
@@ -260,6 +268,83 @@
   @media (prefers-reduced-motion: reduce) {
     * { transition-duration: 0.01ms !important; }
   }
+
+  /* Picks teaser: the live opinion under each card. Sits below the card as a
+     sibling, so the card stays one big link and the teaser can hold its own
+     links to individual games.
+     The accent rides the TOP edge, matching .sport above. A thick coloured
+     left edge is the single most recognisable tell of a generated UI, and the
+     craft floor bans it above 1px; the top rule says the same thing, carries
+     the sport's colour, and is what this page already does. */
+  .slot { display: flex; flex-direction: column; gap: 0.5rem; }
+  .teaser {
+    /* flex: none is load-bearing, not tidiness. .teaser is a flex item in a
+       column .slot, and the default flex-shrink: 1 let it compress below its
+       own content: every panel measured 10-28px short (scrollHeight 102 vs
+       clientHeight 91 on PL), so the freshness line rendered BELOW the panel's
+       bottom border, outside the box it belonged to. min-height does not
+       prevent this — it only sets a floor of 4.5rem, and the content is
+       taller than that. The panel takes its natural height. */
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    border: 1px solid var(--color-pr-rule);
+    border-top: 3px solid var(--color-pr-accent);
+    border-radius: var(--radius-pr);
+    background: var(--color-pr-panel);
+    padding: 0.625rem 0.75rem;
+    min-height: 4.5rem;
+  }
+  .teaser-label {
+    font-family: var(--font-pr-display);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-pr-text-faint);
+  }
+  /* Two lines, not one flex row squeezed into a ~330px column. Measured on the
+     live page at three columns: "CHI v PHI", "Tue, 29 Sep 2026 05:15" and
+     "Line CHI -4.5" each wrapped onto two lines, so a single pick read as six
+     ragged lines instead of two. The number is the thing the eye wants, so it
+     sits on the first line with the name and the confidence is the only large
+     thing on it; the kickoff and the line drop beneath as their own row. */
+  .teaser-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: baseline;
+    column-gap: 0.5rem;
+    row-gap: 0.125rem;
+    font-size: 0.875rem;
+    line-height: 1.4;
+    color: var(--color-pr-text);
+  }
+  /* Spans the full width so it starts at the left margin, under the name. */
+  .teaser-row .teaser-note,
+  .teaser-row .teaser-edge { grid-column: 1 / -1; }
+  .teaser-row a { color: inherit; text-decoration: none; }
+  .teaser-row a:hover { text-decoration: underline; text-underline-offset: 2px; }
+  /* A row that IS the link. The rule above only reaches an anchor nested
+     inside a row; when paintRow makes the row itself an <a>, none of it
+     applies and the row falls back to the browser's default underline --
+     which is the one browser surface this page themes everywhere else. Same
+     treatment, written for the element that is actually the link. */
+  a.teaser-row { color: inherit; text-decoration: none; }
+  a.teaser-row:hover { text-decoration: underline; text-underline-offset: 2px; }
+  .teaser-name { font-weight: 600; }
+  .teaser-side { color: var(--color-pr-text-dim); }
+  .teaser-num {
+    font-family: var(--font-pr-display);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-pr-accent);
+  }
+  .teaser-note { font-size: 0.75rem; line-height: 1.4; color: var(--color-pr-text-faint); }
+  .teaser-edge { font-size: 0.75rem; color: var(--color-pr-lean); }
+  /* Reserved, never a spinner that outlives its data. A failed or empty
+     teaser collapses to its note rather than leaving a hole in the board. */
+  .teaser[aria-busy="true"] { color: var(--color-pr-text-faint); }
 </style>
 </head>
 <body data-sport="hub">
@@ -268,6 +353,12 @@
       <div class="frame-top">
         <span class="wordmark">Predictor</span>
         <nav aria-label="Sports">
+          <!-- Home first, matching the sport switchers on the five sites. On
+               the hub it is a self-link, which is the one thing it is not on
+               the others -- but Kevin wants the way back to the root to be in
+               the same place on every page of the family, and a consistent
+               control is worth more than a minimal one. -->
+          <a href="/" aria-current="page">Home</a>
           <a href="https://pl.40-160-91-131.sslip.io">PL</a>
           <a href="https://f1.40-160-91-131.sslip.io">F1</a>
           <a href="https://sports.40-160-91-131.sslip.io/?sport=nfl">NFL</a>
@@ -284,47 +375,53 @@
     <p class="rule"><strong>The rule</strong> <span>Only picks made before the game starts count. A pick rebuilt afterwards is still shown, labelled as such, and never counted.</span></p>
 
     <ul class="board">
-      <li>
+      <li class="slot" data-sport="pl">
         <a class="sport pr-notch" data-sport="pl" href="https://pl.40-160-91-131.sslip.io">
           <span class="sport-head"><span class="code">PL</span><span class="status">In season</span></span>
           <h2>Premier League</h2>
           <p>A pick and a most likely score for every fixture, gameweek by gameweek.</p>
           <span class="open">Open PL →</span>
         </a>
+        <div class="teaser" data-teaser="pl" aria-busy="true"></div>
       </li>
-      <li>
+      <li class="slot" data-sport="f1">
         <a class="sport pr-notch" data-sport="f1" href="https://f1.40-160-91-131.sslip.io">
           <span class="sport-head"><span class="code">F1</span><span class="status">In season</span></span>
           <h2>Formula 1</h2>
           <p>Win, podium and points chances for every driver, before each race and during live sessions.</p>
           <span class="open">Open F1 →</span>
         </a>
+        <div class="teaser" data-teaser="f1" aria-busy="true"></div>
       </li>
-      <li>
+      <li class="slot" data-sport="nfl">
         <a class="sport pr-notch" data-sport="nfl" href="https://sports.40-160-91-131.sslip.io/?sport=nfl">
           <span class="sport-head"><span class="code">NFL</span><span class="status">In season</span></span>
           <h2>Pro football</h2>
           <p>Weekly picks with the spread and total written out, plus player projections.</p>
           <span class="open">Open NFL →</span>
         </a>
+        <div class="teaser" data-teaser="nfl" aria-busy="true"></div>
       </li>
-      <li>
+      <li class="slot" data-sport="cfb">
         <a class="sport pr-notch" data-sport="cfb" href="https://sports.40-160-91-131.sslip.io/?sport=cfb">
           <span class="sport-head"><span class="code">CFB</span><span class="status">In season</span></span>
           <h2>College football</h2>
           <p>Picks for each week's games, filterable by conference.</p>
           <span class="open">Open CFB →</span>
         </a>
+        <div class="teaser" data-teaser="cfb" aria-busy="true"></div>
       </li>
-      <li>
+      <li class="slot" data-sport="nba">
         <a class="sport pr-notch" data-sport="nba" href="https://nba.40-160-91-131.sslip.io">
           <span class="sport-head"><span class="code">NBA</span><span class="status">Preseason</span></span>
           <h2>Pro basketball</h2>
           <p>Nightly picks with projected margins and totals. The record starts with the regular season.</p>
           <span class="open">Open NBA →</span>
         </a>
+        <div class="teaser" data-teaser="nba" aria-busy="true"></div>
       </li>
     </ul>
   </main>
+  <script type="module" src="./teasers.js"></script>
 </body>
 </html>

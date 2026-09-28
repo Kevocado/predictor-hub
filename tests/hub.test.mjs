@@ -17,7 +17,13 @@ test("carries the family frame: wordmark and a switcher to every sport", () => {
   assert.match(html, /class="wordmark">Predictor</);
   const nav = html.match(/<nav aria-label="Sports"[\s\S]*?<\/nav>/);
   assert.ok(nav, "sport switcher nav");
-  assert.deepEqual([...nav[0].matchAll(/>(\w+)<\/a>/g)].map((m) => m[1]), ["PL", "F1", "NFL", "CFB", "NBA"]);
+  // Home first, then the five sports. Home leads because on the sport sites
+  // the switcher's job is to let a visitor leave, and leaving should not
+  // require scrolling past five places they could also go; the hub keeps the
+  // same order so the control sits in the same place on every page.
+  assert.deepEqual([...nav[0].matchAll(/>(\w+)<\/a>/g)].map((m) => m[1]), ["Home", "PL", "F1", "NFL", "CFB", "NBA"]);
+  // ...and the page you are on is marked, not styled like the four links out.
+  assert.match(nav[0], /<a href="\/" aria-current="page">Home<\/a>/);
 });
 
 test("one card per sport, each in its own accent", () => {
@@ -81,3 +87,29 @@ test("the wordmark stays the family name, not the product name", () => {
   assert.ok(wordmark, "no wordmark");
   assert.equal(wordmark[1], "Predictor");
 });
+
+test("every card has a picks teaser slot beneath it, not inside it", () => {
+  // Kevin asked for the picks "underneath the cards". A teaser with its own
+  // links cannot live inside the card's <a> -- nesting interactive content in
+  // an anchor is invalid HTML -- so the slot is a sibling in the same <li>.
+  const slots = [...html.matchAll(/<div class="teaser" data-teaser="(\w+)" aria-busy="true">/g)].map((m) => m[1]);
+  assert.deepEqual(slots, ["pl", "f1", "nfl", "cfb", "nba"]);
+
+  // And the slot must be a sibling of the card, not a descendant: an <a> that
+  // still contains "teaser" means someone nested it later.
+  for (const anchor of html.match(/<a class="sport pr-notch"[\s\S]*?<\/a>/g) || []) {
+    assert.doesNotMatch(anchor, /class="teaser"/, "a teaser was nested inside the card's anchor");
+  }
+});
+
+test("the cards themselves are untouched by the teasers", () => {
+  const cards = [...html.matchAll(/<a class="sport pr-notch" data-sport="(\w+)"/g)].map((m) => m[1]);
+  assert.deepEqual(cards, ["pl", "f1", "nfl", "cfb", "nba"]);
+  const status = [...html.matchAll(/<span class="status">([^<]+)<\/span>/g)].map((m) => m[1]);
+  assert.deepEqual(status, ["In season", "In season", "In season", "In season", "Preseason"]);
+});
+
+test("the hub loads the teaser module", () => {
+  assert.match(html, /<script type="module" src="\.\/teasers\.js"><\/script>/);
+});
+
