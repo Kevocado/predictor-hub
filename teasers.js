@@ -284,9 +284,17 @@ async function footballTeaser(base, label) {
   return [{ ...selectFootball(games, predictions), label }, await metaSub(`${base}/api/snapshot-meta`)];
 }
 
+// NBA is the one API with no /api prefix: its router is mounted at the app
+// root (app.py does include_router(router) with no prefix, and the frontend's
+// own client calls "/hub/track-record" and "/manifest" unprefixed). The other
+// four all sit under /api. Guessing the prefix wrong is not a 404 here -- the
+// NBA app mounts its SPA at "/" and answers any unknown path with the app
+// shell and a 200, so a wrong prefix returns HTML and a 200 and fails quietly.
+const NBA = "/nba";
+
 async function nbaTeaser() {
-  const games = await getJSON(`/nba/api/games/week?start=${new Date().toISOString().slice(0, 10)}`);
-  return [selectNBA(games), await metaSub("/nba/api/snapshot-meta")];
+  const games = await getJSON(`${NBA}/games/week?start=${new Date().toISOString().slice(0, 10)}`);
+  return [selectNBA(games), await metaSub(`${NBA}/snapshot-meta`)];
 }
 
 function hydrate() {

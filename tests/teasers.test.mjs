@@ -251,9 +251,11 @@ test("every per-sport fetcher asks its own snapshot-meta endpoint", () => {
   // PL, F1 and NBA carry literal paths; footballTeaser is shared by NFL and
   // CFB and takes `base`, so one `${base}` template covers both prefixes --
   // the SPORTS table below pins that both are still routed through it.
+  // NBA is the exception on the prefix, not on the behaviour: its router is
+  // mounted at the app root, so it asks /nba/snapshot-meta with no /api.
   assert.match(src, /\/pl\/api\/snapshot-meta/);
   assert.match(src, /\/f1\/api\/snapshot-meta/);
-  assert.match(src, /\/nba\/api\/snapshot-meta/);
+  assert.match(src, /\$\{NBA\}\/snapshot-meta/);
   assert.match(src, /\$\{base\}\/api\/snapshot-meta/, "footballTeaser must fetch meta under its base prefix");
   assert.match(src, /footballTeaser\("\/nfl"/, "NFL must still route through footballTeaser");
   assert.match(src, /footballTeaser\("\/cfb"/, "CFB must still route through footballTeaser");
@@ -276,8 +278,38 @@ test("a failed meta fetch leaves the sport's picks on the board", () => {
     'metaSub("/pl/api/snapshot-meta")',
     'metaSub("/f1/api/snapshot-meta")',
     'metaSub(`${base}/api/snapshot-meta`)',
-    'metaSub("/nba/api/snapshot-meta")',
+    // NBA mounts its router at the app root, with no /api prefix.
+    'metaSub(`${NBA}/snapshot-meta`)',
   ]) {
     assert.ok(src.includes(call), `missing meta call: ${call}`);
   }
+});
+
+test("every sport fetches its snapshot-meta from the path its API actually serves", () => {
+  // The four American-football and PL/F1 APIs mount under /api. NBA does NOT:
+  // its router is included with no prefix, and the app then mounts its SPA at
+  // "/", so a wrong prefix does not 404 -- it returns the app shell with a 200
+  // and HTML. That is why this is asserted rather than discovered in a browser.
+  const src = readFileSync(new URL("../teasers.js", import.meta.url), "utf8");
+  for (const prefix of ["/pl", "/f1", "/nfl", "/cfb"]) {
+    assert.match(src, new RegExp(`["'\`]${prefix}/api/snapshot-meta["'\`]`), `${prefix} serves under /api`);
+  }
+  assert.match(src, /["'`]\$\{NBA\}\/snapshot-meta["'`]/, "NBA serves at the root, without /api");
+  // Assert the constant's VALUE, not just the template that consumes it. The
+  // bug this exists to catch was a wrong value in NBA itself; pinning only the
+  // `${NBA}/snapshot-meta` shape would still pass with NBA set to "/nba/api".
+  assert.match(
+    src,
+    /const NBA = "\/nba"/,
+    'NBA must be "/nba" — its router is mounted at the app root, with no /api prefix',
+  );
+  // Checked against the code with comments stripped, so the explanatory note
+  // above the constant -- which necessarily names the wrong path -- does not
+  // make this assertion pass or fail on its own prose.
+  const code = src
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("//"))
+    .join("\n");
+  assert.doesNotMatch(code, /\/nba\/api\//, "NBA must not be fetched through /api");
+  assert.doesNotMatch(code, /`\$\{NBA\}\/api\//, "NBA must not be fetched through /api");
 });
