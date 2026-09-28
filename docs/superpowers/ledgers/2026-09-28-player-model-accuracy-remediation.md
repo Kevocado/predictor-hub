@@ -411,3 +411,53 @@ compatible.
 - **PL #7's CI is now stale.** It last ran against a base 69 commits behind `main`. The
   branch was updated with the review fixes, which re-triggered it; the current run is
   the one to trust.
+
+
+## PL CI is structurally incapable of passing — diagnosed 2026-09-28
+
+PL #7 is **not merged**, and the reason is not a slow gate. A persistent watcher polled
+the run to completion (45 polls, 60m16s) and the result is worse than "slow".
+
+**The gate has never once been green.** Across six runs on this branch: five
+`cancelled`, one `failure`, zero passes.
+
+**A cold run does not complete in 60 minutes, and produces no test output at all.**
+`pytest tests/ -q -m "not network"` ran 59m16s and was killed mid-run with **no
+collection line, no dots, no failure summary** — no test ever reported a result. A warm
+local run of the same suite is ~13 minutes. So the cold path is not "47 minutes more
+downloading"; something is failing to make progress at all, most likely a fetch retrying
+with backoff against an upstream that is slow or refusing.
+
+**The cache has never captured the data.** The repo has 27 caches, and they are
+`data-cache-<run_id>` entries of **5MB each** — against a local `data/cache` of 10,118
+files / ~176MB (`cache_HIDDEN` alone is 93MB). `Restore upstream caches` completes in
+**0 seconds**: a cold miss, every time. The save happens in a post-job step, so a run that
+is cancelled or killed saves only what happened to be on disk at that moment — 5MB of a
+176MB directory. Restoring that partial cache changes nothing.
+
+**So the loop is closed and self-reinforcing:**
+
+    no usable cache -> cold run -> exceeds the timeout -> cancelled
+      -> post-job save writes 5MB of a partial download -> still no usable cache
+
+Raising the timeout is not a fix, it just moves the wall: the cold run may exceed any
+budget, and until *some* run completes past the save step the cache can never populate.
+Adding a timeout to a cache-warming gate was the wrong instinct, and this entry is the
+correction.
+
+**The root cause is the item already flagged as open:** the gating suite requires the
+network, and `-m "not network"` currently selects nothing because no test carries the
+marker. The honest fix is to mark the network-dependent tests so the gate stops fetching
+176MB, and run those tests in a separate, non-gating job. I attempted the triage
+mechanically — a pytest plugin that fails all `socket.connect` calls — and abandoned it
+because blocking sockets made the suite *hang* rather than fail, which is itself
+evidence that the fetchers retry rather than give up, and is probably the same thing
+making the cold run never finish.
+
+**Not done deliberately:** merging on the local 489/489 evidence, and burning another
+multi-hour run on a longer timeout that may still fail. The former would merge a red
+gate, which is the exact thing this session has been removing; the latter is a guess with
+a multi-hour price. This is a decision for the user: (a) merge PL #7 on local evidence and
+fix CI separately, (b) invest in the network-test split, which fixes the gate properly, or
+(c) run one manual cache-warm with a large budget so the cache populates and PR runs go
+fast.
