@@ -26,7 +26,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # No pre-generation. A summary is made when a reader asks for one.
             # The timer used to walk 72 hours across five sports every 3h, which
             # was the main consumer of the daily cap and kept spending on the two
-            # sports this service no longer serves. The hard cap is unchanged and
+            # sport this service does not serve. The hard cap is unchanged and
             # is enforced by the Ledger at spend time, not here; what goes is the
             # scheduler's own RESERVE headroom, which existed only to stop
             # pre-generation starving on-demand readers.

@@ -20,7 +20,13 @@ from __future__ import annotations
 from .contract import as_dict, band_for, market_shape, pick_prob
 
 _TENS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]
-_START = {"f1": "the session started", "pl": "kickoff"}
+#: How each sport names the moment the game begins. NBA says "tip-off" in its
+#: prompts (`prompts.py` `SPORT_NOTES`) and in the record label the panel renders,
+#: so a sentence reading "rebuilt after kickoff" sat next to "picks made before
+#: tip-off" on the same screen. The default is kept for the two football sports
+#: rather than listing them, so a new sport gets a sensible word instead of
+#: `KeyError`.
+_START = {"f1": "the session started", "pl": "kickoff", "nba": "tip-off"}
 MAX_FACTORS = 4
 
 
@@ -59,6 +65,51 @@ def _outcome_key(by_key: dict) -> str:
     if "moneyline" in by_key:
         return "moneyline"
     return "context"
+
+
+def _quoted_line(market: dict | None) -> str | None:
+    """The line a READER can check against a book, from whichever key this sport
+    used to put it in.
+
+    The key `line` means two different things across the family. NFL and CFB put
+    the market's line in it (`"BAL -2.5"`) and have no `market_line`. NBA puts the
+    MODEL's own projected margin there (`"BOS by 4.2"`, or the literal `"Toss-up"`
+    when the margin rounds to nothing) and the market's line in `market_line`.
+
+    Reading `line` as the market's is therefore right for two sports and wrong for
+    one, and for NBA it renders the model compared with itself: *"It rates BOS 4.2
+    points better, against a line of BOS by 4.2."* That is the same failure as
+    narrating a prediction without its timing, so the two are not adjacent
+    concerns -- they are the same rule.
+
+    `market_line` wins when both are present, because the quoted line is the one a
+    reader can check and the model's own wording is not. Neither key means there is
+    no disagreement to narrate, and the caller omits the factor rather than
+    inventing one.
+
+    **Numbers are accepted, not just strings.** A total's `line` is a float --
+    `{"market": "total", "line": 45.5}` -- while a spread's is a worded string. The
+    first version of this helper type-checked for `str` and silently dropped the
+    total factor for every sport, which `test_template_covers_markets_and_the_record`
+    caught immediately. A truthy check is the honest one here: `0` and `False` are
+    not lines anything would be quoted against.
+    """
+    if not market:
+        return None
+    for key in ("market_line", "line"):
+        value = market.get(key)
+        if isinstance(value, str):
+            # Stripped before the truthiness test, so a whitespace-only line falls
+            # through instead of rendering "against a line of    .". An earlier
+            # version of this loop also had an explicit
+            # `if value is None or value == "": continue`, which was dead -- the
+            # truthy test below already rejects `None`, `""`, `0` and `[]`. It
+            # survived a mutation check that reported it as covered, because
+            # removing it changed nothing at all. One check, not two.
+            value = value.strip()
+        if value:
+            return str(value)
+    return None
 
 
 def explain_from_template(facts: dict) -> dict:
@@ -101,8 +152,9 @@ def explain_from_template(facts: dict) -> dict:
 
     margin_market = by_key.get("spread") or by_key.get("handicap")
     margin = _num((margin_market or {}).get("model_margin"))
-    if margin_market is not None and margin is not None and label and margin_market.get("line"):
-        line = margin_market["line"]
+    quoted = _quoted_line(margin_market)
+    if margin_market is not None and margin is not None and label and quoted:
+        line = quoted
         # down: the market asking for more than the model rates the gap is a
         # point *against* the pick, which is what `direction` means.
         factors.append(_fact(str(margin_market["market"]), "down", "The line",
@@ -111,9 +163,10 @@ def explain_from_template(facts: dict) -> dict:
 
     total_market = by_key.get("total") or by_key.get("total_goals")
     total = _num((total_market or {}).get("model_total"))
-    if total_market is not None and total is not None and total_market.get("line") is not None:
+    total_line = _quoted_line(total_market)
+    if total_market is not None and total is not None and total_line is not None:
         factors.append(_fact(str(total_market["market"]), "up", "The total",
-                             f"It projects {total:g} {unit} against a line of {total_market['line']}."))
+                             f"It projects {total:g} {unit} against a line of {total_line}."))
 
     btts = by_key.get("btts")
     yes = _num((btts or {}).get("yes_prob"))
