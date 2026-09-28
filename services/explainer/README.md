@@ -72,13 +72,17 @@ and does not move the version changes nothing a reader sees** — the cached
 bodies keep being served under the old version's key and the deploy is green
 while the fix is inert. It is now `v3`; the cache measured on the VPS on
 2026-09-27 held `v1`/`v2` rows written before the `neutral` direction default,
-the absent-band rule and the spread sentence that names no side. Move it in the
-same change as the writer, and expect it to cost one generation per cached row:
-that is the price of the prose changing. Two tests hold the two halves apart —
-`tests/test_prompt_version.py` fails if the version is not above what the
-deployed cache was measured to hold, and
+the frame's rule on which number is bigger, and the spread sentence that names
+no side. Move it in the same change as the writer, and expect it to cost one
+generation per cached row: that is the price of the prose changing. Two tests
+hold the two halves apart — `tests/test_prompt_version.py` fails if the version
+is not above what the deployed cache was measured to hold, and
 `tests/test_prompt_version_moves_with_the_prompt.py` fails if the prompt text
-moves without the version moving with it.
+moves without the version moving with it. The band is not on that list and
+never was: `service._answer` re-derives it on every read, so a cached row
+already gets the right one, and the band chip withheld on a rebuilt pick
+(§13e, in `packages/predictor-ui`) is a reader-side decision that the version
+does not gate either.
 
 ## Run
 

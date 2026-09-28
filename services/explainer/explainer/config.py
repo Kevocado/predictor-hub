@@ -59,15 +59,30 @@ class Settings(BaseSettings):
     #: Part of the cache key (`Cache.key`, called from `service.explain`) and a
     #: hit is served verbatim, so this is a deploy precondition rather than a
     #: label: a change to how a body is WRITTEN under a version the deployed
-    #: cache already holds ships nothing a reader sees. The frame was changed in
-    #: the same commit as this move, so the two are one change.
+    #: cache already holds ships nothing a reader sees. Move it in the same
+    #: change as the writer, never on its own.
     #:
-    #: What the deployed cache holds was measured on the VPS on 2026-09-27 and is
-    #: `v1`/`v2`, so both are spent. `tests/test_prompt_version.py` holds that
-    #: floor and fails if this stops being above it, and
-    #: `tests/test_prompt_version_moves_with_the_prompt.py` fails if the prompt
-    #: text moves without this moving. Two rules, two files: one bounds the
-    #: version against production, the other against the writer.
+    #: `v2` is spent. `tests/test_prompt_version.py` holds what the deployed
+    #: cache was MEASURED to hold on the VPS on 2026-09-27 — a `v1`/`v2` pair,
+    #: floor `v2` — and fails if this stops being strictly above it. What the bump
+    #: puts live under this version is the cached half of a response, `verdict`
+    #: and `factors`: the no-pick `neutral` direction default, the frame's rule
+    #: that a factor names a market instead of saying which number is bigger, and
+    #: the spread sentence that states both figures without naming a side.
+    #:
+    #: The band is deliberately NOT in that list, and this is the limit of the
+    #: rule rather than an oversight: `service._answer` spreads the stored body
+    #: and then re-derives `band`, `pick` and `pick_timing` on every read, hit or
+    #: miss. A change to the band is therefore not gated on this field, and a
+    #: cached `v2` row already gets the right one. §13e withholds the band chip
+    #: in `packages/predictor-ui` for the same reason — it is a reader-side
+    #: decision about an unsayable claim, not a writer change.
+    #:
+    #: Two rules, two files, and neither substitutes for the other.
+    #: `tests/test_prompt_version.py` bounds this against production; the other
+    #: is `tests/test_prompt_version_moves_with_the_prompt.py`, which holds a
+    #: digest of everything the writer sends, so the frame cannot move without
+    #: this and leave a green suite behind.
     prompt_version: str = "v3"
     sport_api_pl: str | None = None
     sport_api_f1: str | None = None
