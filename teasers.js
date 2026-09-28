@@ -45,23 +45,95 @@ const byNumber = (key) => (a, b) => (b[key] ?? -Infinity) - (a[key] ?? -Infinity
  *  added here deliberately, never discovered by a blank card. */
 const isPreEvent = (source) => source === "tracked" || source === "live";
 
-export function selectF1(races, predictions) {
-  const race = (races || []).find((r) => !r.completed);
-  if (!race) return { label: "Formula 1", rows: [], empty: "No races left this season" };
-  const prediction = (predictions || {})[race.round];
-  if (!prediction || !isPreEvent(prediction.source)) {
-    return { label: race.race_name, rows: [], empty: "No pre-race pick for this race yet" };
+// The session order for a sprint weekend: sprint qualifying, sprint,
+// qualifying, then race. A normal weekend drops the two sprint sessions.
+// This order is used by findNextSession to pick the earliest future
+// session regardless of which prediction data happens to exist.
+const SESSION_ORDER = ["sprint_qualifying", "sprint", "qualifying", "race"];
+
+// Labels for the session column on the card. The label tells the
+// visitor which market the probability refers to.
+const SESSION_LABELS = {
+  sprint_qualifying: "Sprint Qualifying",
+  sprint: "Sprint",
+  qualifying: "Qualifying",
+  race: "Race",
+};
+
+// Session types that carry qualifying-style payloads: p_pole, p_top_3,
+// p_top_10 — no p_win. These sessions lead with pole chance.
+const QUALIFYING_SESSIONS = new Set(["sprint_qualifying", "qualifying"]);
+
+/** Find the next upcoming session across all uncompleted races.
+ *
+ *  The selection is clock-based, not data-availability-based. This is
+ *  deliberate: the F1 API may already contain race predictions for
+ *  future rounds, but showing the race when qualifying is still open
+ *  would skip the qualifying session entirely. We look at each race's
+ *  session_datetime and pick the earliest session whose clock time is
+ *  still in the future. Null or absent session_datetime entries are
+ *  skipped (they mean the session doesn't apply or has passed).
+ *  If no session is in the future, returns null. */
+function findNextSession(races, now) {
+  const uncompleted = (races || []).filter((r) => !r.completed);
+  for (const race of uncompleted) {
+    const dt = race.session_datetime || {};
+    const sessions = race.is_sprint_weekend
+      ? SESSION_ORDER
+      : SESSION_ORDER.filter((s) => s === "qualifying" || s === "race");
+    for (const session of sessions) {
+      const sessionDt = dt[session];
+      if (sessionDt && new Date(sessionDt) > now) {
+        return { race, session };
+      }
+    }
   }
-  const rows = (prediction.predictions || [])
+  return null;
+}
+
+/** Returns the session label for display on the card. */
+function sessionLabel(session) {
+  return SESSION_LABELS[session] || session;
+}
+
+/** Returns the field name that is the headline probability for a session
+ *  type. Race and sprint use p_win; qualifying uses p_pole. Returns
+ *  null if the session type has no headline probability field at all. */
+function headlineField(session) {
+  return QUALIFYING_SESSIONS.has(session) ? "p_pole" : "p_win";
+}
+
+export function selectF1(races, predictions, now = Date.now()) {
+  const next = findNextSession(races, now);
+  if (!next) return { label: "Formula 1", rows: [], empty: "No sessions left this season" };
+  const { race, session } = next;
+  const sessionPredictions = (predictions || {})[race.round]?.[session];
+  if (!sessionPredictions || !isPreEvent(sessionPredictions.source)) {
+    return { label: `${race.race_name} — ${sessionLabel(session)}`, rows: [], empty: "No pre-event pick for this session yet" };
+  }
+  const preds = sessionPredictions.predictions || [];
+  if (!preds.length) return { label: `${race.race_name} — ${sessionLabel(session)}`, rows: [], empty: `No driver predictions yet` };
+  const field = headlineField(session);
+  // If the session's own headline probability field is absent from the
+  // data, we do not fall back to p_win — a qualifying card must not
+  // show a win figure. Say the card has no picks.
+  if (!preds.some((d) => typeof d[field] === "number" && Number.isFinite(d[field]))) {
+    return { label: `${race.race_name} — ${sessionLabel(session)}`, rows: [], empty: `No ${sessionLabel(session.toLowerCase())} picks yet` };
+  }
+  const rows = preds
     .slice()
-    .sort(byNumber("p_win"))
+    .sort((a, b) => (b[field] ?? -Infinity) - (a[field] ?? -Infinity))
     .slice(0, 3)
-    .map((d) => ({
-      name: driverName(d.driver_id, d.driver_name),
-      value: pct(d.p_win),
-      sub: `Podium ${pct(d.p_podium)}`,
-    }));
-  return { label: race.race_name, rows, empty: rows.length ? "" : "No driver predictions yet" };
+    .map((d) => {
+      const row = { name: driverName(d.driver_id, d.driver_name), value: pct(d[field]) };
+      if (QUALIFYING_SESSIONS.has(session)) {
+        row.sub = `Top 3 ${pct(d.p_top_3)}`;
+      } else {
+        row.sub = `Podium ${pct(d.p_podium)}`;
+      }
+      return row;
+    });
+  return { label: `${race.race_name} — ${sessionLabel(session)}`, rows, empty: rows.length ? "" : `No ${sessionLabel(session.toLowerCase())} picks yet` };
 }
 
 export function selectPL(payload) {
@@ -262,17 +334,30 @@ async function plTeaser() {
   return [out, await metaSub("/pl/api/snapshot-meta")];
 }
 
+/** Endpoints for each session type's prediction. */
+const SESSION_ENDPOINTS = {
+  sprint_qualifying: "sprint-qualifying-prediction",
+  sprint: "sprint-prediction",
+  qualifying: "qualifying-prediction",
+  race: "prediction",
+};
+
 async function f1Teaser() {
   const races = await getJSON("/f1/api/races");
-  const next = (races || []).find((r) => !r.completed);
-  // The source (tracked vs live) still matters on F1, so it stays -- folded
-  // onto the same one-line `sub` as the date, joined only when both exist.
-  // If they ever compete for space the date wins: drop the source, not it.
-  if (!next) return [selectF1(races, {}), await metaSub("/f1/api/snapshot-meta")];
-  const prediction = await getJSON(`/f1/api/races/${next.season}/${next.round}/prediction`);
-  const source = prediction.source ? `Source: ${prediction.source}` : "";
+  const now = Date.now();
+  const next = findNextSession(races, now);
+  if (!next) return [selectF1(races, {}, now), await metaSub("/f1/api/snapshot-meta")];
+  const { race, session } = next;
+  const endpoint = SESSION_ENDPOINTS[session];
+  // Catch the session prediction fetch so a 404 (e.g. a sprint
+  // endpoint on a non-sprint weekend, or a prediction not yet
+  // published) does not blank the card — the selector handles
+  // missing data gracefully.
+  const prediction = await getJSON(`/f1/api/races/${race.season}/${race.round}/${endpoint}`).catch(() => null);
+  const source = prediction?.source ? `Source: ${prediction.source}` : "";
   const date = await metaSub("/f1/api/snapshot-meta");
-  return [selectF1(races, { [next.round]: prediction }), [date, source].filter(Boolean).join(" · ")];
+  const preds = prediction ? { [race.round]: { [session]: prediction } } : {};
+  return [selectF1(races, preds, now), [date, source].filter(Boolean).join(" · ")];
 }
 
 async function footballTeaser(base, label) {
