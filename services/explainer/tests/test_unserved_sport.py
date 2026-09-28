@@ -56,7 +56,10 @@ reason stands, and `tests/test_f1_served.py` holds it. A refusal is not a bug
 report, though: it is a decision somebody has to reverse in the open.
 """
 import asyncio
+import contextlib
+import io
 import os
+import pathlib
 import re
 import subprocess
 
@@ -101,6 +104,15 @@ UNSERVED_PROBE = "f1"
 #: Deriving the subject list from `config` is right -- it is what made a newly
 #: added sport inherit these tests -- and on its own it is also how this file
 #: would have emptied itself.
+#:
+#: **It is not guarded by asserting itself, and that is a correction.**
+#: `assert REFUSAL_SUBJECTS` was the first attempt and it is the wrong question:
+#: it asks whether one constant is truthy, so it catches today's edit and nothing
+#: else. Re-parametrising the test over a *different* empty source -- `SPORTS`
+#: minus something else derived, a literal nobody filled in -- leaves the
+#: constant non-empty and the guard still collected zero cases. What holds is
+#: `test_the_refusal_guard_is_actually_collected` below, which runs this test's
+#: own collection and asks whether anything in it will RUN.
 REFUSAL_SUBJECTS = UNSERVED or (UNSERVED_PROBE,)
 
 #: The markets an NBA facts bundle must carry for the v2 panel to have something
@@ -201,6 +213,137 @@ def test_an_unserved_sport_is_a_404_not_a_template(tmp_path, respx_mock, unserve
         asyncio.run(build(tmp_path, **{f"sport_api_{sport}": f"http://{sport}.test/api"}).explain(sport, "g1"))
 
     assert not upstream.called, "a refused sport must not touch its upstream"
+
+
+def test_the_refusal_guard_is_actually_collected():
+    """The guard above must collect at least one case that will actually RUN.
+
+    **This is the defect this whole file is about, and it was reintroduced one
+    line away.** The commit that un-refused F1 left `UNSERVED` empty, so
+    `@pytest.mark.parametrize("sport", UNSERVED)` collected zero cases. pytest
+    reports an empty parameter set as a SKIP, so the file kept its name, its
+    docstring and its last remaining guard, and the suite read
+    `398 passed, 1 skipped` with exit 0:
+
+        $ python -m pytest -q
+        SKIPPED [1] tests/test_unserved_sport.py: got empty parameter set for (sport)
+        398 passed, 1 skipped
+
+    The harness cannot see it either, and that is by construction rather than by
+    luck: `mutcheck_template_line.run()` returns `count("failed"), count("passed"),
+    0` and a skip is in neither bucket, and its baseline is recomputed on every
+    run, so a suite that quietly lost a guard still produces a green baseline and
+    a clean table.
+
+    So the fallback in `REFUSAL_SUBJECTS` is load-bearing, and deleting it must
+    fail HERE. Which is why this asserts the COLLECTION and not the constant:
+
+    * `assert REFUSAL_SUBJECTS` asks whether one value is truthy. It catches the
+      edit above and nothing else.
+    * Asking what the test's collection contains catches every version of it --
+      re-parametrising over a different empty source, a literal nobody filled
+      in, a source that goes empty on a branch -- because they all produce the
+      same thing: no case that runs.
+
+    **It is a real collection, run by pytest, not a re-derivation of the
+    argument.** `@pytest.mark.parametrize` is applied by pytest's own
+    `pytest_generate_tests` hook while this module is collected, and the items
+    that come out are what the suite will report. Reading `REFUSAL_SUBJECTS`
+    again here would only re-ask the question the constant already answers.
+
+    **Counting items is not enough, so it counts items that will RUN.** With the
+    fallback gone pytest still collects exactly one item -- the test function
+    itself, with `params == {'sport': NOTSET}` and a `skip` mark reading "got
+    empty parameter set for (sport)". `--collect-only -q` on the mutated file
+    prints `test_an_unserved_sport_is_a_404_not_a_template[NOTSET]` and
+    `1 test collected`, which reads like coverage and is the absence of it. So
+    the assertion is on items with no `skip` mark, and the reason the skipped
+    ones carry is in the failure message.
+    """
+    collected = _collect(
+        f"{pathlib.Path(__file__).resolve()}"
+        f"::test_an_unserved_sport_is_a_404_not_a_template")
+
+    skipped = [i for i in collected if i.get_closest_marker("skip") is not None]
+    running = [i for i in collected if i.get_closest_marker("skip") is None]
+
+    reasons = "; ".join(
+        f"{i.name}: {i.get_closest_marker('skip').kwargs.get('reason')!r}"
+        for i in skipped)
+    assert running, (
+        f"the refusal guard collects {len(collected)} case(s) and NONE of them "
+        f"runs -- {reasons or 'no skip reason reported'}. The test still exists, "
+        f"so this file still looks covered, and a skip is invisible both to the "
+        f"summary line and to the mutation harness (which tallies only failed "
+        f"and passed). The refusal guard is not testing anything. Check "
+        f"`REFUSAL_SUBJECTS`: with every configured sport served, `UNSERVED` is "
+        f"empty, and it is the `or (UNSERVED_PROBE,)` that keeps this "
+        f"parametrisation non-empty."
+    )
+    # Not decorative, and it is not "assert the constant" again. An assertion of
+    # "at least one runs" would be satisfied by a single case whose parameters
+    # are still UNSET, so this asks that each case carries a real configured
+    # sport. `SPORTS` rather than `REFUSAL_SUBJECTS`: the question is whether the
+    # subject is a sport this service can be asked about, and comparing against
+    # the very list under test would make the check agree with the thing it is
+    # checking. It also catches a re-parametrisation over ids that are not
+    # sports, which this file's own docstring rules out for a different reason
+    # (`_facts` raises before it makes a request).
+    for item in running:
+        params = item.callspec.params if item.callspec is not None else {}
+        assert params, f"{item.name} would run with no parameters at all"
+        for name, value in params.items():
+            assert value in SPORTS, (
+                f"{item.name} would run with {name}={value!r}, which is not a "
+                f"configured sport (SPORTS={SPORTS}). A refusal subject has to be "
+                f"a sport with a real upstream: one with no configured API makes "
+                f"`_facts` raise before it requests anything, so 'a refused sport "
+                f"must not touch its upstream' would hold wherever the guard sat."
+            )
+
+
+def _collect(node_id: str) -> list:
+    """Collect `node_id` with a real pytest session and return its items.
+
+    In-process rather than a subprocess, so the collection is the same pytest
+    and the same `conftest.py` the suite uses and a reader can follow it without
+    a second interpreter. `--collect-only` means no test is executed: this asks
+    what would be run, which is the question, and running the guard it is
+    checking would be circular.
+
+    The `pytest_collection_modifyitems` hook is pytest's own collection API and
+    the items it hands over are the ordinary `Function` nodes the reporter
+    counts, so `get_closest_marker` and `callspec` below are the same
+    attributes pytest itself reads.
+    """
+    captured: list = []
+
+    class _Collect:
+        def pytest_collection_modifyitems(self, session, config, items):
+            captured.extend(items)
+
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+        # `-p no:asyncio` unregisters `pytest-asyncio` in the NESTED session
+        # only. It is here because this file drives its own event loop with
+        # `asyncio.run` and defines no async test, so the plugin contributes
+        # nothing to the collection being asked about -- and leaving it
+        # registered makes it warn, on every outer run, that
+        # `asyncio_default_fixture_loop_scope` is unset. The warning is raised
+        # while the nested session configures, inside the outer session's
+        # warning capture, so it lands against this test. `-W` does not help:
+        # the plugin registers before the command line's warning filters are
+        # applied. Pinning the ini value instead would freeze a setting the
+        # project is free to choose later.
+        code = pytest.main([node_id, "--collect-only", "-q",
+                            "-p", "no:asyncio", "-p", "no:cacheprovider"],
+                           plugins=[_Collect()])
+
+    assert code == pytest.ExitCode.OK, (
+        f"collecting {node_id} returned {code}, so this test cannot say whether "
+        f"the refusal guard is collected:\n{out.getvalue()}"
+    )
+    return captured
 
 
 def test_a_refusal_spends_nothing(tmp_path, respx_mock, unserved_probe):

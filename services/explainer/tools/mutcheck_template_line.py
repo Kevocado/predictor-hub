@@ -240,6 +240,24 @@ MUTATIONS = [
      r'_START = \{"f1": "the session started", "pl": "kickoff", "nba": "tip-off"\}',
      '_START = {"f1": "the session started", "pl": "kickoff"}'),
 
+    # --- _outcome_key: the market the pick row names ---
+    # A row for each because a fix whose only witness is a pytest file is a fix
+    # whose test can be deleted in the same commit, which is the objection this
+    # table exists to raise; this row cannot be satisfied by editing a test.
+    #
+    # `in` becomes `not in`, which drops the case for every bundle rather than
+    # renaming it: F1's `win` falls through to the `context` pseudo-market and
+    # lands on the rebuilt-disclosure row's key, so the panel renders two
+    # `data-testid="factor-context"` elements and lights both when either is
+    # selected. Inverting the test catches the mistake a reader makes when
+    # adding a market name -- reaching for `not in` because they are testing
+    # membership of something else -- as well as the deletion, and a rename to a
+    # market F1's facts do not carry is caught by
+    # `test_f1_served.py::test_f1_gets_a_pick_and_a_record_...` and by
+    # `tests/test_factor_keys.py`.
+    ("_outcome_key's win case is inverted, so F1's pick falls back to context",
+     r'^    if "win" in by_key:$', '    if "win" not in by_key:'),
+
     # --- the spread factor's claims: about the market, about a side ---
     # A row for text that was DELETED is what stops it coming back. The three
     # below restore exactly what shipped, and the fourth invents a comparison
@@ -412,43 +430,90 @@ MUTATIONS = [
     ("SERVED_SPORTS loses nba",
      r'SERVED_SPORTS = \("pl", "nfl", "cfb", "nba", "f1"\)', 'SERVED_SPORTS = ("pl", "nfl", "cfb")'),
     # The row this replaces was "SERVED_SPORTS regains f1", anchored on the
-    # pre-reversal tuple. It could not simply be re-anchored: with f1 already
-    # served the replacement IS the source, so `re.subn` would have written a file
-    # byte-identical to the one it read and the row would have reported a BITE for
-    # a mutation that changed nothing -- the one outcome worse than silence,
-    # because it is credited with coverage it never had. So the row is now the
-    # mirror of the decision rather than a copy of it: F1 un-served, which is the
-    # reversal being undone by accident, and which `tests/test_f1_served.py`
-    # bites.
+    # pre-reversal tuple. It could not simply be re-anchored, and the reason is
+    # the one below -- **and the first version of this comment gave a different,
+    # impossible one, which is worth keeping in mind when reading it.**
+    #
+    # It said re-anchoring "would have reported a BITE for a mutation that
+    # changed nothing". Read `main` against it and that cannot happen: the loop
+    # is `n == 1` -> write -> `run()` -> `failed > 0`, and a replacement equal
+    # to its own source writes a byte-identical file, so pytest is green,
+    # `failed == 0`, and the row is filed `SILENT`. Checked with this file's own
+    # `classify` rather than by reading: a re-anchored row classifies `silent`,
+    # not `bites`.
+    #
+    # The real harm is quieter and it is permanent. A permanently silent row is
+    # an unmarked row, so it lands in the "did not bite" list and the run exits
+    # 1 on every run, forever -- and the two ways a reader responds are both
+    # losses: delete the row and lose the `SERVED_SPORTS` coverage it appeared
+    # to hold, or mark it `expected silent` and put a false claim into the
+    # table. Dead weight, not a false bite.
+    #
+    # So the row is the mirror of the decision rather than a copy of it: F1
+    # un-served, which is the reversal being undone by accident, and which
+    # `tests/test_f1_served.py` bites.
+    #
+    # (A row whose anchor matches NOTHING is a different failure with a correct
+    # mechanism, and it is why the three rows below had to be re-anchored rather
+    # than moved: `n == 0` falls to the `else`, prints `NOT APPLIED`, appends to
+    # `silent` and exits 1. That is the loud outcome, not a silent one.)
     ("SERVED_SPORTS loses f1 -- the reversal undone",
      r'SERVED_SPORTS = \("pl", "nfl", "cfb", "nba", "f1"\)', 'SERVED_SPORTS = ("pl", "nfl", "cfb", "nba")'),
-    # **Two survivors, marked rather than deleted because the silence is a
-    # property and not a gap.** Both ask the spread and total rows to read a
-    # market F1's own facts do not have -- its `win` probability map and its
-    # `podium` map -- and neither changes a single rendered factor, because those
-    # rows are gated on a FIGURE (`model_margin`, `model_total`) that neither
-    # market carries. The property is therefore: **no market NAME can make the
-    # spread or the total row fire; a figure has to be there.** That is the same
-    # gate the NBA rows above were written to hold, and `test_f1_served.py` is a
-    # witness for it on the one sport whose facts carry neither figure.
+    # **Two survivors, marked rather than deleted, and the mark claims something
+    # NARROWER than the first version of this comment said.**
     #
-    # The mark is checked against the run, so this is documentation and not a lid:
-    # a facts builder that gave `win` a `model_margin`, or a reader who made these
-    # rows read a figure off a probability map, would make one of these BITES and
-    # fail the run loudly -- which is what should happen if the property stops
-    # being true.
+    # Both ask the spread and total rows to read a market F1's own facts do not
+    # have -- its `win` probability map and its `podium` map. What the mark
+    # claims: **F1's `win` and `podium` carry no `model_margin` and no
+    # `model_total` today, so the market NAME is inert today.**
     #
-    # Its own limit, stated because the property leans on something this repo does
-    # not own. It is true of F1's facts AS THEY ARE, so the mark is ultimately a
-    # claim about a sibling repo: a builder that changed that shape would fail
-    # this row with nothing in this service being wrong. That is a false alarm,
-    # and it is the safe direction.
+    # Two claims that used to be made here and are not true:
+    #
+    # * *"no market NAME can make the spread or the total row fire; a figure has
+    #   to be there."* Wrong as written. A name **plus a figure** makes it fire,
+    #   and the gate in `template.py` also requires a quoted line -- F1 has
+    #   neither `line` nor `market_line`, so two things are missing rather than
+    #   one. Verified rather than assumed: with the spread row reading
+    #   `... or by_key.get("win")` and `win` given `model_margin: 3.4` and
+    #   `line: "Norris by 3.4"`, F1 renders
+    #   *"It projects a margin of 3.4 points, against a line of Norris by 3.4"* --
+    #   the model compared with itself, which `_quoted_line`'s docstring names as
+    #   the failure that helper exists to prevent. The name alone is inert; the
+    #   name plus a figure plus a line is not.
+    # * *"a facts builder that gave `win` a `model_margin` ... would make one of
+    #   these BITES and fail the run loudly ... a false alarm, and it is the safe
+    #   direction."* Wrong in a way that is DELETED rather than softened,
+    #   because **this run never contains a sibling repo.** It mutates
+    #   `explainer/template.py`, `explainer/config.py` and
+    #   `explainer/prompts.py`, then runs `pytest tests/`. F1's facts are built
+    #   in a repo this service does not import and this harness does not touch,
+    #   so no change there can reach this row at any point, in either direction.
+    #   It would not fail loudly; it would go UNNOTICED, and unnoticed is the
+    #   unsafe direction rather than the safe one. "A false alarm, in the safe
+    #   direction" described a loud failure that cannot happen instead of a quiet
+    #   one that can.
+    #
+    # **So this row is a canary over THIS repo's own F1 bundles**, and the
+    # sibling's shape is not being claimed at all. The `win`/`podium` shapes the
+    # harness can see are the ones in `tests/test_f1_served.py`: give `win` a
+    # `model_margin` and a `line` there and the row BITES, because the row would
+    # then be rendering.
+    #
+    # The witness that F1's real facts carry no figure is
+    # `test_f1_gets_a_pick_and_a_record_and_nothing_it_cannot_support`, and it
+    # asserts on the rendered HEADLINES. Asserting on factor KEYS read like the
+    # same check and was not: both rows are keyed `str(market["market"])`, so
+    # under the mutation above the key list carries no "spread" and no "total"
+    # (it is `["context", "win", "record"]` before the ruling and
+    # `["win", "win", "record"]` after), so both key-based assertions were True
+    # while "The line" was on screen. Where the sibling's shape is genuinely
+    # unknown, the honest guard is on what this repo renders.
     (f"the spread row reads f1's `win` market "
-     f"[{EXPECTED_SILENT_MARK}: the row is gated on model_margin, which `win` does not carry]",
+     f"[{EXPECTED_SILENT_MARK}: `win` carries no model_margin and no quoted line today, so the name is inert]",
      r'^    margin_market = by_key\.get\("spread"\) or by_key\.get\("handicap"\)$',
      '    margin_market = by_key.get("spread") or by_key.get("handicap") or by_key.get("win")'),
     (f"the total row reads f1's `podium` market "
-     f"[{EXPECTED_SILENT_MARK}: the row is gated on model_total, which `podium` does not carry]",
+     f"[{EXPECTED_SILENT_MARK}: `podium` carries no model_total and no quoted line today, so the name is inert]",
      r'^    total_market = by_key\.get\("total"\) or by_key\.get\("total_goals"\)$',
      '    total_market = by_key.get("total") or by_key.get("total_goals") or by_key.get("podium")'),
     # The one row that carries the expected-silent mark, and the reason it is

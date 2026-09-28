@@ -171,16 +171,36 @@ def _outcome_key(by_key: dict) -> str:
     """The market a pick or an outcome belongs to, for use as a factor `key`.
 
     PL's three-way market is literally named `result`; NFL's and CFB's outcome is
-    a top-level `result` with the pick's market named `moneyline`. So a factor
-    about the pick or how it finished cannot just be keyed `result` — for NFL
-    that names a market the facts do not carry, and the panel would resolve it to
-    nothing and render an empty row. Same trap as `contract.market_shape`, and
-    for the same reason.
+    a top-level `result` with the pick's market named `moneyline`; F1's is named
+    `win`, because a race is won rather than matched. So a factor about the pick
+    or how it finished cannot just be keyed `result` — for NFL that names a
+    market the facts do not carry, and the panel would resolve it to nothing and
+    render an empty row. Same trap as `contract.market_shape`, and for the same
+    reason.
+
+    **`win` is here because the `context` fallback is not a free default.** Every
+    sport in `SERVED_SPORTS` now names its pick market, so the fallback is dead
+    for all of them — and while it was live it was not harmless. F1's pick row
+    fell through to `context`, the pseudo-market, and so landed on the same key
+    as the rebuilt-disclosure row: two factors under one key, so `FactorList`
+    rendered two `data-testid="factor-context"` elements and lit both when either
+    was selected. `contract.resolve_factors` kept the row by the pseudo-market
+    allowance rather than because it named the market it is about, which is the
+    same distinction `_quoted_line`'s docstring draws between a worse source of
+    the same fact and a different fact that happens to share a key name.
+
+    The fallback stays, for a sport whose builder has not been taught its market
+    name yet — and it is the reason `tests/test_factor_keys.py` asserts the
+    property over the emitted keys rather than trusting this function: a row
+    about a MARKET must never land on a pseudo-market's key, and the only thing
+    that can enforce that is a check on the output.
     """
     if "result" in by_key:
         return "result"
     if "moneyline" in by_key:
         return "moneyline"
+    if "win" in by_key:
+        return "win"
     return "context"
 
 
