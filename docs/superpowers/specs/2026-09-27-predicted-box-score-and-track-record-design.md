@@ -298,6 +298,29 @@ row is visually subordinate — same type, `--color-pr-text` not the accent — 
 the eye still lands on the closest game first. On F1 the teaser keeps its three
 drivers, which is its own shape and does not gain a second group.
 
+**A6.3 — a teaser row links to that specific game.**
+
+Kevin asked that pressing a teaser go straight to the game it names. Measured
+2026-09-28, this is **not one small change**, and the reason is worth recording
+so nobody assumes otherwise:
+
+- `Sports_Predictor` reads `?sport=nfl` from the query string
+  (`sportFromSearch`, covered by `SportContext.test.tsx`) but has **no `?game=`
+  support** — `selectedGame` is internal component state in `GamesPage.tsx:216`.
+- `NBA_Predictor` has **no query-param support at all** in `App.tsx` or
+  `GameCard.tsx`.
+- PL and F1 route by path, so their shapes have to be read before use.
+
+So the teasers cannot simply wrap each row in an `<a>`: two of the four sites
+have nowhere to send the link. The work is, per site: accept a game identifier
+on load and open that game's detail, then point the hub's row at it. Until a
+site accepts the parameter, that site's rows stay non-interactive — a row that
+looks clickable and is not is worse than one that plainly is not.
+
+Accessibility travels with it: a clickable row is a real link, focusable and
+activatable by keyboard, with the game named in its accessible text — not a
+`div` with a click handler.
+
 ## Sub-project B — the track record rebuild
 
 ### B1 — fix the bucket contract divergence

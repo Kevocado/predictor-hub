@@ -147,6 +147,19 @@ Same shape as A2 minus the depth-chart source. If A1 found no `starter` flag, th
 - [ ] **Step 2: Implement.** Keep the existing return contract `{ label, rows, empty }` and let `rows` carry two entries. Label them so they are not read as one pick. F1 is unchanged — its three drivers are a different shape and gain no second group.
 - [ ] **Step 3: Run** the full suite, commit, deploy, and check the live page at 1440 and 390.
 
+### Task A4.4 — a teaser row links to its game
+
+**Scope, measured 2026-09-28 — read before estimating.** This is per-site work, not a hub change:
+
+- `Sports_Predictor` (NFL + CFB) reads `?sport=` but has **no `?game=`**. `selectedGame` is internal state at `GamesPage.tsx:216`. Add: read a game identifier on load, and open that game's detail when it matches.
+- `NBA_Predictor` has **no query-param support** in `App.tsx` or `GameCard.tsx`. Add the same, with its own parameter name.
+- PL and F1 route by path. **Read their route tables before choosing a URL** — do not invent a shape the site does not serve.
+
+- [ ] **Step 1: Failing test per site** that a game identifier on the URL opens that game's detail, and that an unknown identifier degrades to the normal list rather than an error.
+- [ ] **Step 2: Implement** the parameter handling in each site, one commit per repo.
+- [ ] **Step 3: Hub side.** `paintRow` emits a real `<a>` when the row carries an href, and a plain row when it does not — so a site without deep-link support shows a row that plainly is not clickable rather than one that looks clickable and goes nowhere. The accessible name must contain the game.
+- [ ] **Step 4: Verify in a browser, per sport.** Click through and confirm the right game opens. A link that 404s or opens the wrong game is worse than no link.
+
 ---
 
 ### Task A5 — NBA fixture detail
