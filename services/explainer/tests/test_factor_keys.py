@@ -26,6 +26,12 @@ sport` now fails first, and names the sport, the keys `MARKETS` does have, and
 the `test_factor_keys.py` entry it needs. It is a `MARKETS` edit, not no edit,
 and saying so was the whole of the correction.
 
+**Coverage status, since a literal is only as good as what checks it: all five
+sports are now cross-checked against their own builders**, by executing the
+builders' real `_markets` cut out of the sibling's `origin/main` — see the
+section at the foot of this file. There is no sport here that is literal-only,
+so there is no unchecked literal whose staleness nobody is tracking.
+
 **The one pair the design shares on purpose, and why it is named rather than
 fixed.** `_outcome_key`'s docstring says it is "the market a pick **or an
 outcome** belongs to", and on a finished game the "How it finished" row and the
@@ -51,6 +57,11 @@ BY ACCIDENT". `test_f1s_pick_row_is_keyed_win_not_the_context_pseudo_market` in
 rather than counting keys. **Everything else is unexempted:** a new collision on
 any other key, for any served sport, in any state, fails here.
 """
+import os
+import pathlib
+import re
+import subprocess
+
 import pytest
 
 from explainer.config import SERVED_SPORTS
@@ -72,27 +83,50 @@ RECOGNISED_MARKETS = ("result", "moneyline", "win")
 #: A literal rather than a double, because the code that produces these lives in
 #: sibling repos this service does not import -- `_nba_facts` in
 #: `tests/test_unserved_sport.py` and `_f1_facts` in `tests/test_f1_served.py`
-#: are literals for the same reason, and `test_nbas_facts_carry_the_markets_the_
-#: panel_draws` is the file that runs NBA's real builder to check the shape here
-#: is still right.
+#: are literals for the same reason.
 #:
 #: F1 carries `win` and `podium` and no line of any kind. NFL and CFB put the
 #: MARKET's line in `line`; NBA puts the MODEL's in `line` and the market's in
 #: `market_line`. Those differences are the subject of
 #: `tests/test_template_quoted_line.py`; what matters here is that every sport
 #: contributes a bundle its own row set can fire on.
+#:
+#: **And all five are CHECKED against those builders**, by running them — see the
+#: section at the foot of this file. The first version of this dict was
+#: hand-written and four of its five entries were WRONG, which is what the
+#: cross-checks are for and the reason this paragraph is a report rather than a
+#: promise: PL's `model` is keyed `home_win`/`draw`/`away_win` and not by team
+#: name; NFL's and CFB's total `line` is the number the game row carried, not a
+#: string; NBA's away team is whatever the game row said, and its total
+#: `market_line` is `'Over 224.5'` because `_line_from_market` words a total that
+#: way. Each was a literal describing a bundle no builder produces, and every
+#: test above this one was green on it.
+#:
+#: **What would still make a literal go stale, and the honest limit of the check
+#: at the foot of the file.** It runs each builder's `_markets` with ONE chosen
+#: input per sport, and asserts the result EQUALS this dict. So it catches a
+#: changed name, a changed field, a changed value, and a moved or removed pick-
+#: market guard. It does NOT catch: a guard that depends on data the runner does
+#: not supply (a market that only appears for a live fixture, say), which would
+#: make this dict a SUBSET of what the builder can emit; and a change in a helper
+#: the runner does not cut, which is invisible for the same reason. The
+#: thin-bundle half of the check is what covers the guard, and the value half is
+#: what makes a subset a failure rather than a pass — but a sport that grew a
+#: new conditional market would need this dict extended and the runner's input
+#: widened, and nothing here would have told us in advance. That is the residual
+#: and it is stated rather than hidden.
 MARKETS: dict[str, list[dict]] = {
-    "pl": [{"market": "result", "model": {"LIV": 0.44, "ARS": 0.33, "MCI": 0.23}}],
+    "pl": [{"market": "result", "model": {"home_win": 0.44, "draw": 0.33, "away_win": 0.23}}],
     "nfl": [{"market": "moneyline", "model": {"BAL": 0.62, "KC": 0.38}},
             {"market": "spread", "model_margin": 3.4, "line": "BAL -2.5"},
-            {"market": "total", "model_total": 45.5, "line": "45.5"}],
+            {"market": "total", "model_total": 45.5, "line": 45.5}],
     "cfb": [{"market": "moneyline", "model": {"ALA": 0.70, "UGA": 0.30}},
             {"market": "spread", "model_margin": 10.0, "line": "ALA -10.0"},
-            {"market": "total", "model_total": 55.0, "line": "55.0"}],
-    "nba": [{"market": "moneyline", "model": {"BOS": 0.62, "PHI": 0.38}},
+            {"market": "total", "model_total": 55.0, "line": 55.0}],
+    "nba": [{"market": "moneyline", "model": {"BOS": 0.62, "MIA": 0.38}},
             {"market": "spread", "model_margin": 4.2,
              "line": "BOS by 4.2", "market_line": "BOS -3.5"},
-            {"market": "total", "model_total": 226.5, "market_line": "224.5"}],
+            {"market": "total", "model_total": 226.5, "market_line": "Over 224.5"}],
     "f1": [{"market": "win", "model": {"Lando Norris": 0.34, "Max Verstappen": 0.29}},
            {"market": "podium", "model": {"Lando Norris": 0.88}}],
 }
@@ -357,3 +391,469 @@ def test_a_full_bundle_still_names_the_market_so_nothing_moves():
                 f"{head!r} is keyed {keys[head]!r} and has fallen through to the "
                 f"pseudo-market that is only for bundles that cannot name one"
             )
+
+
+# --- the literals above, checked against the real builders --------------------
+#
+# **Why this section exists, and what it closes.** `MARKETS` is a literal, and
+# everything in this file rests on it: the template's gates read the field names
+# it carries, and `THIN` below drops the entry whose market name is recognised.
+# So a builder edit -- NFL deciding to emit `over_prob` unconditionally, PL
+# renaming a field, F1 guarding `win` differently -- would leave the literal
+# describing a bundle that can no longer occur, and **nothing would fail.** The
+# whole file would keep passing while testing a shape nothing produces. That is
+# the defect class this task exists to eliminate, and it is the same class as the
+# two findings in round 2, one level down.
+#
+# **How it is closed: by RUNNING each builder, not by grepping it.** The pattern
+# is `_run_nba_markets` in `tests/test_unserved_sport.py` -- cut the real
+# functions out of the sibling's `facts.py` at `origin/main`, `exec` them in an
+# empty namespace with only the *boundary* stubbed, and call the real `_markets`.
+# A regex over the source would be answered by a docstring or a comment; a
+# function that is run cannot be.
+#
+# **What is stubbed is always the BOUNDARY, never the decision.** The storage
+# read and the tip-off filter, in NBA's case; nothing else. `_markets`,
+# `_spread_line`, `_driver_rows`, `_num` and the guards between them are the
+# sibling's own code, so a change to a guard is a change to what this file
+# observes. A stub of `_market_line` -- the function that decides what a
+# `market_line` holds -- is what the NBA comment records as the earlier
+# mistake, and it is not repeated here.
+#
+# **Each check asserts TWO things, and the second is the one round 2 needs.**
+# 1. The derived markets EQUAL `MARKETS[sport]` -- names, fields and values, not
+#    a subset. Equality is affordable because each runner's input is chosen to
+#    reproduce the literal exactly, and it is what makes a builder edit visible.
+#    A subset check would tolerate the literal naming a market the builder no
+#    longer emits, which is the shape of mistake round 1's finding 2 was about.
+# 2. The builder really can emit a bundle with NO recognised market -- the
+#    `THIN` derivation above is only honest if the pick market is *guarded*. An
+#    equality check alone would keep passing if a builder stopped guarding and
+#    every bundle grew a moneyline, because the chosen input still has one.
+#
+# **No network, and no sibling on disk.** Every source comes from
+# `git show origin/main:<path>`, so the check is against what SHIPS rather than
+# against whatever is in a working tree, and it reads nothing from the sibling
+# beyond that text. `pandas` is a dev-only dependency of THIS service, added so
+# NFL's and CFB's real `_num` can run unmodified -- see `test_pandas_is_here_
+# because_nfl_and_cfb_need_it`, which fails rather than skipping if it goes.
+
+
+def _sibling_repo(sport: str) -> pathlib.Path:
+    """The sibling checkout for `sport`, found the way the NBA check finds it.
+
+    `tests/` is `<service>/tests`, so `parents[3]` is the worktree and
+    `parents[4]` is where the sibling repos live. An env var per sport comes
+    first, matching `NBA_REPO` in `tests/test_unserved_sport.py`, so a CI runner
+    can point at a checkout without a sibling beside the repo.
+    """
+    env = f"{sport.upper()}_REPO"
+    here = pathlib.Path(__file__).resolve()
+    candidates = [pathlib.Path(os.environ[env])] if os.environ.get(env) else []
+    candidates += [p / f"{sport.upper()}_Predictor" for p in here.parents]
+    root = next((c for c in candidates if (c / ".git").exists()), None)
+    assert root is not None, (
+        f"{sport.upper()}_Predictor not found beside this repo, so the claim that "
+        f"{sport}'s facts carry the markets `MARKETS` describes is UNVERIFIED rather "
+        f"than true -- and an unverified literal is the thing this section exists to "
+        f"prevent. Set {env}. Looked in {[str(c) for c in candidates[:4]]}"
+    )
+    return root
+
+
+def _facts_source(sport: str) -> str:
+    """`src/<sport>_predictor/api/facts.py` from the sibling's `origin/main`.
+
+    Not a bare re-raise on failure, for the reason `tests/test_unserved_sport.py`
+    gives: `origin/main` is absent in a fork and when git is not installed, and
+    the default `CalledProcessError` prints a command line and an exit status
+    rather than saying the CLAIM is unchecked. This test exists to keep the
+    literals honest, so when it cannot check one it has to say so.
+    """
+    rel = f"src/{sport}_predictor/api/facts.py"
+    root = _sibling_repo(sport)
+    try:
+        src = subprocess.run(["git", "-C", str(root), "show", f"origin/main:{rel}"],
+                             capture_output=True, text=True, check=True).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        pytest.fail(
+            f"could not read {sport}'s facts.py from {root} (origin/main:{rel}), so "
+            f"MARKETS[{sport!r}] is UNVERIFIED rather than true. Underlying error: {exc}"
+        )
+    assert src.strip(), f"{sport}'s facts.py came back empty; the check would pass vacuously"
+    return src
+
+
+def _by_market(out: list) -> dict[str, dict]:
+    return {str(m.get("market")): m for m in out if isinstance(m, dict)}
+
+
+def _assert_matches_literal(sport: str, derived: list, what: str) -> dict:
+    """The derived markets must EQUAL `MARKETS[sport]`, and the message must say how.
+
+    Equality on names, fields AND values. A subset check is the obvious cheaper
+    version and it is the one round 1's finding 2 was about: it tolerates the
+    literal carrying a market the builder no longer emits, which is precisely the
+    way a literal goes stale.
+
+    The message names the sport, the branch, the derived set and the literal, and
+    the keys that differ -- a builder's output is a dict of dicts and a bare
+    `AssertionError` on a two-hundred-character diff tells a reader nothing about
+    which side moved.
+    """
+    got, want = _by_market(derived), {str(m["market"]): m for m in MARKETS[sport]}
+    missing = sorted(set(want) - set(got))
+    extra = sorted(set(got) - set(want))
+    differing = sorted(k for k in set(want) & set(got) if got[k] != want[k])
+    assert not (missing or extra or differing), (
+        f"{sport}: MARKETS[{sport!r}] no longer matches what {sport}'s OWN builder "
+        f"emits ({what}).\n"
+        f"  the builder emits : {got}\n"
+        f"  MARKETS declares  : {want}\n"
+        f"  only in MARKETS   : {missing}\n"
+        f"  only in the builder: {extra}\n"
+        f"  same name, different content: {differing}\n"
+        f"  Either the sibling's facts.py changed, or this literal is wrong. It is "
+        f"not safe to leave it as it is: every test in this file builds its bundle "
+        f"from it, so a literal that no longer occurs is a file testing a shape "
+        f"nothing produces. Fix `MARKETS[{sport!r}]` to what the builder emits, or "
+        f"change the builder deliberately -- and if the builder changed on purpose, "
+        f"re-read whether `RECOGNISED_MARKETS`, `THIN` and the template's gates "
+        f"still agree with it."
+    )
+    return got
+
+
+def _assert_can_be_thin(sport: str, derived: list, what: str) -> None:
+    """The builder must be able to emit a bundle with no recognised market.
+
+    This is the half that keeps the `THIN` derivation honest. `_outcome_key`'s
+    `default` argument, `THIN` and the whole "the fall-through is reachable"
+    claim rest on the pick market being GUARDED -- emitted only when a figure is
+    there. An equality check cannot see that: the input it drives has every
+    figure, so a builder that stopped guarding and emitted a moneyline for
+    everything would still match the literal, and the thin bundle this file
+    renders would be unreachable in production.
+
+    So the guard is probed directly, and the "still has other markets" half is
+    asserted too: a builder that returned `[]` for everything would satisfy
+    "no recognised market" while making the thin bundle vacuous in the other
+    direction.
+    """
+    got = _by_market(derived)
+    recognised = sorted(set(got) & set(RECOGNISED_MARKETS))
+    assert not recognised, (
+        f"{sport}: the input chosen to be a THIN bundle still produced "
+        f"{recognised} ({what}), so this sport's builder does NOT guard its pick "
+        f"market the way `THIN` assumes. Either the guard moved, or it was removed "
+        f"-- and if it was removed then `RECOGNISED_MARKETS`, `THIN`, the "
+        f"`_outcome_key` `default` argument and every test built on a thin bundle "
+        f"are describing a state this sport can no longer reach."
+    )
+    assert got, (
+        f"{sport}: the THIN input produced NO markets at all ({what}), so 'no "
+        f"recognised market' holds for the wrong reason -- the bundle is empty "
+        f"rather than thin, and the template's padding rows would take the place of "
+        f"the rows this file is checking."
+    )
+
+
+#: The preamble every runner execs ahead of the cut functions: postponed
+#: annotations so the sibling's `dict | None` hints need nothing, and `Any`,
+#: which the sibling's own signatures name.
+#:
+#: **And `pandas` for NFL and CFB, which is the one third-party import here.**
+#: Their `_num` ends `return None if pd.isna(number) else number`, and a service
+#: with no pandas in it cannot run that unmodified. The alternative was a
+#: hand-written stand-in for `pd.isna`, and a stand-in is a re-implementation
+#: wearing the builder's name: if NFL ever changed that call, the stand-in would
+#: keep answering the old question and the check would stay green. So pandas is a
+#: **dev-only** dependency of this service -- the runtime `dependencies` list is
+#: untouched -- and the real function runs against the real library.
+_PREAMBLE = "from __future__ import annotations\nfrom typing import Any\n"
+_PANDAS_PREAMBLE = _PREAMBLE + "import pandas as pd\n"
+
+
+def _run_f1_markets(source: str, with_win: bool = True) -> list:
+    """F1's real `_markets`, run, over a real `_driver_rows` and a real `_num`.
+
+    Nothing is stubbed: all three of F1's helpers are pure functions over
+    arguments, so there is no boundary to replace. `_driver_rows` is the one that
+    matters -- it is what normalises the API's `p_win`/`p_podium` payload into
+    the `win`/`podium` keys `_markets` then reads, and getting it wrong is a real
+    way for a real F1 bundle to carry no markets at all.
+
+    `with_win=False` is the thin probe: the payload carries `p_podium` but not
+    `p_win`, which is exactly the `if win:` guard at `facts.py:313-314` refusing
+    to append the market. `points` and `dnf` are left out of the payload too, so
+    the derived set is `podium` alone and matches `MARKETS["f1"]` minus `win`.
+    """
+    def cut(name: str) -> str:
+        m = re.search(rf"^def {name}\(.*?(?=^def |^@router|\Z)", source, re.S | re.M)
+        assert m, f"F1's facts.py has no {name}(); the probe would pass vacuously"
+        return m.group(0)
+
+    env: dict = {}
+    exec(compile(_PREAMBLE + "".join(cut(n) for n in ("_num", "_driver_rows", "_markets")),
+                 "<f1 markets>", "exec"), env)
+
+    # Two drivers and a `names` map, because F1's `_markets` keys its `model` map
+    # by whatever `names` resolves a driver id to. The first version of this
+    # runner passed `names={}` and produced `{'1': 0.34}`, which the equality
+    # check rejected for a real reason: a real F1 bundle is keyed by driver NAME,
+    # and a literal keyed by id would be one more bundle no builder produces.
+    # `p_podium` is on the first driver only, which is why the two markets carry
+    # different key sets.
+    names = {"1": "Lando Norris", "2": "Max Verstappen"}
+    norris = {"driver_id": "1", "name": "Lando Norris", "p_podium": 0.88}
+    verstappen = {"driver_id": "2", "name": "Max Verstappen"}
+    if with_win:
+        norris["p_win"] = 0.34
+        verstappen["p_win"] = 0.29
+    return env["_markets"]({"predictions": [norris, verstappen]}, {}, names)
+
+
+def _run_nfl_markets(source: str, with_moneyline: bool = True) -> list:
+    """NFL's real `_markets`, over its real `_num` and its real `_spread_line`.
+
+    The only stub is `_market_rows`-shaped and it is not needed here: NFL reads
+    the quoted line off the `game` dict it is handed, not out of storage, so
+    there is no boundary call to replace. What the runner must not lose is
+    `moneyline_from` -- the whole point of NFL's signature is that the moneyline
+    comes from a DIFFERENT row than the spread and total (its own docstring
+    says so, and round 2's thin finding depends on it), so the runner drives it
+    the way `facts.py:472` does and the derived set is a real NFL bundle.
+
+    `with_moneyline=False` is the thin probe, and it drops the *moneyline*
+    source's probabilities while leaving the spread and total alone -- which is
+    the reachable state `facts.py:258-260` produces when the pre-kickoff
+    snapshot has no `home_win_prob`.
+    """
+    def cut(name: str) -> str:
+        m = re.search(rf"^def {name}\(.*?(?=^def |^@router|\Z)", source, re.S | re.M)
+        assert m, f"NFL's facts.py has no {name}(); the probe would pass vacuously"
+        return m.group(0)
+
+    env: dict = {}
+    exec(compile(_PANDAS_PREAMBLE + "".join(cut(n) for n in ("_num", "_spread_line", "_markets")),
+                 "<nfl markets>", "exec"), env)
+
+    game = {"home_team": "BAL", "away_team": "KC", "spread_line": 2.5, "total_line": 45.5}
+    prediction = {"predicted_margin": 3.4, "predicted_total": 45.5}
+    moneyline_from: dict = {"home_win_prob": 0.62, "away_win_prob": 0.38}
+    if not with_moneyline:
+        moneyline_from = {}
+    return env["_markets"](game, prediction, moneyline_from=moneyline_from)
+
+
+def _run_cfb_markets(source: str, with_moneyline: bool = True) -> list:
+    """CFB's real `_markets`, over its real `_num` and its real `_spread_line`.
+
+    Identical in shape to NFL's and deliberately not shared with it: the two
+    builders are separate files with separate `_num`s, and the check has to fail
+    naming the sport whose function went missing. Sharing the runner would mean
+    a single missing `_spread_line` fails one sport's check with the other's
+    name on it, which is a worse failure than the duplication.
+    """
+    def cut(name: str) -> str:
+        m = re.search(rf"^def {name}\(.*?(?=^def |^@router|\Z)", source, re.S | re.M)
+        assert m, f"CFB's facts.py has no {name}(); the probe would pass vacuously"
+        return m.group(0)
+
+    env: dict = {}
+    exec(compile(_PANDAS_PREAMBLE + "".join(cut(n) for n in ("_num", "_spread_line", "_markets")),
+                 "<cfb markets>", "exec"), env)
+
+    game = {"home_team": "ALA", "away_team": "UGA", "spread_line": 10.0, "total_line": 55.0}
+    prediction = {"predicted_margin": 10.0, "predicted_total": 55.0}
+    moneyline_from: dict = {"home_win_prob": 0.70, "away_win_prob": 0.30}
+    if not with_moneyline:
+        moneyline_from = {}
+    return env["_markets"](game, prediction, moneyline_from=moneyline_from)
+
+
+def _run_pl_markets(source: str, with_probs: bool = True) -> list:
+    """PL's real `_markets`, over PL's real `_field`/`_implied`/`_edge`/`_prob_field`.
+
+    All of PL's helpers are pure functions over the `detail` it is handed -- the
+    module docstring records that `_field` exists precisely so a pydantic
+    `FixtureDetail` and an old cached dict both work -- so nothing is stubbed and
+    the runner passes a plain dict, which is one of the two shapes `_field`
+    supports.
+
+    The `detail` is deliberately bare: no `has_live_odds`, no
+    `predicted_total_goals`, no `btts_yes_prob`. That is not a convenience, it
+    is what makes the derived set equal `MARKETS["pl"]`, which holds the
+    `result` market alone -- and it is also the state round 2 measured, since
+    `_prob_field` returns `None` for absent keys and the total and btts rows are
+    guarded on exactly that.
+
+    `with_probs=False` is the thin probe: `facts.py:178`'s `if probs is not None:`
+    is the guard, and this is what it does when `probs` is `None`. **The detail
+    changes with it**, because a bare `{}` with no `probs` emits NOTHING -- which
+    satisfies "no recognised market" for the wrong reason, and
+    `_assert_can_be_thin` rejects exactly that. So the thin input keeps a
+    `btts_yes_prob` and therefore keeps the `btts` market, and what is missing is
+    the `result` and only the `result`.
+    """
+    def cut(name: str) -> str:
+        m = re.search(rf"^def {name}\(.*?(?=^def |^@router|\Z)", source, re.S | re.M)
+        assert m, f"PL's facts.py has no {name}(); the probe would pass vacuously"
+        return m.group(0)
+
+    env: dict = {}
+    exec(compile(_PREAMBLE + "".join(cut(n) for n in (
+        "_num", "_field", "_implied", "_edge", "_prob_field", "_markets")),
+        "<pl markets>", "exec"), env)
+
+    probs = (0.44, 0.33, 0.23)
+    detail: dict = {}
+    if not with_probs:
+        probs, detail = None, {"btts_yes_prob": 0.55}
+    return env["_markets"](detail, probs, "LIV", "ARS")
+
+
+def _run_nba_markets(source: str, with_moneyline: bool = True) -> list:
+    """NBA's real `_markets`, over its real `_margin_line` and `_market_line`.
+
+    Same shape as `_run_nba_markets` in `tests/test_unserved_sport.py`, and the
+    same two stubs for the same reason: `_market_rows` is the STORAGE READ and
+    `made_before_tip` is the tip-off filter, so `_market_line` and
+    `_line_from_market` -- the functions that decide what a `market_line` holds,
+    including the sign and the team attribution -- run for real. Stubbing
+    `_market_line` is the mistake that file's comment records: it proves the key
+    is present and says nothing about the value.
+
+    Duplicated rather than imported for the same reason as CFB's: a missing
+    helper must fail naming the sport it belongs to.
+    """
+    def cut(name: str) -> str:
+        m = re.search(rf"^def {name}\(.*?(?=^def |^@router|\Z)", source, re.S | re.M)
+        assert m, f"NBA's facts.py has no {name}(); the probe would pass vacuously"
+        return m.group(0)
+
+    env: dict = {}
+    exec(compile(_PREAMBLE + "from typing import Any\n" + "".join(cut(n) for n in (
+        "_num", "_favourite", "_margin_line", "_line_from_market", "_market_line", "_markets")),
+        "<nba markets>", "exec"), env)
+
+    env["_market_rows"] = lambda game_id: [
+        {"market": "spread", "point": -3.5, "created_at": "2026-10-19T12:00:00Z",
+         "selection": "BOS"},
+        {"market": "totals", "point": 224.5, "created_at": "2026-10-19T12:00:00Z",
+         "selection": "Over"},
+    ]
+    env["made_before_tip"] = lambda created_at, game: True
+
+    game = {"game_id": "401585", "home_team": "BOS", "away_team": "MIA"}
+    prediction: dict = {"predicted_margin": 4.2, "predicted_total": 226.5}
+    if with_moneyline:
+        prediction["home_win_prob"] = 0.62
+    return env["_markets"](game, prediction)
+
+
+#: sport -> its runner. A literal rather than a lookup by name so a missing
+#: entry is a `KeyError` at the ONE place the tests below, not inside five
+#: separately-written bodies.
+RUNNERS = {
+    "f1": _run_f1_markets,
+    "nfl": _run_nfl_markets,
+    "cfb": _run_cfb_markets,
+    "nba": _run_nba_markets,
+    "pl": _run_pl_markets,
+}
+
+
+def test_pandas_is_here_because_nfl_and_cfb_need_it():
+    """The dev-only dependency, stated as a fact rather than assumed.
+
+    NFL's and CFB's real `_num` ends `return None if pd.isna(number) else number`.
+    If pandas left the dev extra, `_PANDAS_PREAMBLE`'s `import pandas` would
+    raise `ModuleNotFoundError` inside `exec` -- and `exec` of a comprehension
+    inside a test reports a traceback pointing at the cut, not at the missing
+    dependency, on two of five cross-checks. This names it once, up front.
+
+    Fails rather than skips, for the reason `tests/test_unserved_sport.py` gives
+    for a missing sibling repo: a skipped cross-check is an UNVERIFIED literal
+    reported as a pass, which is the thing this whole section exists to prevent.
+    """
+    pytest.importorskip.__doc__  # keep the import honest if the name moves
+    try:
+        import pandas  # noqa: F401
+    except ModuleNotFoundError:
+        pytest.fail(
+            "pandas is gone, and NFL's and CFB's real `_num` calls `pd.isna`. It is "
+            "a DEV-only dependency of this service, added so those two builders can "
+            "run unmodified rather than behind a hand-written stand-in for "
+            "`pd.isna`. Restore it in `[project.optional-dependencies] dev` in "
+            "services/explainer/pyproject.toml. Skipping is not an option: an "
+            "unverified `MARKETS` literal is the defect this section closes."
+        )
+
+
+@pytest.mark.parametrize("sport", sorted(RUNNERS))
+def test_the_literal_matches_what_the_builder_emits(sport):
+    """`MARKETS[sport]` must EQUAL what the sport's own builder emits.
+
+    The whole file builds its bundles from these literals, so a literal that no
+    longer matches its builder is a file testing a shape nothing produces -- and
+    the tests here would keep passing while doing it. The runner EXECUTES the
+    sibling's `_markets`; it does not re-implement it, and it does not grep for
+    the market names, which a docstring could satisfy.
+    """
+    derived = RUNNERS[sport](_facts_source(sport))
+    _assert_matches_literal(sport, derived, "the full bundle this file builds")
+
+
+@pytest.mark.parametrize("sport", sorted(RUNNERS))
+def test_the_builder_can_still_emit_a_bundle_with_no_recognised_market(sport):
+    """The `THIN` derivation, checked against the guard it depends on.
+
+    Round 2's finding was that the fall-through is REACHABLE, measured on these
+    builders, and the whole `default` argument rests on it. A builder that
+    stopped guarding its pick market would make every bundle carry one, and then
+    the literal and this file would both be describing a state no fixture is in
+    -- with nothing failing, because the full-bundle input the equality check
+    drives has every figure either way.
+
+    So the guard is probed directly, one sport at a time, on the real code.
+    """
+    derived = RUNNERS[sport](_facts_source(sport), **{"with_win": False}
+                             if sport == "f1" else
+                             {"with_moneyline": False} if sport in ("nfl", "cfb", "nba")
+                             else {"with_probs": False})
+    _assert_can_be_thin(sport, derived, "the input that omits only this sport's pick-market figure")
+
+
+@pytest.mark.parametrize("sport", sorted(RUNNERS))
+def test_the_runner_notices_when_the_builder_emits_something_else(sport):
+    """The check's own sensitivity, measured -- a guard that cannot fail is a
+    control, not a test.
+
+    The runner is handed a source whose `_markets` has been replaced by one that
+    emits a single market called `basketball`. The check must reject it, naming
+    the sport. Without this, "the equality check passed" would be evidence about
+    nothing: the same code path returns happily for any bundle, and a cut that
+    silently matched the wrong function -- or an empty `env` that made
+    `_markets` a stub of my own making -- would look identical to a real pass.
+
+    The source is rewritten IN MEMORY. The sibling repository on disk is not
+    modified, read for anything but committed `origin/main` text, or checked out.
+    """
+    source = _facts_source(sport)
+    decoy = re.sub(r"^def _markets\(.*?(?=^def |\Z)",
+                   "def _markets(*a, **k):\n    return [{\"market\": \"basketball\", \"x\": 1}]\n\n",
+                   source, count=1, flags=re.S | re.M)
+    assert decoy != source, f"{sport}: the decoy substitution did not apply"
+    try:
+        _assert_matches_literal(sport, RUNNERS[sport](decoy), "a decoy that emits basketball")
+    except AssertionError as exc:
+        assert sport in str(exc), f"{sport}: the failure does not name the sport: {exc}"
+        assert "basketball" in str(exc), f"{sport}: the failure does not name the difference: {exc}"
+    else:
+        pytest.fail(
+            f"{sport}: the cross-check ACCEPTED a builder that emits a single market "
+            f"called 'basketball'. The runner is not running the sibling's code, or "
+            f"the comparison is not looking at what the builder returned -- and "
+            f"either way the five checks above are evidence about nothing."
+        )
