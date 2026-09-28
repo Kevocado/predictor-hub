@@ -30,7 +30,16 @@ class Settings(BaseSettings):
     daily_cap: int = Field(default=900, validation_alias="EXPLAINER_DAILY_CAP")
     db_path: str = Field(default="/data/explainer.sqlite", validation_alias="EXPLAINER_DB_PATH")
     enabled: bool = Field(default=True, validation_alias="EXPLAINER_ENABLED")
-    prompt_version: str = "v2"
+    # The cache key covers this (cache.key, called from service.explain), and a
+    # hit is served verbatim — so a change to the *writer* under a version the
+    # deployed cache already holds is never called. Measured on the VPS
+    # 2026-09-27: the cache holds v2 rows, written before the no-pick `neutral`
+    # default and the absent-band fix. v2 is therefore spent, and shipping this
+    # without moving the version would deploy both fixes inert.
+    #
+    # tests/test_prompt_version.py holds the measured production floor and fails
+    # if this ever stops being strictly greater than it.
+    prompt_version: str = "v3"
     sport_api_pl: str | None = None
     sport_api_f1: str | None = None
     sport_api_nfl: str | None = None

@@ -21,7 +21,7 @@ for one — there is no background pre-generation.
   "pick": { "label": "BAL" },     // COMPUTED from the facts; the key is OMITTED
                                   // when there is no pick. Never null.
   "source": "llm", "model": "nemotron-3.5-lightning",
-  "generated_at": "2026-10-05T00:20:00Z", "prompt_version": "v2",
+  "generated_at": "2026-10-05T00:20:00Z", "prompt_version": "v3",
   "pick_timing": "pre_kickoff"
 }
 ```
@@ -54,6 +54,17 @@ Three properties worth knowing before changing anything here:
   direction resolves to `neutral`, never to `up`: `up` renders as "for the
   pick", so defaulting to it reads a model that said nothing as one that
   endorsed the pick.
+
+**`prompt_version` is part of the deploy, not of the code.** The cache key
+covers it and a hit is served verbatim, so **a deploy that changes the writer
+and does not move the version changes nothing a reader sees** — the cached
+bodies keep being served under the old version's key, and the deploy is green
+while the fix is inert. It is now `v3`; the cache measured on the VPS on
+2026-09-27 held `v2` rows written before the `neutral` and absent-band fixes.
+Move it in the same change as the writer, and expect it to cost one generation
+per cached row: that is the price of the prose changing. `tests/test_prompt_version.py`
+fails if it is not strictly greater than the version the deployed cache was
+measured to hold.
 
 ## Run
 
