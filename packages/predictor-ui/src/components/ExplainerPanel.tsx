@@ -130,7 +130,13 @@ export function ExplainerPanel({
   /** For a surface that can be too narrow for a row of figures — the market
    *  row's labels collapse behind a real `aria-expanded` button, the same shape
    *  `FactorList` uses for a clamped sentence. Off by default, so a wide panel
-   *  never hides text behind a control that adds nothing. */
+   *  never hides text behind a control that adds nothing.
+   *
+   *  Opt-in, deliberately, and `ProbabilityBar`'s prop comment carries the ruling
+   *  and the three CSS answers that were measured against §6a and §13c and
+   *  rejected. The short version: a CSS-only fallback either breaks the 12px floor
+   *  or withholds the figures, and the failure mode of a site that forgets this is
+   *  a collision at 260px, which a screenshot catches. */
   expandable?: boolean;
   record?: { label: string; hits: number | null; settled: number };
   /** NFL's top player projections (§6). A list the facts already carry, so it

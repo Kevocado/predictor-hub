@@ -16,6 +16,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import * as ts from "typescript";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -558,6 +559,20 @@ describe("RecordStrip", () => {
     render(<RecordStrip label="r" hits={0} settled={0} />);
     expect(screen.getByText("—")).toBeInTheDocument();
   });
+
+  it("shows a dash for a record it cannot read, and never quotes half of one", () => {
+    // `hits` and `settled` are two fields of ONE `record` object in the facts, so
+    // `hits: null, settled: 68` is an object this component cannot read rather
+    // than a record missing its numerator. "—/68" would show the 68 — and would
+    // be quoting the denominator of an object whose numerator we have just
+    // declined to trust, which is the same mistake as drawing the bar 0% wide.
+    // The ruling and the trade-off it costs are written at the branch in
+    // `RecordStrip.tsx`; this is the test that makes it a decision.
+    const { container } = render(<RecordStrip label="Picks made before kickoff" hits={null} settled={68} />);
+    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.queryByText(/68/)).toBeNull();
+    expect(container.querySelector("[data-testid='record-fill']")).toBeNull();
+  });
 });
 
 describe("ExplainerPanel", () => {
@@ -774,25 +789,69 @@ describe("ExplainerPanel", () => {
  *  harness — the fixtures Kevin reads the panel from, and the shape every site's
  *  own mapping follows. It is read as source, because a string in a fixture that
  *  nothing renders today is still the string a site copies tomorrow.
+ *
+ *  **Parsed, not regexed.** This was a comment-strip plus regular expressions,
+ *  which is a lint wearing a test's clothes: it cannot fail if the harness stops
+ *  rendering the string, and it covers nothing about any real site, which is where
+ *  a key would actually reach a reader. Worse, the comment-strip has no
+ *  string-literal awareness, and a strip that is not literal-aware deletes *code*:
+ *  one block-comment opener written inside a string pairs with the next closer
+ *  anywhere in the file and takes a chunk of real source with it — including a
+ *  `label: "btts"` — and the assertion then passes over a file that has the
+ *  defect. So the file is parsed with the TypeScript compiler this package already
+ *  depends on, which knows which characters are code, and the question becomes
+ *  "what string does this property actually hold" rather than "does this text look
+ *  like it would".
  */
 describe("no raw key, and no bare O, reaches a reader", () => {
-  // Comments are stripped first: this repo explains a rule by quoting the code it
-  // replaced, so the literal strings "btts" and "O2.5" appear in prose that is
-  // documentation, not output. The strip is line- and block-comment removal with
-  // no string-literal awareness, which is safe here because this one file has no
-  // `//` inside a string.
-  const harness = readFileSync(resolve(__dirname, "../../harness/main.tsx"), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
+  const harness = readFileSync(resolve(__dirname, "../../harness/main.tsx"), "utf8");
+  const parsed = ts.createSourceFile("main.tsx", harness, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TSX);
+
+  /** Every string the file actually contains: string literals, template
+   *  literals with no interpolation, and JSX text. All three reach a reader; the
+   *  old regex saw the first two by accident of how they happened to be written
+   *  and the third only if it landed on one line. */
+  function literals(): string[] {
+    const out: string[] = [];
+    const walk = (node: ts.Node) => {
+      if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) out.push(node.text);
+      else if (ts.isJsxText(node)) out.push(node.text);
+      ts.forEachChild(node, walk);
+    };
+    walk(parsed);
+    return out;
+  }
+
+  /** Object-literal `label` and `sub` values, which is where a raw key lands:
+   *  `KeyNumberTile`'s label is the one slot on a tile reserved for words, and
+   *  `sub` is the line beneath the figure. Both are read, so a tile whose `sub` is
+   *  absent and which falls back to its label is caught either way. */
+  function propertyWords(name: string): string[] {
+    const out: string[] = [];
+    const walk = (node: ts.Node) => {
+      if (ts.isPropertyAssignment(node) && ts.isIdentifier(node.name) && node.name.text === name) {
+        const init = node.initializer;
+        if (ts.isStringLiteral(init) || ts.isNoSubstitutionTemplateLiteral(init)) out.push(init.text);
+      }
+      ts.forEachChild(node, walk);
+    };
+    walk(parsed);
+    return out;
+  }
 
   it("never hands a market key to a tile's label or to its sub line", () => {
+    const labels = [...propertyWords("label"), ...propertyWords("sub")];
     for (const key of ["btts", "total_goals", "moneyline", "spread", "result"]) {
-      expect(harness, key).not.toMatch(new RegExp(`(?:label|sub):\\s*"${key}"`));
+      // Compared as a value, not as a pattern: `label: "btts"` is the defect, and
+      // `sub: "btts · 61%"` is a different string that happens to contain it, so
+      // the check is equality and the diagnostic names the offending fixture.
+      expect(labels, `a tile label or sub line holds the raw key "${key}"`).not.toContain(key);
     }
     // And the words that replaced them are there, so this is not a test that
-    // passes by the fixtures having been emptied.
-    expect(harness).toMatch(/label:\s*"Both teams score"/);
-    expect(harness).toMatch(/sub:\s*"Over 2\.5 · 56%"/);
+    // passes by the fixtures having been emptied, or by the file having stopped
+    // parsing into what we think it does.
+    expect(labels).toContain("Both teams score");
+    expect(labels).toContain("Over 2.5 · 56%");
   });
 
   it("never glues an O or a U to a digit, which is all 'O2.5' was", () => {
@@ -804,7 +863,9 @@ describe("no raw key, and no bare O, reaches a reader", () => {
     // reader saying "O two point five" has the same problem with no pixels
     // involved at all. The word fixes it; a separator alone does not, because
     // the whole string is one unbroken run of glyphs.
-    expect(harness).not.toMatch(/[OU]\d/);
+    for (const text of literals()) {
+      expect(text, `"${text}" glues an O or a U to a digit`).not.toMatch(/[OU]\d/);
+    }
   });
 });
 

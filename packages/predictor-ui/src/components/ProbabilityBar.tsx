@@ -250,7 +250,41 @@ export function ProbabilityBar({
    *  `FactorList` clamps a factor's sentence: a real `<button aria-expanded>`,
    *  off by default so a wide layout never hides text behind a control that adds
    *  nothing. Open to begin with, because an unlabelled market bar is the defect
-   *  the figures exist to fix. */
+   *  the figures exist to fix.
+   *
+   *  **It stays opt-in, and a CSS-only replacement was considered and rejected.**
+   *  The hazard is real and it is the one this component does not design out: a
+   *  site that forgets this prop gets a `justify-between` row that collides at
+   *  260px instead of the fallback, and the guard is remembering a prop rather
+   *  than like `onSegmentFocus` (above) being derived from a signal already
+   *  present. Three CSS answers were measured against the spec and each fails it:
+   *
+   *  - **`clamp()`** — ruled out by §6a, which sets a 12px floor and says the
+   *    market row "does not get a smaller size to make a row fit, it drops the
+   *    row". Both consuming sites enforce the floor in their own tests
+   *    (`craft-floor.test.ts` in Sports_Predictor, `hub.test.mjs` in the Hub), so
+   *    this is not a style preference with no teeth.
+   *  - **A container query that hides the figures.** It fixes the collision, but
+   *    CSS cannot add the control that brings them back, so on a narrow surface it
+   *    withholds data with no way to reach it — the failure §13c's closing
+   *    constraint is written about. The disclosure has to be a real element, which
+   *    is the whole reason the fallback is a button and not a `hidden` attribute.
+   *  - **A container query that reflows instead** (`flex-wrap`, or the cells
+   *    stacking). Nothing is hidden, so nothing is withheld, and the 12px floor
+   *    holds. But it breaks the one thing the row exists for: spec §6 item 3 says
+   *    each figure sits "in the column of the figure it is being compared with",
+   *    and a wrapped row puts two outcomes on one line and one on the next, so the
+   *    comparison stops lining up. At 260px with three outcomes there is no layout
+   *    that keeps three 12px figures in three columns; something has to give, and
+   *    §13c item 4 already chose what.
+   *
+   *  So the cost is a prop to remember, and the compensation is that the default
+   *  is the *safe* one: off means the figures are shown, which is a row that reads
+   *  well and a site that has not yet discovered it is narrow. The failure mode of
+   *  forgetting is a collision at 260px — a layout defect a screenshot catches —
+   *  and not withheld text, a dead control, or a claim. The rule stays where §13c
+   *  item 4 put it, and this is the note so the next person does not re-open it
+   *  without measuring first. */
   expandable?: boolean;
   /** The market's own figures, rendered only when it covers every outcome
    *  `segments` has (§13b). */
