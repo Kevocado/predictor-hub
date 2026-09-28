@@ -19,7 +19,19 @@ from __future__ import annotations
 import math
 
 VERDICT_BANDS = ("leaning", "moderate", "strong")
-DIRECTIONS = ("up", "down")
+
+#: The direction that claims nothing about the pick. It is a real value rather
+#: than an absence because the panel still has to draw a row, and because "there
+#: is no pick to be for or against" is itself a thing worth saying.
+NEUTRAL = "neutral"
+
+#: `up` is a factor arguing FOR the pick, `down` one arguing AGAINST it, and
+#: `neutral` one that is neither -- a statement about the game (the total, both
+#: teams to score) or about the record, neither of which is for or against
+#: anything. The third value exists because a factor with no pick-relative
+#: meaning used to be handed one anyway, and the one it was handed was a mark
+#: the sentence did not support.
+DIRECTIONS = ("up", "down", NEUTRAL)
 #: Things a factor may point at that are not markets in `facts["markets"]`.
 PSEUDO_MARKETS = ("record", "context")
 

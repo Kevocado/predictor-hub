@@ -8,7 +8,7 @@ shape, and this is what checks that they do.
 """
 import pytest
 
-from explainer.contract import band_for, market_shape, resolve_factors
+from explainer.contract import DIRECTIONS, band_for, market_shape, resolve_factors
 from explainer.template import explain_from_template, minimal
 
 NFL = {
@@ -49,7 +49,13 @@ def test_the_template_emits_the_v2_shape(facts):
     assert 2 <= len(out["factors"]) <= 4, f"{len(out['factors'])} factors"
     for f in out["factors"]:
         assert set(f) == {"key", "direction", "headline", "text"}, f"wrong factor shape: {sorted(f)}"
-        assert f["direction"] in ("up", "down")
+        # The vocabulary, not a literal pair. A template that emitted a direction
+        # the panel cannot draw would put a mark on screen the renderer has no
+        # branch for, and a hardcoded `("up", "down")` here is what made the
+        # spread factor's `neutral` a shape failure rather than a decision.
+        # `test_contract.test_the_vocabularies_are_closed` is what pins the
+        # contents, so this is not a comparison against a constant nobody watches.
+        assert f["direction"] in DIRECTIONS, f"undrawable direction: {f['direction']!r}"
         assert f["headline"] and f["text"]
 
 

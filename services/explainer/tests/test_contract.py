@@ -18,7 +18,7 @@ agree today and drift the first time one of them was edited.
 """
 import pytest
 
-from explainer.contract import (DIRECTIONS, PSEUDO_MARKETS, VERDICT_BANDS, band_for,
+from explainer.contract import (DIRECTIONS, NEUTRAL, PSEUDO_MARKETS, VERDICT_BANDS, band_for,
                                 clean_verdict, market_keys, market_shape,
                                 resolve_factors)
 
@@ -49,7 +49,19 @@ PL_FACTS = {
 def test_the_vocabularies_are_closed():
     assert VERDICT_BANDS == ("leaning", "moderate", "strong")
     assert all(b.isalpha() for b in VERDICT_BANDS), "a numeric band is a figure no fact supports"
-    assert DIRECTIONS == ("up", "down")
+    # The third value is `NEUTRAL`, added for the spread factor. Its mark is a
+    # claim about the pick -- `up` argues for it, `down` against -- and the
+    # spread factor's two numbers say nothing about where the market sits, so
+    # the only honest mark was the one that claims nothing. The panel has a
+    # branch for it (it draws no triangle and says "context"), so this is a
+    # value the whole stack already knows how to render, not a new one.
+    #
+    # Pinned here, exactly, because this is the only place the vocabulary is
+    # decided: `test_template_v2` and `test_template_spread_claim` both read
+    # `DIRECTIONS`, so appending to it would leave every direction guard green
+    # while widening what the panel is asked to draw.
+    assert DIRECTIONS == ("up", "down", NEUTRAL)
+    assert NEUTRAL == "neutral", "the value the panel's `MARK` table is keyed on"
     assert PSEUDO_MARKETS == ("record", "context")
 
 

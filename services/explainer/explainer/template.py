@@ -17,7 +17,7 @@ defensive: this is the last resort and it must never raise.
 """
 from __future__ import annotations
 
-from .contract import as_dict, band_for, market_shape, pick_prob
+from .contract import NEUTRAL, as_dict, band_for, market_shape, pick_prob
 
 _TENS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]
 #: Which key holds the MARKET's quoted line, per sport. Read in order; the first
@@ -126,6 +126,11 @@ def _quoted_line(market: dict | None, keys: tuple[str, ...] = ("market_line", "l
         It rates BOS 0.2 points better, against a line of Toss-up. That is the
         market asking for more than the model thinks the gap is worth.
 
+    (Both halves of that quotation are historical. The trailing clause was
+    removed later and for a separate reason -- it was a constant claim, since
+    nothing compares the two numbers -- so the sentence the factor emits today is
+    only its first half. See the spread factor below.)
+
     A precedence rule cannot distinguish "a worse source of the same fact" from
     "a different fact that happens to share a key name", so the caller says which
     is which: `MARKET_LINE_KEY` below. The end state is the two football sports
@@ -207,11 +212,38 @@ def explain_from_template(facts: dict) -> dict:
     quoted = _quoted_line(margin_market, MARKET_LINE_KEY.get(sport, ("market_line", "line")))
     if margin_market is not None and margin is not None and label and quoted:
         line = quoted
-        # down: the market asking for more than the model rates the gap is a
-        # point *against* the pick, which is what `direction` means.
-        factors.append(_fact(str(margin_market["market"]), "down", "The line",
-                             f"It rates {label} {abs(margin):g} {unit} better, against a line of {line}. "
-                             f"That is the market asking for more than the model thinks the gap is worth."))
+        # NEUTRAL, and the sentence is only the two numbers, because the
+        # comparison between them is not something this file can do.
+        #
+        # It used to end "That is the market asking for more than the model thinks
+        # the gap is worth", and carry `direction: "down"`. Both were CONSTANTS:
+        # nothing compared `model_margin` with the quoted line, so the sentence
+        # was a comparison asserted rather than computed. With a model margin of
+        # 4.2 it is false against `BOS -3.5` (the market wants 3.5, so it is
+        # asking for LESS) and against `BOS -4.2` (they agree), and true only
+        # against `BOS -6.0` -- and a confident model is usually more bullish than
+        # the market, so the shipped sentence was usually wrong.
+        #
+        # `down` was wrong in the same way and pointed the other way from the
+        # claim: `down` means "against the pick", which takes a market SOFTER than
+        # the model, and "the market is softer than the model" argues FOR the
+        # pick. A wrong mark is louder than a wrong sentence -- the panel draws a
+        # triangle and a "for the pick" / "against it" word from it -- so the
+        # mark goes before the claim does, and neither is asserted without the
+        # comparison behind it.
+        #
+        # **Deriving it is a real change and is not done here.** The two numbers
+        # are `model_margin`, a float, and the quoted line, a WORDED string
+        # ("BOS -3.5", "BAL -2.5", "BOS by 4.2"). Deciding which side of the
+        # model a line sits on means parsing a magnitude and a side out of that
+        # string, and the sign convention of `model_margin` is not in the facts at
+        # all -- the bundle carries no home/away designation, so "the market wants
+        # more" is not even a well-posed question about these two fields without
+        # one. Doing it would also flip the drawn direction of a row on three
+        # already-shipping sports. A mark that is wrong is worse than no mark, so
+        # until the comparison is computed the row claims nothing.
+        factors.append(_fact(str(margin_market["market"]), NEUTRAL, "The line",
+                             f"It rates {label} {abs(margin):g} {unit} better, against a line of {line}."))
 
     total_market = by_key.get("total") or by_key.get("total_goals")
     total = _num((total_market or {}).get("model_total"))

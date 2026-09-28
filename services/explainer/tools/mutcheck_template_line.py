@@ -103,6 +103,28 @@ MUTATIONS = [
      r'_START = \{"f1": "the session started", "pl": "kickoff", "nba": "tip-off"\}',
      '_START = {"f1": "the session started", "pl": "kickoff"}'),
 
+    # --- the spread factor's claim about the market, and its mark ---
+    # A row for text that was DELETED is what stops it coming back. The two
+    # below restore exactly what shipped, and the third invents the comparison
+    # the fix declined to compute. A test that only checks the honest numbers are
+    # PRESENT cannot catch any of them: the false sentence only ever added words,
+    # so every "3.4 points better" / "BAL -2.5" assertion stayed green while the
+    # claim shipped.
+    ("the deleted clause comes back",
+     r'^                             f"It rates \{label\} \{abs\(margin\):g\} \{unit\} better, against a line of \{line\}\."\)\)$',
+     '                             f"It rates {label} {abs(margin):g} {unit} better, against a line of {line}. "\n'
+     '                             f"That is the market asking for more than the model thinks the gap is worth."))'),
+    ("the spread factor's mark goes back to a constant 'down'",
+     r'^        factors\.append\(_fact\(str\(margin_market\["market"\]\), NEUTRAL, "The line",$',
+     '        factors.append(_fact(str(margin_market["market"]), "down", "The line",'),
+    ("a comparison is invented, so the sentence depends on the line",
+     r'^                             f"It rates \{label\} \{abs\(margin\):g\} \{unit\} better, against a line of \{line\}\."\)\)$',
+     '                             f"It rates {label} {abs(margin):g} {unit} better, against a line of {line}. "\n'
+     '                             f"The market asks for {\'more\' if float(quoted.rsplit(\'-\', 1)[-1]) > abs(margin) else \'less\'}."))'),
+    ("the abs() goes, so a negative margin is written as a signed gap",
+     r'(?m)^                             f"It rates \{label\} \{abs\(margin\):g\} \{unit\} better, against a line of \{line\}\."\)\)$',
+     '                             f"It rates {label} {margin:g} {unit} better, against a line of {line}."))'),
+
     # --- config.SERVED_SPORTS, via the module that reads it ---
     ("SERVED_SPORTS loses nba",
      r'SERVED_SPORTS = \("pl", "nfl", "cfb", "nba"\)', 'SERVED_SPORTS = ("pl", "nfl", "cfb")'),
