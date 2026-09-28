@@ -58,12 +58,26 @@ window from each sport's committed snapshot rather than from a guessed range.
 | NBA | ~1 min | every 6h | date-only, no tip-off hour |
 | F1 | 3–4 min | every 6h | one race every ~2 weeks |
 
-**What is actually broken**, measured 2026-09-27 22:00Z: 13 NFL games kicked off
-at 17:00Z and their scores in the committed snapshot were still `None`, five hours
-later. The snapshot last changed at 17:06Z, six minutes after kickoff. On a 3-hour
-cron the worst case is a final score unseen for three hours. This is the
-"still a week ahead with games left on Saturday" complaint, in miniature: the week
-was right, the *result* was late.
+**What is actually broken**, measured from the committed snapshots. The 17:00Z
+slate is **nine** games. The snapshot committed at 17:06:37Z — six minutes after
+kickoff — had **0 of 9** scored, which is correct: they were in progress. The next
+snapshot, committed at 21:29:38Z, had **9 of 9** with final scores. So the real
+latency is **270 minutes** from kickoff to a final score being visible in a
+committed snapshot, and on this cadence a game that ends near the end of its
+window waits for whatever run comes next. That is the "still a week ahead with
+games left on Saturday" complaint in miniature: the week was right, the *result*
+was late.
+
+**A correction to this section's own earlier draft.** It previously read: "13 NFL
+games kicked off at 17:00Z and their scores in the committed snapshot were still
+`None`, five hours later. The snapshot last changed at 17:06Z, six minutes after
+kickoff." Every number in that sentence is wrong — it is nine games, not thirteen;
+all nine have final scores, in the 21:29:38Z snapshot; and the last change before
+that was 17:06:37Z, not the last change overall. It was read from a stale
+checkout. The defect underneath it is real and the measurement above is the one
+to use; the retracted figures are recorded here rather than quietly replaced,
+because a false measurement that has already survived one round of retraction is
+worth naming. See ledger Task 40 for the rule this instance of.
 
 **A correction to my own earlier claim.** I said PL's snapshot was "two weeks
 stale" and concluded frequency was not the problem. That was wrong: I read a
