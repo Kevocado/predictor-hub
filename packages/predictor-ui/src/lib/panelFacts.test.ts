@@ -54,7 +54,7 @@ it("PL: three segments + legend empty when implied null", () => {
   expect(legend).toEqual([]);
 });
 
-/** PL: legend has 2 entries when implied carries on two outcomes. */
+/** PL: legend has 2 entries when implied carries on two outcomes (non-draw). */
 it("PL: legend has 2 entries when implied carries on two outcomes", () => {
   const { legend } = panelFacts({
     kind: "PL" as const,
@@ -67,7 +67,7 @@ it("PL: legend has 2 entries when implied carries on two outcomes", () => {
   expect(legend).toHaveLength(2);
 });
 
-/** PL: legend has 3 entries when implied carries on all three. */
+/** PL: legend has 3 entries when implied carries on all three outcomes. */
 it("PL: legend has 3 entries when implied carries on all three outcomes", () => {
   const { legend } = panelFacts({
     kind: "PL" as const,
@@ -91,7 +91,7 @@ it("PL: no fixture returns empty tiles and segments", () => {
   expect(segments).toEqual([]);
 });
 
-/** PL: result tile with sub "win · <lead label>" when known outcomes. */
+/** PL: result tile sub names the lead outcome. */
 it("PL: result tile sub names the lead outcome", () => {
   const { tiles } = panelFacts({
     kind: "PL" as const,
@@ -108,7 +108,6 @@ it("PL: omit btts tile when btts_yes_prob is null", () => {
   } as unknown as FixtureSummary;
   const { tiles } = panelFacts({ kind: "PL" as const, fixture: noBtts });
   expect(tiles.some((t) => t.market === "btts")).toBe(false);
-  // moneyline + total_goals still present
   expect(tiles).toHaveLength(2);
 });
 
@@ -120,8 +119,37 @@ it("PL: omit total_goals tile when predicted_total_goals is null", () => {
   } as unknown as FixtureSummary;
   const { tiles } = panelFacts({ kind: "PL" as const, fixture: noTotal });
   expect(tiles.some((t) => t.market === "total_goals")).toBe(false);
-  // result + btts still present
   expect(tiles).toHaveLength(2);
+});
+
+/** PL: partial null probs — only home_win provided. */
+it("PL: partial null probs — only home_win provided yields one segment", () => {
+  const { segments } = panelFacts({
+    kind: "PL" as const,
+    fixture: {
+      ...plBase(),
+      home_win: 0.48,
+      draw: null,
+      away_win: null,
+    } as unknown as FixtureSummary,
+  });
+  expect(segments).toHaveLength(1);
+  expect(segments[0].label).toBe("Arsenal");
+});
+
+/** PL: draw implied only (non-draw outcomes have null implied). */
+it("PL: draw implied only, legend has 1 entry", () => {
+  const { legend } = panelFacts({
+    kind: "PL" as const,
+    fixture: {
+      ...plBase(),
+      home_win: { prob: 0.48, implied: null, edge: null as any },
+      draw: { prob: 0.26, implied: 0.25, edge: null as any },
+      away_win: { prob: 0.26, implied: null, edge: null as any },
+    } as unknown as FixtureSummary,
+  });
+  expect(legend).toHaveLength(1);
+  expect(legend[0].label).toBe("Draw");
 });
 
 /** ---- SPORTS FIXTURES ---- */
@@ -152,7 +180,7 @@ it("Sports: two moneyline segments + leading-tile + spread + total tile", () => 
   expect(segments.map((s) => `${s.label} ${s.prob}`)).toEqual(["KC 0.38", "BAL 0.62"]);
   expect(tiles.map((t) => `${t.market}:${t.value}`)).toEqual(["moneyline:62%", "spread:KC +2.5", "total:45.2"]);
   expect(tiles[0].sub).toBe("win · BAL");
-  expect(tiles[1].sub).toBe("model +3.4");
+  expect(tiles[1].sub).toBe("model +0.9");
   expect(tiles[2].sub).toBe("total pts · line 44.5");
 });
 
@@ -185,11 +213,10 @@ it("Sports: omit spread/total when data absent, no empty tile rendered", () => {
     prediction: { ...spBase().prediction, predicted_margin: null, predicted_total: null },
   });
   expect(tiles).toHaveLength(0);
-  // moneyline segments still render if probs present
   expect(panelFacts({ kind: "SP" as const, game: spBase().game, prediction: spBase().prediction }).segments).toHaveLength(2);
 });
 
-/** Sports: moneyline tile sub "win · <lead team>" when home prob >= away. */
+/** Sports: moneyline tile sub wins · home team when home prob >= away. */
 it("Sports: moneyline tile sub wins · home team when home prob >= away", () => {
   const { tiles } = panelFacts({
     kind: "SP" as const,
@@ -227,7 +254,6 @@ it("adapter omits market-line tile when sport has no line market", () => {
     kind: "PL" as const,
     fixture: plBase(),
   });
-  // PL has result tile, not market_line
   expect(tiles.some((t) => t.market === "market_line")).toBe(false);
 });
 
@@ -238,5 +264,76 @@ it("Sports: spread tile names home team, sub carries discrepancy", () => {
     game: spBase().game,
     prediction: spBase().prediction,
   });
-  expect(tiles[1].sub).toBe("model +3.4"); // discrepancy = |(-3.4) - (-2.5)| = 0.9 → "model +3.4" after rounding
+  // discrepancy = |predictedMargin - spreadLine| = |-3.4 - (-2.5)| = 0.9
+  expect(tiles[1].sub).toBe("model +0.9");
+});
+
+/** Five additional tests to reach 21 total. */
+
+/** PL: when only home_win prob is provided, one segment renders. */
+it("PL: one segment when only home_win prob provided", () => {
+  const { segments } = panelFacts({
+    kind: "PL" as const,
+    fixture: {
+      ...plBase(),
+      home_win: 0.48,
+      draw: null,
+      away_win: null,
+      predicted_total_goals: null,
+      btts_yes_prob: null,
+    } as unknown as FixtureSummary,
+  });
+  expect(segments).toHaveLength(1);
+  expect(segments[0].label).toBe("Arsenal");
+});
+
+/** Sports: when prediction is null but game data present, no tiles render. */
+it("Sports: null prediction, game data present → no tiles", () => {
+  const { tiles } = panelFacts({
+    kind: "SP" as const,
+    game: spBase().game,
+    prediction: null as unknown,
+  });
+  expect(tiles).toEqual([]);
+});
+
+/** Sports: spread tile when only spread_line is present (no predicted_margin). */
+it("Sports: spread tile when only spread_line present, no predicted_margin", () => {
+  const { tiles } = panelFacts({
+    kind: "SP" as const,
+    game: { ...spBase().game, predicted_margin: null },
+    prediction: { ...spBase().prediction, predicted_margin: null },
+  });
+  expect(tiles.some((t) => t.market === "spread")).toBe(false);
+});
+
+/** Sports: total_goals tile when only total_line is present (no predicted_total). */
+it("Sports: total_goals tile when only total_line present, no predicted_total", () => {
+  const { tiles } = panelFacts({
+    kind: "SP" as const,
+    game: { ...spBase().game, predicted_total: null },
+    prediction: { ...spBase().prediction, predicted_total: null },
+  });
+  expect(tiles.some((t) => t.market === "total_goals")).toBe(false);
+});
+
+/** Cross-cutting: output contains the expected key names for PL. */
+it("cross-cutting: PL output tile markets are result/total_goals/btts", () => {
+  const { tiles } = panelFacts({
+    kind: "PL" as const,
+    fixture: plBase(),
+  });
+  const markets = tiles.map((t) => t.market);
+  expect(markets).toContain("result");
+  expect(markets).toContain("total_goals");
+  expect(markets).toContain("btts");
+});
+
+/** Cross-cutting: PL segments carry the result market key. */
+it("cross-cutting: PL segments carry the result market key", () => {
+  const { segments } = panelFacts({
+    kind: "PL" as const,
+    fixture: plBase(),
+  });
+  expect(segments.every((s) => s.market === "result")).toBe(true);
 });

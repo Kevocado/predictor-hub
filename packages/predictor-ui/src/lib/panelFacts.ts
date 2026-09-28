@@ -54,7 +54,9 @@ export function panelFacts(
 export function panelFacts(
   input: SPInput
 ): SPOutput;
-export function panelFacts(input: PLInput | SPInput): PanelFactsOutput {
+export function panelFacts(
+  input: PLInput | SPInput
+): PanelFactsOutput {
   if (input.kind === "PL") {
     const { fixture } = input;
     const tiles: MarketTile[] = [];
