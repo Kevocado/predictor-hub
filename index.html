@@ -262,14 +262,18 @@
 
   /* Picks teaser: the live opinion under each card. Sits below the card as a
      sibling, so the card stays one big link and the teaser can hold its own
-     links to individual games. */
+     links to individual games.
+     The accent rides the TOP edge, matching .sport above. A thick coloured
+     left edge is the single most recognisable tell of a generated UI, and the
+     craft floor bans it above 1px; the top rule says the same thing, carries
+     the sport's colour, and is what this page already does. */
   .slot { display: flex; flex-direction: column; gap: 0.5rem; }
   .teaser {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
     border: 1px solid var(--color-pr-rule);
-    border-left: 3px solid var(--color-pr-accent);
+    border-top: 3px solid var(--color-pr-accent);
     border-radius: var(--radius-pr);
     background: var(--color-pr-panel);
     padding: 0.625rem 0.75rem;
