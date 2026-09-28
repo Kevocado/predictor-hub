@@ -12,12 +12,25 @@ every factor it emits names one of them. A factor pointing at a market the facts
 lack would have to render as a dash, and spec §6 says an absent market renders
 *nothing*.
 
+`direction` is relative to the pick, so with no pick there is nothing for a
+factor to be for or against, and a factor that cannot be relative to anything
+says `neutral` rather than reaching for "up" — see `_toward`. That is a rule
+about every row below, not a special case for the rows that mention a pick: the
+total, both-teams-to-score and the record are statements about the game and about
+other picks, so they are `neutral` whether or not this one exists.
+
+One row is `neutral` for the *other* reason, and `_toward` is not what puts it
+there: the spread factor, which cannot be directional even with a pick in hand,
+because nothing in this file compares the model's margin against the quoted line.
+See the comment at that row — it is `neutral` always, and would be wrong to
+write as `_toward(NEUTRAL, has_pick)`, which is a no-op that reads like a rule.
+
 Facts fields beyond the contract's core are loose dicts, so every read here is
 defensive: this is the last resort and it must never raise.
 """
 from __future__ import annotations
 
-from .contract import NEUTRAL, as_dict, band_for, market_shape, pick_prob
+from .contract import NEUTRAL, as_dict, band_for, market_shape, pick_for, pick_prob
 
 _TENS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]
 #: Which key holds the MARKET's quoted line, per sport. Read in order; the first
@@ -55,6 +68,29 @@ MARKET_LINE_KEY: dict[str, tuple[str, ...]] = {
 #: rather than listing them, so a new sport gets a sensible word instead of
 #: `KeyError`.
 _START = {"f1": "the session started", "pl": "kickoff", "nba": "tip-off"}
+#: How small a projected margin may be before the spread factor stops narrating
+#: it, in points. Half a point, and not a number invented here: NBA's own
+#: `_margin_line` (`api/facts.py`) words a margin as a gap only at
+#: `abs(margin) >= 0.5` and otherwise returns the literal "Toss-up". So a bundle
+#: whose margin is 0.4 arrives having already been told the gap is a toss-up, and
+#: a template without this floor contradicts the bundle it was handed.
+#:
+#: The floor exists because `margin is not None` passes for `0`, and the sentence
+#: it gates asserts a disagreement: "It rates BOS 0 points better, against a line
+#: of BOS -3.5" is a claim about a gap that does not exist. Same defect class as
+#: the clause this file once ended that sentence with -- a comparison stated
+#: rather than computed -- except the uncomputable half here is not "which of the
+#: two is bigger" but "whether there is anything to compare at all".
+#:
+#: **Only the MAGNITUDE half of NBA's rule.** NBA also requires the margin to
+#: point at the pick's own team before wording it, and that check is not
+#: available here: the bundle carries no home/away designation, so which side a
+#: margin belongs to is not derivable. A bundle whose margin disagrees with the
+#: moneyline's favourite therefore still gets its row. Fixing that needs a
+#: home/away designation in the facts, not a guess in this file.
+#:
+#: Inclusive, because a margin of exactly 0.5 is one NBA is willing to word.
+MIN_SPREAD_MARGIN = 0.5
 MAX_FACTORS = 4
 
 
@@ -93,6 +129,17 @@ def _outcome_key(by_key: dict) -> str:
     if "moneyline" in by_key:
         return "moneyline"
     return "context"
+
+
+def _toward(direction: str, has_pick: bool) -> str:
+    """A pick-relative direction, or `neutral` when there is no pick to be relative to.
+
+    `direction` means "for the pick" or "against it" and nothing else, so it is
+    only knowable when there IS a pick. With no pick, "up" would render a factor
+    that says nothing about any pick as one arguing for it, which is the defect
+    this exists to remove — so the row claims nothing instead.
+    """
+    return direction if has_pick else NEUTRAL
 
 
 def _quoted_line(market: dict | None, keys: tuple[str, ...] = ("market_line", "line")) -> str | None:
@@ -177,6 +224,10 @@ def explain_from_template(facts: dict) -> dict:
     label = pick.get("label")
     label = str(label) if label not in (None, "") else None
     prob = pick_prob(facts)
+    # Whether there is a pick at all, from the same function the response's own
+    # `pick` field is built by, so a factor can never point at a pick the answer
+    # does not carry.
+    has_pick = pick_for(facts) is not None
     sport = facts.get("sport", "")
     unit = "goals" if sport == "pl" else "points"
     timing = facts.get("pick_timing")
@@ -193,13 +244,13 @@ def explain_from_template(facts: dict) -> dict:
         # for a rebuilt pick precisely so nothing can grade it.
         if timing == "pre_kickoff" and isinstance(result.get("pick_won"), bool) and label:
             text += f" The pick was {'right' if result['pick_won'] else 'wrong'}: {label}."
-        factors.append(_fact(_outcome_key(by_key), "up", "How it finished", text))
+        factors.append(_fact(_outcome_key(by_key), _toward("up", has_pick), "How it finished", text))
 
     # A rebuilt pick is disclosed as a factor in its own right, so it cannot be
     # missed by a reader who only reads the first row.
     if timing == "rebuilt":
         factors.append(_fact(
-            "context", "down", "Rebuilt after the start",
+            "context", _toward("down", has_pick), "Rebuilt after the start",
             f"This pick was rebuilt after {_START.get(sport, 'kickoff')}, so it is shown but "
             f"not counted, and it is not graded either way."))
 
@@ -210,10 +261,30 @@ def explain_from_template(facts: dict) -> dict:
     margin_market = by_key.get("spread") or by_key.get("handicap")
     margin = _num((margin_market or {}).get("model_margin"))
     quoted = _quoted_line(margin_market, MARKET_LINE_KEY.get(sport, ("market_line", "line")))
-    if margin_market is not None and margin is not None and label and quoted:
+    # The magnitude test is the point here, not `margin is not None`: a margin of
+    # exactly 0 used to pass that and render "It rates BOS 0 points better,
+    # against a line of BOS -3.5" -- a disagreement of nothing, narrated as a gap.
+    # Omit the row, which is what the `quoted` clause below already does when
+    # there is no line to check against, rather than word a zero.
+    #
+    # NOTE: this comment deliberately does not quote the expression on the next
+    # line. A mutation harness anchors on source text, and a comment repeating
+    # the code verbatim is a decoy that absorbs the mutation and reports it
+    # covered: the `>=`-becomes-`>` row was SILENT for exactly this reason, and
+    # the boundary test that was supposed to catch it could not run. `count=1`
+    # takes the FIRST match, so a comment above the code wins over the code.
+    big_enough = margin is not None and abs(margin) >= MIN_SPREAD_MARGIN
+    if margin_market is not None and margin is not None and label and quoted and big_enough:
         line = quoted
-        # NEUTRAL, and the sentence is only the two numbers, because the
-        # comparison between them is not something this file can do.
+        # NEUTRAL unconditionally -- NOT `_toward(NEUTRAL, has_pick)`, which would
+        # be a no-op wrapping a no-op, and NOT `_toward("down", has_pick)`, which
+        # is what this row said before. `_toward` answers "is this direction
+        # knowable without a pick", and this row's direction is not knowable WITH
+        # one either, so it is a plain constant by main's own idiom -- the same
+        # shape as the total, `btts` and the record below.
+        #
+        # The sentence is only the two numbers, because the comparison between
+        # them is not something this file can do.
         #
         # It used to end "That is the market asking for more than the model thinks
         # the gap is worth", and carry `direction: "down"`. Both were CONSTANTS:
@@ -232,6 +303,14 @@ def explain_from_template(facts: dict) -> dict:
         # mark goes before the claim does, and neither is asserted without the
         # comparison behind it.
         #
+        # So this row lost its direction on purpose, and that is a narrowing of
+        # what the panel draws: with a pick in hand, a reader used to be told the
+        # market was arguing against it. They are now told only what the two
+        # numbers are. A neutral row the reader can check beats a directional row
+        # they cannot, and `test_the_rows_about_the_pick_still_carry_their_direction`
+        # is what keeps the OTHER rows directional so this did not become "make
+        # everything neutral".
+        #
         # **Deriving it is a real change and is not done here.** The two numbers
         # are `model_margin`, a float, and the quoted line, a WORDED string
         # ("BOS -3.5", "BAL -2.5", "BOS by 4.2"). Deciding which side of the
@@ -249,13 +328,18 @@ def explain_from_template(facts: dict) -> dict:
     total = _num((total_market or {}).get("model_total"))
     total_line = _quoted_line(total_market, MARKET_LINE_KEY.get(sport, ("market_line", "line")))
     if total_market is not None and total is not None and total_line is not None:
-        factors.append(_fact(str(total_market["market"]), "up", "The total",
+        # A projection for the game, not a claim about the pick: emitted whether
+        # or not there is one, so it can only be neutral. The line is read
+        # through `_quoted_line` for the reason the spread above is, and this row
+        # is the reason that helper accepts a number as well as a string.
+        factors.append(_fact(str(total_market["market"]), NEUTRAL, "The total",
                              f"It projects {total:g} {unit} against a line of {total_line}."))
 
     btts = by_key.get("btts")
     yes = _num((btts or {}).get("yes_prob"))
     if btts is not None and yes is not None:
-        factors.append(_fact("btts", "up", "Both to score",
+        # As the total: a statement about the game, so neutral either way.
+        factors.append(_fact("btts", NEUTRAL, "Both to score",
                              f"It puts {_pct(yes)} on both teams scoring."))
 
     # The record states counts, never a proportion. It is a factor here as well as
@@ -270,7 +354,10 @@ def explain_from_template(facts: dict) -> dict:
     hits, settled = (_num(record.get("hits")), _num(record.get("settled"))) if record else (None, None)
     if hits is not None and settled:
         what = str(record.get("label") or "picks made before the start").lower()
-        factors.append(_fact("record", "up", "Its record so far",
+        # Neutral, and always: the record counts OTHER picks, so it is not
+        # evidence for this one even when this one exists. Reading it as "for the
+        # pick" would let a season's hits stand in for a match.
+        factors.append(_fact("record", NEUTRAL, "Its record so far",
                              f"{int(hits)} of {int(settled)} {what} have landed."))
 
     # Two rows minimum, so the panel is never a single lonely line. Padding only
@@ -284,10 +371,13 @@ def explain_from_template(facts: dict) -> dict:
         # bundles that reach it.
         while len(factors) < 2:
             if not any(f["key"] == "context" for f in factors):
-                factors.append(_fact("context", "down", "Not much to go on",
+                factors.append(_fact("context", _toward("down", has_pick), "Not much to go on",
                                      "The facts for this one are still filling in."))
             else:
-                factors.append(_fact("context", "up", "Where this stands",
+                # Neutral always. "So there is little to weigh up here" is not an
+                # argument FOR a pick; it was given "up" because the row needed a
+                # direction, and the words above it do not support one.
+                factors.append(_fact("context", NEUTRAL, "Where this stands",
                                      f"So there is little to weigh up here: {title}."))
 
     verdict = f"{label} is the pick." if label and prob is not None else "There is no pick for this one yet."
@@ -299,15 +389,17 @@ def minimal(facts: dict) -> dict:
     """If even the template fails: say so, never error.
 
     Only the pseudo-markets, so every factor resolves against a bundle with no
-    markets at all — this runs precisely when things are broken.
+    markets at all — this runs precisely when things are broken. Both are
+    `neutral`: there is no pick here to be for or against, and these rows are
+    about the service rather than about any prediction.
     """
     return {
         "verdict": "No explanation is available for this one yet.",
         "band": "leaning",
         "factors": [
-            _fact("context", "down", "Not ready",
+            _fact("context", NEUTRAL, "Not ready",
                   "The explanation service could not build a summary for this fixture."),
-            _fact("context", "up", "Try again",
+            _fact("context", NEUTRAL, "Try again",
                   "A later visit may find the facts in place."),
         ],
     }

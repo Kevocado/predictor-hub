@@ -171,8 +171,13 @@ for a free model. So:
   about the *pick*, and giving it a number would put a figure on screen that no
   fact supports.
 - `direction` is **relative to the pick**: `up` is a factor arguing for it,
-  `down` a factor arguing against. It is never "the number went up" — the
-  numbers do not move.
+  `down` a factor arguing against, and `neutral` a factor that is neither — a
+  statement about the game (the total, both teams to score) or about the record,
+  which is not for or against any pick. It is never "the number went up" — the
+  numbers do not move. **With no pick, every factor is `neutral`**: there is
+  nothing to be for or against, and an absent or unrecognised `direction`
+  resolves to `neutral` rather than to `up`, which would read a model that said
+  nothing as one that endorsed the pick.
 - `text` is number-free by rule. If the model writes a digit, `validate()` will
   reject it against the facts pool, so the rule is enforced rather than trusted.
 - 2–4 factors. Fewer is fine; zero is a validation failure, because a panel with
@@ -196,11 +201,35 @@ The same applies to a bar's accessible name: it reads "41 of 68", not "60.3%".
 Unchanged from today: `sport`, `id`, `source`, `model`, `generated_at`,
 `prompt_version`, `pick_timing`.
 
+Added: **`pick`** — `{ "label": "BAL" }`, plus `"side"` where the sport's facts
+carry one (PL's `home`/`away` against a draw). It is **derived from the facts**
+by `contract.pick_for`, never asked of the model, for the same reason the band is
+derived: a model asked to name its own pick can disagree with the facts the
+verdict was computed from, and then the bar would emphasise a different segment
+than the verdict describes. The panel joins the pick to a bar segment by label,
+which is what it must follow rather than segment order — on the §7a bar that is
+BAL at 62%, the **second** segment.
+
+It carries no probability. The panel draws every figure from the facts (§5a-bis),
+and a second copy of one here is a second thing that can disagree with the bar.
+
+**With no pick the key is absent, not `null`.** The renderer acts on the absence
+— it decides whether to emphasise a segment at all — so a null or an empty-label
+object would be one more thing to check instead of the one thing to check. The
+gate is the same label-and-usable-probability test the template's verdict uses,
+so the response cannot point the panel at a pick the verdict just denied.
+
 **`prompt_version` is bumped.** The v1 rows hold `headline`/`sections`; a v2
 renderer reading one would render nothing. A new version means a new cache key,
 so v1 rows are never read. The renderer additionally treats any cached body
 without a `verdict` as a **miss**, so a reused version can never serve prose
 into a structured panel.
+
+**The bump is also how a change to the *writer* reaches a reader, not only how a
+change to the *shape* does** — the cache key covers the version and a hit is
+served verbatim, so a new writer under an old version is never called. §13f states
+that as a deploy precondition, because it is the requirement this sentence used
+to leave implied.
 
 ### 5c. The facts the panel draws from (verified against the real bundles)
 
@@ -228,13 +257,37 @@ model and the template.
 2. **Key-number tiles** — one per market the facts carry. Each shows the
    model's figure large, with the market's line beneath it when there is one.
    A tile is *absent* when its market is absent; never a zero, never a dash.
+   **A tile is labelled in words, never in keys.** `market` is an identifier and
+   is used only to join (§13c); the text under the figure is the market's
+   `label`, or the `sub` line when the caller gave one. A machine key printed
+   where a label belongs — `btts`, `total_goals` — is a defect in the same class
+   as a number this product computed: it is a fact about the code shown to a
+   reader as if it were a fact about the game.
 3. **Split bar** — the probability breakdown, `segments` wide. NFL gets two
    segments (the moneyline pair), PL gets three (home/draw/away). With PL's
    `implied` present, a second hairline row underneath shows the market's own
-   split, so the reader can see model against market rather than a bare number.
+   split **in words — the market's own percentages, under the model's, in the same
+   columns** — so the reader can see model against market rather than a bare
+   number or a row of unlabelled grey bars. The figures are read **by label**,
+   never by position, because the two splits are two different facts and pairing
+   them by index prints the market's 44% under the model's 48% and still looks
+   like a comparison. Both rows are set at the 12px floor (§6a): the market row
+   does not get a smaller size to make a row fit, it drops the row (§13c).
+   The accent marks **the pick** (§5b) and nothing else: it is joined to a
+   segment by `pick.label`, never by position, and a bar with no `pick` has no
+   accented segment at all — an accented segment is a claim that there is a pick,
+   so with none there is none to point at. A pick whose label matches no segment
+   accents nothing, for the same reason. The segments that are not the pick are
+   painted in a three-step neutral ramp, so a three-way market keeps three
+   distinguishable tones once the accent has been spent on the pick.
 4. **Why boxes** — the factors. Each is a row: a direction arrow, a headline,
    and the model's sentence. The arrow is a **glyph plus a text label**, never
-   colour alone.
+   colour alone. A `neutral` factor (§5a) draws **no** arrow and wears neither
+   the win nor the loss colour, because it is a statement about the game or the
+   record rather than an argument, and with no pick there is nothing for it to be
+   for or against. Its label says what the row is — "context" — rather than
+   which way it leans, and it is still a row like any other: selectable, and
+   expandable.
 5. **Footer** — §2 rule 3, unchanged.
 
 Plus, where the facts carry them: the record strip (`hits/settled` as a thin
@@ -561,6 +614,16 @@ The market row renders **only when `implied` covers every outcome the model's
 split has** — all three for PL. Otherwise it is omitted entirely. Omission is
 the honest answer; a partial row is a comparison that cannot be made.
 
+**The rule is symmetric, and the second half is what the labels need.** "Covers
+every outcome the model's split has" is satisfied by a *superset*, and a market
+segment with no model column above it cannot be compared with anything — which is
+the whole purpose of the row, and it is also what stops the two rows of figures
+lining up. So the two splits must be the **same set of outcomes, one each**, and
+the market's figures are then read **by label** rather than by position. Neither
+half is reachable from the shapes this product actually serves (NFL 2/2, PL 3/3),
+so this is a rule about a call site that has not been written yet, and it fails
+closed: a superset omits the row rather than drawing half a comparison.
+
 The same rule governs the tile's market line: it states `implied` **for a side
 that is present**, and is omitted when the side it would name has no `implied`.
 For a draw pick with no `implied.draw`, the tile carries no market line at all.
@@ -581,7 +644,7 @@ retry)", and adds to §6b.
 
 Kevin asked for something intuitive and interactive. v1 had a retry button. That
 is not interaction, it is error handling, and it is not what was asked for. The
-panel gains three affordances, all of which connect parts of the same panel to
+panel gains four affordances, all of which connect parts of the same panel to
 each other, and all of which are reachable and operable from the keyboard.
 
 1. **A factor references what it is about.** Selecting or hovering a *why* row
@@ -598,6 +661,16 @@ each other, and all of which are reachable and operable from the keyboard.
    threshold the sentence is clamped to its first line behind a real
    `<button aria-expanded>`, not a CSS-only trick, so it works without
    JavaScript-driven measurement and is announced correctly.
+4. **The market row's figures collapse the same way.** The market row is a
+   `justify-between` row of labels exactly like the bar's own, so it inherits the
+   same collision, and §6a's floor forbids answering that with a smaller size. On
+   a surface too narrow for it the row drops behind the same real
+   `<button aria-expanded>`, leaving the bar and the word that names it. It is
+   **opt-in and open by default** — off by default so a wide panel never hides
+   figures behind a control that adds nothing, open when on because an unlabelled
+   market bar is the defect the figures exist to fix. Measured, not assumed: at
+   390px with a three-way market and PL's longest club name the row fits, and at
+   260px it collides, which is the width the fallback is for.
 
 **The constraint that makes this safe: no interaction may reveal a figure that is
 not in the facts.** Each affordance shows a label, a highlight, or geometry the
@@ -638,3 +711,89 @@ day the frontends are edited.
 
 Revised order: **(1) trigger and refusal**, (2) contract and validator,
 (3) shared components, (4) wiring in and removal out.
+
+### 13e. A rebuilt pick shows no confidence band
+
+**Overrides** §6 item 1's reading of the band chip as unconditional, and §13a in
+this one case: `band_for` still runs, `band` is still in the response, and the
+chip is withheld **by the renderer** on a `rebuilt` answer.
+
+The band is a claim about how much to trust the pick. A rebuilt pick's
+probability was produced by a model asked *after the event had begun* — it had
+seen the score. So the band measures confidence in a number computed with the
+answer already known, and it is a number the same panel tells the reader, two
+lines lower, not to count or grade. "STRONG" beside "shown for reference and not
+counted" asks the reader to resolve a contradiction the panel created, and §2's
+rule is that the panel does not put a claim in front of a reader that it cannot
+support. The band has no meaning for a pick that must not be acted on, so it is
+withheld rather than softened to a weaker word: a weaker word is still a
+confidence, and the reader would still have to weigh it against the warning
+beside it.
+
+**It fails closed**, which is the direction this panel already fails in (§6's
+footer shows nothing it cannot support), and the withholding is one visible
+line, so the decision is reviewable where it is made rather than smeared through
+the contract.
+
+**Why the band stays in the response.** The band is not wrong; it is unsayable
+*here*. Keeping it computed keeps the value available to whatever reads the row
+next — a settled archive, or a later surface that can act on a rebuilt pick — and
+keeps the thresholds in one place. Moving the withholding into the service would
+have made `band_for` conditional on `pick_timing`, which is a rule about
+rendering inside the module whose whole job is the contract. Tested both ways: a
+`rebuilt` answer renders no chip, and a `pre_kickoff` answer carrying the same
+`band` still does.
+
+### 13f. Deploy precondition: the `prompt_version` bump ships WITH the renderer
+
+**Adds to** §5b rather than overriding anything, and sits here because it is the
+requirement a person meets immediately before they deploy. The rest of §13 changes
+what the code should do; this one changes what the deploy must do, and a code
+review cannot enforce it, which is exactly why it is written down where the deploy
+is planned.
+
+**A deploy that changes how a response is *written* must move `prompt_version` in
+the same deploy. A PR that changes it is not optional housekeeping, and it is not
+the deploy's problem to remember.**
+
+§5b said the version is bumped so v1 prose cannot be read by a v2 renderer. That
+was about a *shape* change. This is the other case, and the cache makes it just
+as real: **the cache key covers `prompt_version`** (`cache.py:23`, and
+`service.py:158` builds it from `s.prompt_version`), and a row is served verbatim
+on a hit — `_answer` spreads `row["body"]` and re-derives only `band`, `pick` and
+`pick_timing`. So a body written before the deploy keeps being served, verbatim,
+for as long as its facts render to the same JSON.
+
+**The consequence, named.** Every change this design makes to the *generated
+body* — and that is where all of §5a's rules live, since `verdict` and `factors`
+come out of the cache while only `band` and `pick` are re-derived per read — is
+**inert in production** until the version moves. Specifically, without the bump:
+
+- A pre-deploy row for a **no-pick** bundle still carries `direction: "up"` on
+  every factor, because `contract.py:129` coerces an unrecognised direction to
+  `"up"` and `template.py` had no `_toward`. The new renderer then draws an up
+  triangle in the win colour and says "FOR THE PICK" beside a match with no pick
+  — the exact defect §5a's `neutral` and the no-pick wording rules remove. The
+  fixes are correct and never run.
+- An **`llm`** row is not retried at all: `_usable` only gives a retry window to a
+  template written while the model was unavailable, so it survives until its
+  **facts change**, and the key includes `facts_json`.
+- **The cache is not empty and a no-op deploy is not visible from outside.** §4
+  keeps the cache (a second open of a fixture is free), so every fixture a reader
+  has already opened holds a row, and those rows are written by the pre-deploy
+  writer. The panel then renders them without a regeneration, which means the
+  defect is not "some fixtures are stale" — it is "the fixtures readers have
+  already looked at are the stale ones", and the ones a reader opens next are the
+  ones that get fixed.
+
+**What the deploy has to do.** Move `prompt_version` off `"v2"` — any new string
+will do, and `"v3"` is the obvious one — in the same change that deploys a new
+writer. It costs one generation per cached row, which is the point: it is the
+price of the prose changing.
+
+**Why the bump is not in the renderer PR.** It spends the model budget, and
+budget is a deploy decision, not a reviewer's: a PR that bumps the version to
+prove its own renderer works spends real generations on rows nobody has asked for
+yet. So the requirement lives here, next to §13e, and the person who deploys
+meets it before they deploy rather than after a reader does.
+

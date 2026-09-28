@@ -197,3 +197,140 @@ def test_a_negative_model_margin_is_written_as_a_magnitude():
     text = _spread(facts)["text"]
     assert f"{MARGIN:g}" in text, f"the magnitude is missing: {text}"
     assert f"-{MARGIN:g}" not in text, f"a negative margin was written as a signed gap: {text}"
+
+
+# --- a margin that rounds to nothing is not narrated ------------------------
+
+#: Under half a point. NBA's own builder (`_margin_line` in its `api/facts.py`)
+#: words a projected margin as a gap only at `value >= 0.5` and otherwise returns
+#: the literal "Toss-up", so a bundle whose margin is 0.4 arrives having already
+#: been told the gap is a toss-up -- and the template then contradicts the bundle
+#: it was handed. `test_facts.py::test_spread_reads_toss_up_under_half_a_point`
+#: is where that half-point floor is pinned on the other side of the wire.
+BELOW_THE_FLOOR = 0.4
+#: The floor itself, and the one value that separates "a gap" from "no gap".
+AT_THE_FLOOR = 0.5
+
+
+def _nba_at_margin(margin: float) -> dict:
+    """An NBA bundle whose `model_margin` is `margin`, with a real quoted line.
+
+    NBA puts the model's own wording in `line` and the book's in `market_line`,
+    so `_quoted_line` reads the book here and the margin under test is the only
+    thing that varies. `market_line` is deliberately PRESENT: these tests are
+    about the margin, and dropping the quoted line would omit the row for a
+    reason that has nothing to do with the margin and would pass for the wrong
+    one.
+    """
+    facts = _nba("BOS -3.5")
+    facts["markets"][1]["model_margin"] = margin
+    return facts
+
+
+def _spread_or_none(facts: dict):
+    """The spread factor, or `None` when the bundle emits no spread row.
+
+    `None` is a real answer here -- omitting the row is the fix -- so this must
+    not assert that exactly one exists. Asserting that would make the test pass
+    for the wrong reason on every bundle where the row is missing for some other
+    reason, which is the defect this whole file exists to prevent.
+    """
+    found = [f for f in explain_from_template(facts)["factors"] if f["key"] == "spread"]
+    assert len(found) <= 1, f"more than one spread factor: {found}"
+    return found[0] if found else None
+
+
+@pytest.mark.parametrize("margin", [0, -0.0, 0.1, BELOW_THE_FLOOR, -BELOW_THE_FLOOR,
+                                    0.49, -0.49],
+                         ids=["zero", "negative-zero", "a tenth", "under the floor",
+                              "under it the other way", "just under", "just under, negated"])
+def test_a_margin_that_rounds_to_nothing_emits_no_spread_row(margin):
+    """`0` is the case that was shipped, and it narrated a disagreement of nothing.
+
+    The gate was `margin is not None`, which `0` passes, so a bundle with a model
+    margin of exactly zero rendered
+
+        It rates BOS 0 points better, against a line of BOS -3.5.
+
+    -- "rates BOS 0 points better" and "BOS -3.5" are about a disagreement that
+    does not exist, and the sentence asserts one. It is the same defect class as
+    the clause removed above: a comparison stated rather than computed. Here the
+    uncomputable half is not "which is bigger" but "whether there is anything to
+    compare".
+
+    Both signs, because `model_margin` is home-minus-away: a bundle where the
+    away side is nominally ahead by 0.4 is the same absence of a gap, and a
+    signed-only guard would miss it.
+
+    **Why the row is omitted rather than worded "0 points".** The same choice this
+    file's sibling already makes when there is no quoted line, and the same choice
+    NBA's builder makes: it returns "Toss-up" rather than "BOS by 0.0". A row that
+    exists only to say nothing is a row the panel gives a tile and a reader gives
+    a glance. The alternative -- emitting the row with a "Toss-up"-style word --
+    would be inventing a wording the panel has no field for, and would put a
+    second vocabulary in this file.
+    """
+    assert _spread_or_none(_nba_at_margin(margin)) is None, (
+        f"a margin of {margin} was narrated: "
+        f"{_spread_or_none(_nba_at_margin(margin))}"
+    )
+
+
+@pytest.mark.parametrize("margin", [AT_THE_FLOOR, -AT_THE_FLOOR, MARGIN, -MARGIN],
+                         ids=["at the floor", "at it, negated", "a real gap", "a real gap, negated"])
+def test_a_margin_at_or_above_the_floor_is_still_narrated(margin):
+    """The other side of the boundary, because a floor is only a floor if it has one.
+
+    The floor is INCLUSIVE: a margin of exactly 0.5 is a gap NBA's builder is
+    willing to word ("BOS by 0.5"), so this file words it too. A `>` where the
+    code says `>=` omits a real gap, and every other test in this file uses a
+    margin far above the floor -- so nothing else here would notice. This is the
+    assertion that closes that.
+    """
+    factor = _spread_or_none(_nba_at_margin(margin))
+    assert factor is not None, f"a margin of {margin} is a gap and was dropped anyway"
+    assert f"{abs(margin):g}" in factor["text"], factor
+    assert factor["direction"] == NEUTRAL, factor
+
+
+def test_dropping_the_spread_row_does_not_drop_the_others():
+    """The fix is one row, not a bundle.
+
+    Omitting a factor is a cost to the reader, so it has to be paid only where
+    the factor was making a claim. This pins that the free slot goes to the row
+    the budget was already going to reach -- the record -- rather than to the
+    padding that exists only so the panel is never one lonely line.
+    """
+    facts = _nba_at_margin(0)
+    facts["record"] = {"label": "Picks made before tip-off", "hits": 41, "settled": 68}
+    out = explain_from_template(facts)
+    headlines = [f["headline"] for f in out["factors"]]
+    assert "The line" not in headlines, headlines
+    assert "Its record so far" in headlines, (
+        f"the freed slot did not reach the record: {headlines}"
+    )
+    assert 2 <= len(out["factors"]) <= 4, out["factors"]
+
+
+def test_the_floor_is_the_one_nba_uses():
+    """The number is not invented here, and this is what holds it to that.
+
+    `0.5` because NBA's `_margin_line` words a gap only at `value >= 0.5`. A
+    different floor would be a second disagreement with the bundle's producer,
+    which is the shape of bug this file is about: the template quietly holding a
+    threshold the sport it serves does not.
+
+    Only the MAGNITUDE half of NBA's rule is adopted. NBA also requires the
+    margin to point at the pick's team before wording it, and that check is not
+    available here -- the bundle carries no home/away designation, which is the
+    same missing fact `test_a_negative_model_margin_is_written_as_a_magnitude`
+    documents. So a bundle whose margin disagrees with the moneyline's favourite
+    still gets its row; fixing that needs a home/away designation in the facts,
+    and is reported rather than guessed at.
+    """
+    from explainer.template import MIN_SPREAD_MARGIN
+
+    assert MIN_SPREAD_MARGIN == 0.5, (
+        f"the floor is {MIN_SPREAD_MARGIN}, which is not the half-point floor "
+        "NBA's own facts builder uses"
+    )

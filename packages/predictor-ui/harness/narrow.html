@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Explainer v2 — 390px</title>
+    <style>
+      body { margin: 0; background: #05070a; font: 13px ui-monospace, monospace; color: #909aa8; padding: 12px; }
+      /* Headless Chrome on macOS will not give a window narrower than 500px, so
+         390px is measured inside a same-origin iframe rather than by resizing.
+         Same origin matters: a file:// page embedding an http:// one is
+         cross-origin and the snapshot cannot see inside it. */
+      iframe { width: 390px; height: 1400px; border: 1px solid #2b333f; display: block; }
+      p { margin: 0 0 10px; }
+    </style>
+  </head>
+  <body>
+    <p>390 x 1400 &mdash; the phone width, measured honestly</p>
+    <iframe src="./index.html" title="Explainer panel at 390px"></iframe>
+  </body>
+</html>

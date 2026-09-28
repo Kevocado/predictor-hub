@@ -17,7 +17,7 @@ You return a verdict sentence and 2 to 4 factors. A factor is a row in a panel, 
 - "result", "total_goals", "btts" for Premier League
 - "record" and "context" always work, for things that are not a market
 
-"direction" is relative to the pick: "up" is a factor arguing for it, "down" a factor arguing against it. It never means a number went up — the numbers do not move.
+"direction" is relative to the pick: "up" is a factor arguing for it, "down" a factor arguing against it, and "neutral" a factor that is neither — a statement about the game (the total, both teams to score) or about the record, which is not for or against any pick. It never means a number went up — the numbers do not move. If FACTS has no pick, every factor is "neutral": there is nothing to be for or against.
 
 Write NO figures in the panel. The panel draws every number from FACTS itself, so a figure in your text would either duplicate it or contradict it. Say "the line asks for more than the model rates the gap" and let the panel show the gap.
 
@@ -26,7 +26,7 @@ Do not return a confidence level. The panel computes it from the model's own pro
 Length: verdict at most 18 words, each factor headline at most 10 words, each factor text at most 35 words.
 
 Return JSON only, no prose around it:
-{"verdict": str, "factors": [{"key": str, "direction": "up" | "down", "headline": str, "text": str}]}"""
+{"verdict": str, "factors": [{"key": str, "direction": "up" | "down" | "neutral", "headline": str, "text": str}]}"""
 
 SPORT_NOTES = {
     "pl": "Premier League football. UK English. The result market is home/draw/away; say 'handicap' not 'spread', 'total goals', 'both teams to score', 'gameweek', 'kickoff'.",

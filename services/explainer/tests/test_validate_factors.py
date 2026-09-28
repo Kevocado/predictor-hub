@@ -82,9 +82,36 @@ def test_two_to_four_factors_pass(n):
     assert validate(_v([_f() for _ in range(n)]), F, "[]") == [], f"{n} factors was rejected"
 
 
-def test_a_direction_must_be_up_or_down():
+def test_a_direction_must_be_one_of_the_three():
+    """The contract, restated as the validator enforces it.
+
+    `neutral` joined `up` and `down`: a factor that is not about the pick — the
+    total, both teams to score, the record — has to be sayable, and with only two
+    values the model had to pick one of them and was wrong half the time. Widening
+    the vocabulary is not widening what is accepted, though: anything outside the
+    three is still refused, which is the whole content of this test.
+    """
+    assert validate(_v([_f(direction="neutral"), _f("record")]), F, "[]") == [], (
+        "a neutral factor is now in the contract and must be accepted"
+    )
+    for good in ("up", "down", "neutral"):
+        assert validate(_v([_f(direction=good), _f("record")]), F, "[]") == [], good
+
     problems = validate(_v([_f(direction="sideways"), _f("record")]), F, "[]")
     assert any("direction" in p for p in problems), f"accepted: {problems}"
+
+
+@pytest.mark.parametrize("bad", ["sideways", "UP", "Up", "", None, 1, True, "up ", "up/down"])
+def test_nothing_outside_the_three_is_accepted(bad):
+    """A third value must not become "anything goes".
+
+    Every one of these is a different way of writing a direction, and only three
+    of them are directions. The check is membership in `DIRECTIONS`, not a length
+    or a prefix test, so a body carrying `1` or `True` (which compare equal to
+    nothing here) or `"up "` is refused rather than coerced into meaning.
+    """
+    problems = validate(_v([_f(direction=bad), _f("record")]), F, "[]")
+    assert any("direction" in p for p in problems), f"accepted {bad!r}: {problems}"
 
 
 def test_a_factor_whose_key_is_not_in_the_facts_is_rejected():

@@ -18,13 +18,15 @@ for one — there is no background pre-generation.
     { "key": "moneyline", "direction": "up", "headline": "Model leans Baltimore",
       "text": "The rating gap has held all week." }
   ],
+  "pick": { "label": "BAL" },     // COMPUTED from the facts; the key is OMITTED
+                                  // when there is no pick. Never null.
   "source": "llm", "model": "nemotron-3.5-lightning",
   "generated_at": "2026-10-05T00:20:00Z", "prompt_version": "v2",
   "pick_timing": "pre_kickoff"
 }
 ```
 
-Two properties worth knowing before changing anything here:
+Three properties worth knowing before changing anything here:
 
 - **The model supplies no figure.** A factor is a *reference* to a market by
   `key`; the panel resolves it against the facts and draws the numbers itself.
@@ -37,6 +39,21 @@ Two properties worth knowing before changing anything here:
   nothing ties it to anything: a model can call a 52% pick "strong" and there is
   no fact to contradict it. `tests/test_service.py` proves it with a model that
   tries.
+- **`pick` is derived, not requested either.** It is `contract.pick_for(facts)`,
+  for the same reason: a model naming its own pick can disagree with the facts
+  the verdict was computed from, and then a two-way bar would emphasise a
+  different side than the sentence describes. It carries the **label** (and PL's
+  `side` when the facts have one) because the panel joins the pick to a bar
+  segment by label. No probability: the panel draws every figure from the facts.
+  With no pick the key is **absent**, not null — the panel acts on that, so
+  "is there a pick" stays one question with one answer.
+- **`direction` has three values, not two.** `up` argues for the pick, `down`
+  against it, and `neutral` is not about the pick at all — the total, both teams
+  to score, the record. It is also the value every factor gets when there is no
+  pick, because there is nothing to be for or against. An absent or unrecognised
+  direction resolves to `neutral`, never to `up`: `up` renders as "for the
+  pick", so defaulting to it reads a model that said nothing as one that
+  endorsed the pick.
 
 ## Run
 

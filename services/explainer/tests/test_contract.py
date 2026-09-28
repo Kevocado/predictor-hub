@@ -19,8 +19,9 @@ agree today and drift the first time one of them was edited.
 import pytest
 
 from explainer.contract import (DIRECTIONS, NEUTRAL, PSEUDO_MARKETS, VERDICT_BANDS, band_for,
-                                clean_verdict, market_keys, market_shape,
-                                resolve_factors)
+                                clean_verdict, market_keys, market_shape, pick_for,
+                                pick_prob, resolve_factors)
+from explainer.facts import Facts
 
 # Shaped like the real NFL bundle (see spec §5c, verified against the live
 # facts), because a hand-shaped double has been the root cause of four separate
@@ -49,19 +50,23 @@ PL_FACTS = {
 def test_the_vocabularies_are_closed():
     assert VERDICT_BANDS == ("leaning", "moderate", "strong")
     assert all(b.isalpha() for b in VERDICT_BANDS), "a numeric band is a figure no fact supports"
-    # The third value is `NEUTRAL`, added for the spread factor. Its mark is a
-    # claim about the pick -- `up` argues for it, `down` against -- and the
-    # spread factor's two numbers say nothing about where the market sits, so
-    # the only honest mark was the one that claims nothing. The panel has a
-    # branch for it (it draws no triangle and says "context"), so this is a
-    # value the whole stack already knows how to render, not a new one.
+    # Three, not two. `neutral` is the value that says a factor is not about the
+    # pick at all, which is what the total, both-teams-to-score and the record
+    # are — and what EVERY factor is when there is no pick. It was left out, and
+    # the two that remained were then read as "the model had an opinion", which
+    # is how a factor about the total came to read "for the pick".
     #
-    # Pinned here, exactly, because this is the only place the vocabulary is
-    # decided: `test_template_v2` and `test_template_spread_claim` both read
-    # `DIRECTIONS`, so appending to it would leave every direction guard green
-    # while widening what the panel is asked to draw.
-    assert DIRECTIONS == ("up", "down", NEUTRAL)
-    assert NEUTRAL == "neutral", "the value the panel's `MARK` table is keyed on"
+    # Pinned with `==` rather than a membership or length check, and that is the
+    # load-bearing part of this line: `test_template_v2` and
+    # `test_template_spread_claim` both assert `direction in DIRECTIONS`, so a
+    # FOURTH value appended here would leave every direction guard in the suite
+    # green while widening what the panel is asked to draw. This is the only place
+    # the vocabulary is decided, so it is the only place that can notice.
+    assert DIRECTIONS == ("up", "down", "neutral")
+    # `NEUTRAL` the constant and `"neutral"` the wire value are the same string
+    # because the panel's MARK table is keyed on the literal; if the two ever
+    # diverge, this is where it shows.
+    assert NEUTRAL in DIRECTIONS and NEUTRAL == "neutral"
     assert PSEUDO_MARKETS == ("record", "context")
 
 
@@ -84,12 +89,114 @@ def test_a_model_supplied_band_is_ignored_entirely():
     assert "band" not in out, "the model's band survived into the answer"
 
 
-def test_an_unknown_direction_becomes_up_rather_than_being_dropped():
+def test_an_unknown_direction_becomes_neutral_rather_than_being_dropped():
+    """The coercion, and what it used to say.
+
+    It used to coerce to "up", which is rendered as "for the pick" — so a model
+    that omitted `direction` or wrote something outside the contract was read as
+    having argued FOR the pick. A factor nobody has a direction for is neutral:
+    the neutral value claims nothing, and claiming nothing is what fails closed.
+    """
     out = clean_verdict({"verdict": "v", "factors": [
         {"key": "spread", "direction": "sideways", "headline": "h", "text": "t"}]})
-    assert out["factors"][0]["direction"] == "up"
+    assert out["factors"][0]["direction"] == "neutral", (
+        f"an unknown direction became {out['factors'][0]['direction']!r}, which reads as "
+        "an opinion about the pick that nobody expressed"
+    )
     # A factor is not dropped for a bad direction: `validate()` is what refuses
     # the answer, and a coercion here would hide that from it.
+
+
+def test_a_missing_direction_becomes_neutral_too():
+    """Not only an unrecognised one.
+
+    Omitting `direction` is the likelier model failure, and it reached the same
+    `"up"`. It must reach the same neutral.
+    """
+    out = clean_verdict({"verdict": "v", "factors": [
+        {"key": "spread", "headline": "h", "text": "t"}]})
+    assert out["factors"][0]["direction"] == "neutral"
+
+
+def test_neutral_survives_cleaning_untouched():
+    """It is a real direction now, not a fallback.
+
+    A model that says a factor is neither for nor against the pick — a statement
+    about the total, say — must have that believed rather than rewritten. If this
+    ever coerces to "up" again, the third value is decoration.
+    """
+    out = clean_verdict({"verdict": "v", "factors": [
+        {"key": "total", "direction": "neutral", "headline": "h", "text": "t"}]})
+    assert out["factors"][0]["direction"] == "neutral"
+
+
+# --- the pick, derived ------------------------------------------------------
+
+def test_the_pick_is_read_off_the_facts():
+    assert pick_for(FACTS) == {"label": "BAL"}
+    assert pick_for(PL_FACTS) == {"label": "Arsenal", "side": "home"}
+
+
+def test_the_pick_reads_a_model_dump_and_a_dict_alike():
+    """`as_dict` is what makes one accessor serve both callers.
+
+    `service._answer` holds a validated `Facts`; `template.explain_from_template`
+    holds its `model_dump()`. An accessor written against only one of them is an
+    `AttributeError` at runtime on the other path — which is how the panel loses
+    its pick on exactly the path that has no model to blame.
+    """
+    assert pick_for(Facts(**FACTS)) == {"label": "BAL"}
+    assert pick_for(Facts(**FACTS).model_dump()) == {"label": "BAL"}
+
+
+@pytest.mark.parametrize("pick", [
+    None,                                    # no pick at all
+    {},                                      # an empty stub
+    {"label": "BAL"},                        # a half-written pick: no probability
+    {"prob": 0.62},                          # a number with nothing to attach it to
+    {"label": "", "prob": 0.62},             # a blank label
+    {"label": None, "prob": 0.62},
+    {"label": "BAL", "prob": 1.4},           # out of range, so no usable probability
+    {"label": "BAL", "prob": None},
+    "BAL",                                   # not even a dict
+])
+def test_no_usable_pick_is_none_and_not_a_placeholder(pick):
+    """`None`, never a stub with a label in it.
+
+    The renderer acts on the ABSENCE: it decides whether to emphasise a segment
+    at all. `{"label": ""}` would still be an object to emphasise, so the shape
+    that fails here is a present-but-empty pick, not a missing one.
+    """
+    assert pick_for({**FACTS, "pick": pick}) is None, (
+        f"a bundle with pick={pick!r} produced a pick: {pick_for({**FACTS, 'pick': pick})!r}"
+    )
+
+
+def test_a_label_without_a_probability_is_not_a_pick():
+    """It is the case that decides the gate.
+
+    `pick_prob` and `pick_for` must agree about what counts as a pick, because
+    the template's verdict and the response's `pick` field are both derived from
+    them — a response that carried a pick the verdict had just denied would hand
+    the panel a segment to emphasise for a pick that does not exist.
+    """
+    facts = {**FACTS, "pick": {"label": "BAL"}}
+    assert pick_prob(facts) is None
+    assert pick_for(facts) is None
+
+
+def test_the_pick_is_never_read_out_of_the_model_body():
+    """Derived, not asked for. Same reason as the band.
+
+    A model asked to name its own pick can disagree with the facts the verdict was
+    computed from, and then the bar emphasises a different segment than the
+    verdict describes. `clean_verdict` has no key to put one in, so the only
+    route to the response is the facts.
+    """
+    out = clean_verdict({"verdict": "v", "pick": {"label": "KC"},
+                         "factors": [{"key": "moneyline", "direction": "up",
+                                      "headline": "h", "text": "t"}]})
+    assert "pick" not in out, f"a model-supplied pick reached the answer: {sorted(out)}"
 
 
 def test_an_unknown_key_is_kept_by_clean_and_dropped_by_resolve():

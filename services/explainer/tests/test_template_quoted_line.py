@@ -74,14 +74,49 @@ def test_a_toss_up_is_not_presented_as_a_market_line():
     nothing or points at a different team than the moneyline does. Rendered as
     "against a line of Toss-up" it is not a weak sentence, it is a sentence with no
     meaning in it -- and `PRODUCT.md` says uncertainty is shown, not dressed up.
+
+    **Both of the ways NBA produces "Toss-up", because the margin floor closed one
+    of them and the other is still reachable.** A margin under half a point now
+    omits the row outright, so the leak this test was written for is unreachable
+    by that route -- and the second assertion below could not be satisfied, which
+    is why it is gone rather than kept in weakened form. NBA also says "Toss-up"
+    when the margin is comfortably large but points at the team the moneyline
+    does not favour, and the template cannot check that (no home/away designation
+    in the bundle), so the row IS still emitted there. That is the case that can
+    still leak, so it is the case that is asserted.
+    """
+    body = explain_from_template(bundle("nba", [
+        {"market": "moneyline", "model": {"BOS": 0.51, "PHI": 0.49}},
+        {"market": "spread", "model_margin": 4.2, "line": "Toss-up", "market_line": "BOS -0.5"},
+    ]))
+    text = factor(body, "spread")["text"]
+    assert "Toss-up" not in text, f"the model's own wording leaked into the prose: {text}"
+    assert "BOS -0.5" in text, text
+
+
+def test_a_toss_up_margin_under_the_floor_narrates_nothing_at_all():
+    """The other half of the same wording, now settled by omission rather than by
+    reading the right key.
+
+    `model_margin: 0.2` with `line: "Toss-up"` used to be the sharpest version of
+    this defect: the model says the game is a coin flip, and the panel said "It
+    rates BOS 0.2 points better". Under `MIN_SPREAD_MARGIN` the row is omitted, so
+    there is no sentence in which "Toss-up" could have leaked and no
+    sub-half-point gap narrated as one.
+
+    Asserting the ABSENCE rather than the absence of a word, because the word is
+    what the previous fix removed and a test that only greps for it would go green
+    if the row came back worded differently -- which is the defect, not the
+    wording.
     """
     body = explain_from_template(bundle("nba", [
         {"market": "moneyline", "model": {"BOS": 0.51, "PHI": 0.49}},
         {"market": "spread", "model_margin": 0.2, "line": "Toss-up", "market_line": "BOS -0.5"},
     ]))
-    text = factor(body, "spread")["text"]
-    assert "Toss-up" not in text, f"the model's own wording leaked into the prose: {text}"
-    assert "BOS -0.5" in text, text
+    assert factor(body, "spread") is None, (
+        f"a sub-half-point margin was still narrated: {body['factors']}"
+    )
+    assert "Toss-up" not in " ".join(f["text"] for f in body["factors"]), body["factors"]
 
 
 def test_nbas_total_factor_is_not_silently_dropped():

@@ -82,9 +82,31 @@ MUTATIONS = [
      r"^    if not isinstance\(market, dict\):$", "    if False:"),
 
     # --- the two call sites: these are the actual fix ---
+    # The spread gate grew a `big_enough` term for the margin floor, so this
+    # anchor matches the WHOLE condition and `big_enough` gets its own rows
+    # below. An anchor that matched a prefix would have kept applying here and
+    # silently stopped testing the whole gate -- which is the NOT APPLIED
+    # failure mode, arrived at by making the code correct.
     ("the spread factor never fires",
-     r"^    if margin_market is not None and margin is not None and label and quoted:$",
+     r"^    if margin_market is not None and margin is not None and label and quoted and big_enough:$",
      "    if False:"),
+    # --- the margin floor: `model_margin: 0` narrated a disagreement of nothing ---
+    ("the margin floor is dropped, so a zero gap is narrated again",
+     r"^    big_enough = margin is not None and abs\(margin\) >= MIN_SPREAD_MARGIN$",
+     "    big_enough = margin is not None"),
+    # Anchored to the CODE line, with `^...$`, and not to the bare expression:
+    # the `count=1` takes the first match in the file, and a comment quoting the
+    # expression verbatim sits above this line and absorbs the mutation. That is
+    # not hypothetical -- this row read SILENT for that reason while the
+    # boundary test below it went unrun. See the NOTE in `template.py`.
+    ("the floor becomes exclusive, so a real half-point gap is dropped",
+     r"^    big_enough = margin is not None and abs\(margin\) >= MIN_SPREAD_MARGIN$",
+     "    big_enough = margin is not None and abs(margin) > MIN_SPREAD_MARGIN"),
+    ("the floor is lowered to 0, admitting every margin again",
+     r"^MIN_SPREAD_MARGIN = 0\.5$", "MIN_SPREAD_MARGIN = 0.0"),
+    ("the floor loses its abs(), so a negated small margin narrates again",
+     r"^    big_enough = margin is not None and abs\(margin\) >= MIN_SPREAD_MARGIN$",
+     "    big_enough = margin is not None and margin >= MIN_SPREAD_MARGIN"),
     ("the total gate reverts to the NBA-blind `line` check",
      r"^    if total_market is not None and total is not None and total_line is not None:$",
      '    if total_market is not None and total is not None and total_market.get("line") is not None:'),
