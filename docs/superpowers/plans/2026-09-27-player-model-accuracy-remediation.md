@@ -605,6 +605,50 @@ therefore opponent-blind.
   `src/pl_predictor/evaluate/promotion_rule.py`. Only if that is rejected should Understat
   `rosters` be considered, and then as a priced cost, not a free one.
 
+  **Re-scope, 2026-09-28 — the gap is confirmed and located, the build is not started.**
+  The claim "there is a P(start) classifier and no model of how many minutes a starter plays"
+  is **verified in `models/player_goals.py`**:
+
+  ```python
+  STARTER_MINUTES = 82.9
+  SUBSTITUTE_MINUTES = 39.9
+  expected_minutes = probability_start * STARTER_MINUTES + (1 - probability_start) * probability_sub * SUBSTITUTE_MINUTES
+  ```
+
+  So it is a **two-point mixture with two hard-coded constants**. A starter withdrawn at
+  60' and one who plays the full 90 both receive 82.9, and a substitute's expected
+  minutes ignores how long substitutes actually last.
+
+  **Why it is a real lever, not cosmetic:** `minutes_fraction` multiplies
+
+  ```
+  lam_goals   = goals_estimate   * strength_multiplier * minutes_fraction * availability
+  lam_assists = assists_estimate * strength_multiplier * minutes_fraction * availability
+  ```
+
+  so a 10% error in `minutes_fraction` is a 10% error in every lambda the player model
+  produces. There is no averaging-out across terms.
+
+  **Archive confirmed usable:** 254,510 player-games across 11 seasons of
+  `data/cache/fpl_history/*.csv`, with `minutes` present and non-null on 254,510 of
+  them (mean 29.5, median 0, p75 83, p90 90 — the zeros are non-appearances, so the
+  column is "minutes if played", not "minutes on the pitch").
+
+  **Not done, and why:** splitting starters from substitutes needs the role label, and
+  the obvious column is **not** it — `element` holds numeric FPL player ids, not
+  `"Starter"`/`"Substitute"`. So the first task is to find the real role column (or
+  derive the role from `minutes` plus the fixture's starting-XI) before anything can be
+  fitted. That mapping is not guessed at, because fitting a minutes model on a
+  mislabelled role would produce a plausible, wrong model of exactly the kind this
+  whole remediation has been removing.
+
+  This is now a **fresh modelling project, not a loose end** — it needs the role
+  mapping, a walk-forward fit, and evaluation under the amended rule with a measured
+  noise figure. Given the measured noise (CI half-width 0.0187 on RPS at n=380) and
+  the inter-candidate spread within a fold (0.0156-0.0252), an honest expectation is
+  that this is *at the edge of resolvability* and may well be rejected. That is a
+  legitimate outcome, not a failure.
+
 - [x] **Step 3: Do NOT add a prop backfill path on the current data** — reaffirmed, and
       now evidenced rather than asserted: `docs/player-prop-accuracy-blocker.md` records
       why. A reconstruction is not a pre-game pick, so a backfill would inflate the
