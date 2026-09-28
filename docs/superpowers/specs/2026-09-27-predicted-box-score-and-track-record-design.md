@@ -37,6 +37,7 @@
 | CFB fallback | If no real starter flag exists, rows order by projected volume and the column reads "Projected order", visibly distinct from NFL's "Starter". No shared fiction. |
 | Market comparison | In scope. Model vs closing line, edge, and hit rate when the model disagreed. |
 | Shared component | One `BoxScore` in `predictor-ui`, reused by NFL, CFB and NBA. |
+| Rebuilt-after-kickoff picks (revised 2026-09-28) | **Two records, both shown.** The pre-kickoff record stays the headline. A second figure counts every resolved pick including rebuilt ones, clearly separated and labelled. Every resolved pick is listed with its hit or miss, so nothing is hidden. See B8. |
 
 ## What already exists, and what is broken
 
@@ -245,6 +246,58 @@ column list, do not assume parity with the NFL set). NBA has its own depth chart
 in its roster feed, so `isStarter` should be real rather than `null`; confirm
 before assuming.
 
+### A6 — the hub teasers: F1 next session, and a second row
+
+Added 2026-09-28 after the first deploy. Both are live-page corrections to the
+hub, folded in here rather than opened as a separate plan because they are the
+same surfaces and the same contracts.
+
+**A6.1 — F1 shows the next session, not the next race.**
+
+Today `selectF1` finds the first incomplete race and shows its race prediction.
+Kevin wants the next *event* instead: qualifying first, then the race once the
+weekend arrives. That is a real behavioural change, and it needs a small API
+addition first.
+
+**Measured, 2026-09-28:** the F1 session payload carries no datetime. A
+`qualifying` entry for round 16 has exactly
+`{season, round, race_name, session_type, tier, source}` and nothing else. So
+nothing in the payload can say *when* qualifying is, and "switch to the race on
+Saturday" is not expressible against it. Separately, the snapshot **already
+contains race predictions for future rounds** with `source: live` — round 16's
+race is there today. So the rule must be clock-based, not availability-based, or
+the hub jumps straight to the race and never shows qualifying at all.
+
+So: **`F1_Predictor` gains `session_datetime`** on the session predictions
+(race predictions already have `race_datetime` via `RaceSummary`). It is the
+same value the routes already compute internally to decide `tier`; expose it
+rather than recomputing it. Test the sprint-weekend split — a sprint weekend has
+three sessions and a normal one has one, and the weekend order is
+`sprint_qualifying → sprint → qualifying → race`.
+
+**Selection rule, once the field exists:** take the next incomplete round, then
+walk the sessions in real-world order and show the **earliest one whose
+`session_datetime` is still in the future**, falling back to the race. Never
+show a session that has already happened, and never fall back to "whatever has a
+prediction".
+
+**A6.2 — a second row: the most confident pick.**
+
+Each American-football, PL and NBA teaser grows from one row to two:
+
+- **Row 1, unchanged:** the closest game — `min |home_win_prob − 0.5|`.
+- **Row 2, new:** the most confident pick — `max(p, 1 − p)` over the same
+  payload.
+
+Both come out of arrays the hub already has, so this is **no backend work at
+all**. Label the two so they are not read as one pick: the second is the week's
+most confident call, not another coin flip.
+
+**Interaction.** Two rows in one teaser, the existing two-line grid. The second
+row is visually subordinate — same type, `--color-pr-text` not the accent — so
+the eye still lands on the closest game first. On F1 the teaser keeps its three
+drivers, which is its own shape and does not gain a second group.
+
 ## Sub-project B — the track record rebuild
 
 ### B1 — fix the bucket contract divergence
@@ -325,6 +378,52 @@ NBA's `TrackRecordPanel` is a four-column table over
 n_rebuilt`) and is well behind the NFL/CFB bar. Bring it to parity, reusing the
 same components. NBA already has a `/calibration` endpoint; check whether its
 data is fully surfaced before adding anything new.
+
+### B8 — the full record, beside the pre-kickoff one
+
+Added 2026-09-28 at Kevin's request. Kevin does not want rebuilt-after-kickoff
+picks excluded from the record: he wants full tracking, and he wants to see the
+picks that have already passed, right and wrong.
+
+**The reasoning behind the shape, because it is easy to misread this as a
+reversal of the honesty rule.** A hit rate is only meaningful if the pick
+existed before the result. Counting post-kickoff picks toward one headline number
+means the number can be inflated by construction — pick the winner after the
+fact, score 100% — and it stops carrying information for anyone comparing the
+model against a price. That is the brand commitment in `PRODUCT.md`, and it
+survives this change. What changes is that **nothing is hidden and everything is
+counted**, in two figures instead of one.
+
+**Backend.** `get_track_record` currently drops rebuilt rows from
+`_summarize_games` and returns only their count as `n_rebuilt`. Keep that
+computation for the headline, and add a sibling that summarises **all** resolved
+rows without the exclusion. So:
+
+```
+games: {
+  ...pre-kickoff headline (unchanged, still excludes rebuilt),
+  n_rebuilt,
+  all_picks: { n_resolved, pct_moneyline_correct, pct_ats_correct,
+               pct_totals_correct },   // rebuilt INCLUDED
+  per_pick: [ { game_id, gameday, pick, actual, hit, rebuilt, ... } ],
+}
+```
+
+`per_pick` is the "show the correct and wrong picks that already passed" half:
+one row per resolved game, hit and miss alike, with `rebuilt` on the row so the
+two kinds are distinguishable per pick and not only in aggregate.
+
+**Frontend.** Two figures, side by side and unambiguously labelled — for example
+"Made before kickoff" and "All tracked picks". The pre-kickoff one is the
+headline; the all-picks one sits beneath it with a one-line explanation of why
+they differ. Then the per-pick table, hits and misses in the same list, never
+filtered or collapsed by default.
+
+**`PRODUCT.md` must be updated in the same change.** The brand commitment
+currently says rebuilt picks "never count toward any hit rate", which this makes
+false. Reword it to: the pre-kickoff record is the headline and rebuilt picks
+never count toward it; they are counted and shown separately, and every resolved
+pick is listed. The honesty *rule* survives; the sentence does not.
 
 ## Data contract changes
 
