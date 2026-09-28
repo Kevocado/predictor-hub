@@ -64,28 +64,66 @@ const SESSION_LABELS = {
 // p_top_10 — no p_win. These sessions lead with pole chance.
 const QUALIFYING_SESSIONS = new Set(["sprint_qualifying", "qualifying"]);
 
-/** Find the next upcoming session across all uncompleted races.
+/** The sessions a round actually runs: a sprint weekend has four, a normal
+ *  weekend has two. Both the timing count and the clock walk below use this,
+ *  so they can never disagree about what a round contains. */
+function sessionsOf(race) {
+  return race.is_sprint_weekend
+    ? SESSION_ORDER
+    : SESSION_ORDER.filter((s) => s === "qualifying" || s === "race");
+}
+
+/** A session time the clock can actually read: present and parseable.
+ *  session_datetime absent (the field is not deployed) and session_datetime
+ *  present-but-garbage are the same incapability, not two different ones. */
+const usableTime = (value) =>
+  typeof value === "string" && value !== "" && !Number.isNaN(new Date(value).getTime());
+
+/** How many of this round's sessions carry a usable time. This count, and
+ *  only this count, decides which of the two branches below runs. */
+function usableTimeCount(race) {
+  const dt = race.session_datetime || {};
+  return sessionsOf(race).filter((s) => usableTime(dt[s])).length;
+}
+
+/** Find the session the card should show, walking the uncompleted races.
  *
- *  The selection is clock-based, not data-availability-based. This is
- *  deliberate: the F1 API may already contain race predictions for
- *  future rounds, but showing the race when qualifying is still open
- *  would skip the qualifying session entirely. We look at each race's
- *  session_datetime and pick the earliest session whose clock time is
- *  still in the future. Null or absent session_datetime entries are
- *  skipped (they mean the session doesn't apply or has passed).
- *  If no session is in the future, returns null. */
+ *  TWO FAILURES, BOTH OF WHICH LEAVE THE CLOCK WITH NO FUTURE SESSION, AND
+ *  THEY ARE NOT THE SAME FAILURE — so they never share a branch:
+ *
+ *  1. TIMING IS MISSING. No session of this round has a usable
+ *     session_datetime, so the API cannot answer "what is next" at all.
+ *     (Today this is the production state: the field is committed to the API
+ *     but the hub's F1 container re-fetches its snapshot from GitHub main,
+ *     where it is not merged, so every value is null.) An unanswerable
+ *     question gets the honest older answer — the race card, top three by
+ *     p_win — because a blank card tells a visitor nothing and the older
+ *     answer was true. This is a capability gap, not a schedule.
+ *  2. TIMING IS PRESENT AND THE SESSION HAS PASSED. The clock did answer,
+ *     and its answer is "move on": skip to the next session, and if the race
+ *     is next, show the race. Falling back to the race here — as case 1 does
+ *     — would skip qualifying every single week, because the snapshot ships
+ *     race predictions for future rounds with source: live and any
+ *     availability-based rule jumps straight to the race. No fallback in
+ *     this case: an empty clock with readable times means the sessions are
+ *     behind us, not that we lack the data.
+ *
+ *  The branch is decided by COUNTING usable times (zero vs. not zero), never
+ *  by "the clock came up empty" — that predicate is true in both cases and
+ *  is exactly what must not be used. Returns { race, session }, or null when
+ *  every uncompleted round has readable timing and all of it has passed. */
 function findNextSession(races, now) {
   const uncompleted = (races || []).filter((r) => !r.completed);
   for (const race of uncompleted) {
-    const dt = race.session_datetime || {};
-    const sessions = race.is_sprint_weekend
-      ? SESSION_ORDER
-      : SESSION_ORDER.filter((s) => s === "qualifying" || s === "race");
-    for (const session of sessions) {
-      const sessionDt = dt[session];
-      if (sessionDt && new Date(sessionDt) > now) {
-        return { race, session };
-      }
+    // Case 1 — capability gap: this round cannot say when anything is, so
+    // the clock is not consulted. Its race card, as it was before the field
+    // existed.
+    if (usableTimeCount(race) === 0) return { race, session: "race" };
+    // Case 2 — readable timing: the earliest session still ahead on the
+    // clock wins, and a session whose time has gone is never a candidate.
+    const dt = race.session_datetime;
+    for (const session of sessionsOf(race)) {
+      if (usableTime(dt[session]) && new Date(dt[session]) > now) return { race, session };
     }
   }
   return null;
@@ -103,6 +141,15 @@ function headlineField(session) {
   return QUALIFYING_SESSIONS.has(session) ? "p_pole" : "p_win";
 }
 
+/** The F1 card: the session findNextSession chose, top three by that
+ *  session's headline market.
+ *
+ *  findNextSession returns a race for two different reasons (see its
+ *  comment): readable timing says the race is next, or there is no readable
+ *  timing and the race card is the honest older answer. This function does
+ *  not care which — the market, the source check and the three-driver shape
+ *  are the same either way, which is the point of the fallback: the card
+ *  stays a normal, honest card. */
 export function selectF1(races, predictions, now = Date.now()) {
   const next = findNextSession(races, now);
   if (!next) return { label: "Formula 1", rows: [], empty: "No sessions left this season" };
@@ -136,73 +183,146 @@ export function selectF1(races, predictions, now = Date.now()) {
   return { label: `${race.race_name} — ${sessionLabel(session)}`, rows, empty: rows.length ? "" : `No ${sessionLabel(session.toLowerCase())} picks yet` };
 }
 
+// --- the two-row teasers (non-F1) -------------------------------------------
+//
+// Each non-F1 teaser answers two questions about ONE payload: which game is
+// closest to a coin flip, and which pick is the most confident. The rows must
+// not read as one pick, so each carries a short qualifier saying why it is on
+// the card, and the second row is marked `secondary` so paintRow draws it
+// without the accent number. F1 keeps its three drivers and gains no second
+// group — that is its own shape.
+
+/** Row qualifiers. Exact strings, asserted in the tests: a reader who cannot
+ *  tell the two rows apart takes them for the same pick twice. */
+const QUALIFIER_CLOSEST = "Closest game";
+const QUALIFIER_CONFIDENT = "Most confident pick";
+
+/** Both criteria landed on one fixture. Say so in one row — printing the same
+ *  pick twice reads as a bug, and calling it only one of the two hides that it
+ *  is genuinely both. */
+const QUALIFIER_BOTH = "Closest game and most confident pick";
+
+/** Assemble a selector's two rows. `first` is the row this sport already
+ *  showed (unchanged), `second` is the other view of the same payload, and
+ *  the qualifiers name which is which. Same fixture -> one row carrying both
+ *  qualifiers, never two identical rows.
+ *
+ *  Identity is the name the reader sees: both rows are built from one
+ *  already-filtered list, so equal names mean the same fixture, and a payload
+ *  that carries no id at all cannot collapse two different games into one. */
+function pairUp(first, second, qualifierFirst, qualifierSecond) {
+  if (first.name === second.name) return [{ ...first, qualifier: QUALIFIER_BOTH }];
+  return [
+    { ...first, qualifier: qualifierFirst },
+    { ...second, qualifier: qualifierSecond, secondary: true },
+  ];
+}
+
 export function selectPL(payload) {
   const week = (payload?.fixtures_by_gameweek || {})[payload?.current_gameweek];
+  // One pre-event filter, one candidate list: both rows are drawn from it, so
+  // the second row can never surface a fixture this one already rejected.
   const fixtures = (week?.fixtures || []).filter((f) => !f.finished);
   if (!fixtures.length) return { label: "Premier League", rows: [], empty: "No fixtures this gameweek" };
-  const strongest = fixtures
-    .slice()
-    .sort(
-      (a, b) =>
-        Math.max(b.predicted_home_win, b.predicted_draw, b.predicted_away_win) -
-        Math.max(a.predicted_home_win, a.predicted_draw, a.predicted_away_win),
-    )[0];
-  const pick =
-    strongest.predicted_draw >= Math.max(strongest.predicted_home_win, strongest.predicted_away_win)
-      ? "Draw"
-      : strongest.predicted_home_win >= strongest.predicted_away_win
-        ? strongest.team_home
-        : strongest.team_away;
-  const value = Math.max(strongest.predicted_home_win, strongest.predicted_draw, strongest.predicted_away_win);
-  const row = {
-    name: `${strongest.team_home} v ${strongest.team_away}`,
-    value: pct(value),
-    pick,
-    sub: strongest.predicted_scoreline ? `Most likely score ${strongest.predicted_scoreline}` : "",
+  // Confidence in a three-way market: the probability of the outcome the
+  // model actually calls. Row 1 is the fixture it is most sure about — the
+  // row this teaser has always shown, unchanged.
+  const top = (f) => Math.max(f.predicted_home_win, f.predicted_draw, f.predicted_away_win);
+  const confident = fixtures.slice().sort((a, b) => top(b) - top(a))[0];
+  // Row 2: the fixture nearest a toss-up, the same idea as |p - 0.5| for a
+  // two-way market, read off the called outcome.
+  const closest = fixtures.slice().sort((a, b) => Math.abs(top(a) - 0.5) - Math.abs(top(b) - 0.5))[0];
+  const row = (strongest) => {
+    const pick =
+      strongest.predicted_draw >= Math.max(strongest.predicted_home_win, strongest.predicted_away_win)
+        ? "Draw"
+        : strongest.predicted_home_win >= strongest.predicted_away_win
+          ? strongest.team_home
+          : strongest.team_away;
+    const out = {
+      name: `${strongest.team_home} v ${strongest.team_away}`,
+      value: pct(top(strongest)),
+      pick,
+      sub: strongest.predicted_scoreline ? `Most likely score ${strongest.predicted_scoreline}` : "",
+    };
+    // An edge is only ever shown when the feed says a real price exists —
+    // checked per fixture, so each row carries only its own line.
+    if (strongest.has_live_odds && (strongest.value_bet_flags || []).length) {
+      out.edge = `Value: ${strongest.value_bet_flags.join(", ").replace(/_/g, " ")}`;
+    }
+    return out;
   };
-  // An edge is only ever shown when the feed says a real price exists.
-  if (strongest.has_live_odds && (strongest.value_bet_flags || []).length) {
-    row.edge = `Value: ${strongest.value_bet_flags.join(", ").replace(/_/g, " ")}`;
-  }
-  return { label: "Premier League", rows: [row], empty: "" };
+  return {
+    label: "Premier League",
+    rows: pairUp(row(confident), row(closest), QUALIFIER_CONFIDENT, QUALIFIER_CLOSEST),
+    empty: "",
+  };
 }
+
+// How sure a two-way pick is: the model's own probability for whichever side
+// it favours, so 0.5 is a coin flip and 1.0 is a certainty. Used for the
+// most-confident row; the closest row keeps measuring |home_win_prob - 0.5|.
+const confidence = (p) => Math.max(p.home_win_prob, p.away_win_prob ?? 1 - p.home_win_prob);
 
 export function selectFootball(games, predictions) {
   const upcoming = (games || []).filter((g) => g.home_score == null && g.away_score == null);
   if (!upcoming.length) return { label: "", rows: [], empty: "No games left this week" };
-  const closest = upcoming
+  // One candidate list for both rows: the pre-event filter above is the only
+  // eligibility rule this card has, and the second row does not get its own.
+  const candidates = upcoming
     .map((g) => ({ game: g, p: (predictions || {})[g.game_id] }))
-    .filter((x) => x.p && Number.isFinite(x.p.home_win_prob))
+    .filter((x) => x.p && Number.isFinite(x.p.home_win_prob));
+  if (!candidates.length) return { label: "", rows: [], empty: "No picks for this week's games yet" };
+  // Row 1, unchanged: the game closest to a coin flip.
+  const closest = candidates
+    .slice()
     .sort((a, b) => Math.abs(a.p.home_win_prob - 0.5) - Math.abs(b.p.home_win_prob - 0.5))[0];
-  if (!closest) return { label: "", rows: [], empty: "No picks for this week's games yet" };
-  const { game, p } = closest;
-  const row = {
-    name: `${game.home_team} v ${game.away_team}`,
-    value: pct(Math.max(p.home_win_prob, p.away_win_prob)),
-    pick: p.home_win_prob >= p.away_win_prob ? game.home_team : game.away_team,
-    sub: game.gameday ? new Date(game.gameday).toUTCString().slice(0, 22) : "",
+  // Row 2: the week's most confident call — a different question about the
+  // same games, which is why it is a second row and not a second fetch.
+  const confident = candidates.slice().sort((a, b) => confidence(b.p) - confidence(a.p))[0];
+  const row = ({ game, p }) => {
+    const out = {
+      name: `${game.home_team} v ${game.away_team}`,
+      value: pct(Math.max(p.home_win_prob, p.away_win_prob)),
+      pick: p.home_win_prob >= p.away_win_prob ? game.home_team : game.away_team,
+      sub: game.gameday ? new Date(game.gameday).toUTCString().slice(0, 22) : "",
+    };
+    // A line on some other game says nothing about this one — each row only
+    // ever carries the line of the game it names.
+    if (game.spread_line != null) out.edge = `Line ${game.home_team} ${game.spread_line}`;
+    return out;
   };
-  // A line on some other game says nothing about this one.
-  if (game.spread_line != null) row.edge = `Line ${game.home_team} ${game.spread_line}`;
-  return { label: "", rows: [row], empty: "" };
+  return {
+    label: "",
+    rows: pairUp(row(closest), row(confident), QUALIFIER_CLOSEST, QUALIFIER_CONFIDENT),
+    empty: "",
+  };
 }
 
 export function selectNBA(games) {
+  // One filter, one list, both rows: not completed and carrying a usable
+  // prediction — the card's only pre-event rule, reused rather than repeated.
   const open = (games || []).filter(
     (g) => !g.completed && g.prediction && Number.isFinite(g.prediction.home_win_prob),
   );
   if (!open.length) return { label: "NBA", rows: [], empty: "No games with a pick right now" };
-  const game = open
+  // Row 1, unchanged: the game closest to a coin flip.
+  const closest = open
     .slice()
     .sort((a, b) => Math.abs(a.prediction.home_win_prob - 0.5) - Math.abs(b.prediction.home_win_prob - 0.5))[0];
-  const p = game.prediction;
-  return {
-    label: "NBA",
-    rows: [{
+  // Row 2: the most confident pick over the same open games.
+  const confident = open.slice().sort((a, b) => confidence(b.prediction) - confidence(a.prediction))[0];
+  const row = (game) => {
+    const p = game.prediction;
+    return {
       name: `${game.home_team} v ${game.away_team}`,
       value: pct(Math.max(p.home_win_prob, p.away_win_prob ?? 1 - p.home_win_prob)),
       pick: p.home_win_prob >= 0.5 ? game.home_team : game.away_team,
-    }],
+    };
+  };
+  return {
+    label: "NBA",
+    rows: pairUp(row(closest), row(confident), QUALIFIER_CLOSEST, QUALIFIER_CONFIDENT),
     empty: "",
   };
 }
@@ -240,13 +360,23 @@ function paintRow(row) {
   name.className = "teaser-name";
   name.textContent = row.name;
   const num = document.createElement("span");
-  num.className = "teaser-num";
+  // Row 1 wears the accent number. Row 2 is the same payload seen a second
+  // way and must not borrow that emphasis: it gets no class at all, so it
+  // keeps the row's own --color-pr-text at the row's own size — the spec's
+  // "same type, not the accent", and no new colour token, because hub tokens
+  // are drift-tested against predictor-ui. The eye lands on row 1 first.
+  if (!row.secondary) num.className = "teaser-num";
   num.textContent = row.value;
   el.append(name, num);
-  if (row.sub) {
+  // The qualifier leads the note line, so the two rows say why each is on
+  // the card — "Closest game" versus "Most confident pick" — instead of
+  // reading as one pick printed twice. F1 rows carry no qualifier and are
+  // rendered exactly as before.
+  const note = [row.qualifier, row.sub].filter(Boolean).join(" · ");
+  if (note) {
     const s = document.createElement("span");
     s.className = "teaser-note";
-    s.textContent = row.sub;
+    s.textContent = note;
     el.append(s);
   }
   // Edge is rendered only when the selector set it, and the selector sets it

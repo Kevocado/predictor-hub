@@ -218,6 +218,103 @@ test("with no uncompleted race says so rather than showing the last one", () => 
   assert.match(out.empty, /season/i);
 });
 
+// --- 9. The capability gap: session_datetime is missing entirely -----------
+//
+// Two failures leave the card with no future session, and they are not the
+// same failure. These tests exist as a PAIR: the first one fails if the
+// fallback disappears, the second fails if the fallback spreads to a round
+// whose timing is readable. Neither branch may swallow the other.
+
+// The live production shape: the field is committed to the F1 API but the
+// branch carrying it is not merged, and the container re-fetches its snapshot
+// from GitHub main — so every session_datetime is null and no round can say
+// when anything is.
+const TIMINGLESS_RACES = [
+  { season: 2026, round: 3, race_name: "Australian Grand Prix", race_datetime: "2026-03-08T05:00:00Z", completed: true, is_sprint_weekend: false },
+  { season: 2026, round: 16, race_name: "Singapore Grand Prix", race_datetime: "2026-10-04T07:00:00Z", completed: false, is_sprint_weekend: false },
+];
+
+// One race payload reused by the fallback tests: five drivers, so a card that
+// returns every driver or the wrong three fails on the count.
+const RACE_PREDICTIONS = [
+  { driver_id: "norris", p_win: 0.40, p_podium: 0.70 },
+  { driver_id: "verstappen", p_win: 0.30, p_podium: 0.60 },
+  { driver_id: "russell", p_win: 0.15, p_podium: 0.45 },
+  { driver_id: "hamilton", p_win: 0.09, p_podium: 0.30 },
+  { driver_id: "leclerc", p_win: 0.06, p_podium: 0.25 },
+];
+
+test("no session_datetime anywhere: the card falls back to the race, still three drivers", () => {
+  // The wall clock says qualifying is still a day out, but the payload
+  // cannot say that — with no readable timing the clock is never consulted,
+  // so the card answers the older question (the next race) instead of
+  // rendering nothing. Saying nothing is a worse answer than an honest older
+  // one: this is a capability gap, not a schedule.
+  const out = selectF1(
+    TIMINGLESS_RACES,
+    { 16: { race: { source: "live", predictions: RACE_PREDICTIONS } } },
+    BEFORE_QUALIFYING,
+  );
+  assert.equal(out.label, "Singapore Grand Prix — Race");
+  assert.equal(out.empty, "");
+  assert.equal(out.rows.length, 3, "the fallback is still a top-three card");
+  assert.deepEqual(out.rows.map((r) => r.name), ["Norris", "Verstappen", "Russell"]);
+  assert.equal(out.rows[0].sub, "Podium 70%");
+  // F1 keeps its own shape: three drivers, no second group, no qualifier.
+  assert.equal(out.rows[0].qualifier, undefined);
+});
+
+test("the capability gap does not move with the clock: no timing means no clock", () => {
+  // Same payload, two moments a day apart. If the answer changed with `now`
+  // we would be pretending to have timing we do not have.
+  const preds = { 16: { race: { source: "live", predictions: RACE_PREDICTIONS } } };
+  const before = selectF1(TIMINGLESS_RACES, preds, BEFORE_QUALIFYING);
+  const after = selectF1(TIMINGLESS_RACES, preds, AFTER_RACE);
+  assert.equal(after.label, before.label);
+  assert.deepEqual(after.rows, before.rows);
+});
+
+test("the race fallback still refuses a post-event source", () => {
+  // Missing timing is not missing honesty. The fallback runs through the same
+  // isPreEvent whitelist as the clock path — one whitelist, no second one —
+  // and "backtest" is the documented source no other test had pinned.
+  for (const source of ["rebuilt", "backtest", "model"]) {
+    const out = selectF1(
+      TIMINGLESS_RACES,
+      { 16: { race: { source, predictions: RACE_PREDICTIONS } } },
+      BEFORE_QUALIFYING,
+    );
+    assert.equal(out.rows.length, 0, `source "${source}" must not render as a call`);
+    assert.ok(out.empty, `source "${source}" must still say something`);
+  }
+});
+
+// Timing present for every round. Round 15's race has been run and the API
+// has not flipped `completed` yet — a stale row the fallback would stop on,
+// and the thing that tells the two branches apart from the outside.
+const TIMED_RACES = [
+  { season: 2026, round: 15, race_name: "Azerbaijan Grand Prix", race_datetime: "2026-09-20T12:00:00Z", completed: false, is_sprint_weekend: false, session_datetime: { qualifying: "2026-09-19T15:00:00Z", race: "2026-09-20T12:00:00Z" } },
+  F1_RACES[1],
+];
+
+test("timing present, qualifying past, race future: the race, reached by the clock, not the fallback", () => {
+  const out = selectF1(
+    TIMED_RACES,
+    {
+      15: { race: { source: "live", predictions: [{ driver_id: "leclerc", p_win: 0.20, p_podium: 0.45 }] } },
+      16: { race: { source: "live", predictions: RACE_PREDICTIONS } },
+    },
+    AFTER_QUALIFYING,
+  );
+  // Readable timing exists, so the fallback must not fire: the clock walks
+  // past round 15 (all of its time has gone) to round 16, where qualifying
+  // has just run and the race is next. The fallback never reads the clock —
+  // it would stop at the first uncompleted round and show Azerbaijan.
+  assert.equal(out.label, "Singapore Grand Prix — Race");
+  assert.equal(out.rows[0].name, "Norris", "round 16's race, not the stale round 15 one");
+  assert.equal(out.rows[0].value, "40%");
+});
+
 // --- render contract (Task 7, asserted textually: no jsdom in this repo) ---
 
 import { readFileSync } from "node:fs";
@@ -237,6 +334,19 @@ test("one failed sport never touches another sport's slot", () => {
   // Each sport is fetched in its own promise, not in one Promise.all, so a
   // single rejection cannot short-circuit the rest.
   assert.doesNotMatch(src, /await Promise\.all/, "Promise.all short-circuits on the first rejection");
+});
+
+test("the second row is drawn without the accent number, and its qualifier reaches the note", () => {
+  // The spec's subordination: row 2 keeps the row's own type and
+  // --color-pr-text instead of the accent number, so the eye lands on row 1.
+  // No class at all is the point — a new colour or a new token would break
+  // the hub's token-parity test against predictor-ui.
+  assert.match(src, /if \(!row\.secondary\) num\.className = "teaser-num"/,
+    "row 2 must not borrow row 1's accent number");
+  assert.doesNotMatch(src, /var\(--color-/, "teasers.js names no colour: row 2 needs no new token");
+  // And the qualifier (why each row is on the card) leads the note line,
+  // joined with whatever detail the row already carried.
+  assert.match(src, /\[row\.qualifier, row\.sub\]/, "the row qualifier must reach the rendered note");
 });
 
 test("the F1 teaser keeps its source signal and prefers a real snapshot date", () => {
@@ -409,7 +519,9 @@ test("the football card picks the game closest to a coin flip", () => {
 });
 
 test("the football card is the one that carries the line", () => {
-  // Only the closest game is shown, so a line on any other game is irrelevant.
+  // Row 1 is the closest game, so a line on any other game can never land on
+  // it: each row carries only the line of the game it names. Row 2 may show
+  // its own game's line, which is row 2's business.
   const out = selectFootball(
     [
       { game_id: "g1", home_team: "AAA", away_team: "BBB", gameday: "2026-11-05T00:00:00", spread_line: -7 },
@@ -419,6 +531,7 @@ test("the football card is the one that carries the line", () => {
   );
   assert.equal(out.rows[0].name, "CCC v DDD");
   assert.equal(out.rows[0].edge, undefined, "the shown game has no line, so no edge is claimed");
+  assert.equal(out.rows[1].edge, "Line AAA -7", "the confident row shows only its own game's real line");
 });
 
 test("the football card ignores finished games", () => {
@@ -447,6 +560,116 @@ test("NBA picks the closest game among those with a prediction", () => {
   ]);
   assert.equal(out.rows[0].name, "LAL v GSW");
   assert.equal(out.rows[0].value, "50%");
+});
+
+// --- the second row: two questions about one payload -----------------------
+
+test("the football teaser returns two rows: the closest game, then the most confident pick", () => {
+  const out = selectFootball(
+    [
+      { game_id: "g1", home_team: "AAA", away_team: "BBB", gameday: "2026-11-05T00:00:00", spread_line: -7 },
+      { game_id: "g2", home_team: "CCC", away_team: "DDD", gameday: "2026-11-06T00:00:00", spread_line: -2.5 },
+      { game_id: "g3", home_team: "EEE", away_team: "FFF", gameday: "2026-11-07T00:00:00", spread_line: null },
+    ],
+    {
+      g1: { home_win_prob: 0.60, away_win_prob: 0.40 },
+      g2: { home_win_prob: 0.62, away_win_prob: 0.38 },
+      g3: { home_win_prob: 0.51, away_win_prob: 0.49 },
+    },
+  );
+  assert.equal(out.rows.length, 2);
+  assert.equal(out.rows[0].name, "EEE v FFF", "row 1 is still the game closest to a coin flip");
+  assert.equal(out.rows[0].value, "51%");
+  assert.equal(out.rows[0].qualifier, "Closest game");
+  assert.equal(out.rows[0].secondary, undefined, "row 1 keeps the accent");
+  assert.equal(out.rows[1].name, "CCC v DDD", "row 2 is the most confident pick, not a second coin flip");
+  assert.equal(out.rows[1].value, "62%");
+  assert.equal(out.rows[1].qualifier, "Most confident pick");
+  assert.equal(out.rows[1].secondary, true);
+  assert.notEqual(out.rows[0].name, out.rows[1].name, "the two rows must not be one pick printed twice");
+  // Edge travels with the row it belongs to: row 2's game has a real line,
+  // row 1's does not.
+  assert.equal(out.rows[1].edge, "Line CCC -2.5");
+  assert.equal(out.rows[0].edge, undefined);
+});
+
+test("the PL teaser returns two rows: the fixture it is surest of, then the closest one", () => {
+  // PL's row 1 has always been the fixture the model is most sure about (see
+  // the test above this section) and stays row 1, so row 2 carries the other
+  // question — the fixture nearest a toss-up. The qualifiers, not the order,
+  // are what tell the two apart.
+  const out = selectPL({
+    current_gameweek: 9,
+    fixtures_by_gameweek: { 9: { gameweek: 9, fixtures: [
+      { event_id: "1", team_home: "A", team_away: "B", predicted_home_win: 0.44, predicted_draw: 0.25, predicted_away_win: 0.31, predicted_scoreline: "1-1", has_live_odds: false, value_bet_flags: [] },
+      { event_id: "2", team_home: "C", team_away: "D", predicted_home_win: 0.86, predicted_draw: 0.08, predicted_away_win: 0.06, predicted_scoreline: "3-0", has_live_odds: false, value_bet_flags: [] },
+    ] } },
+  });
+  assert.equal(out.rows.length, 2);
+  assert.equal(out.rows[0].name, "C v D");
+  assert.equal(out.rows[0].value, "86%");
+  assert.equal(out.rows[0].qualifier, "Most confident pick");
+  assert.equal(out.rows[1].name, "A v B", "the fixture nearest 50% on its called outcome");
+  assert.equal(out.rows[1].value, "44%");
+  assert.equal(out.rows[1].qualifier, "Closest game");
+  assert.equal(out.rows[1].secondary, true);
+  assert.notEqual(out.rows[0].name, out.rows[1].name);
+});
+
+test("the NBA teaser returns two rows: the closest game, then the most confident pick", () => {
+  const out = selectNBA([
+    { game_id: "1", home_team: "NYK", away_team: "BOS", completed: false, prediction: { home_win_prob: 0.55 } },
+    { game_id: "2", home_team: "LAL", away_team: "GSW", completed: false, prediction: { home_win_prob: 0.50 } },
+    // Neither of these may reach either row: one has no prediction, one has
+    // already finished. One pre-event filter, shared by both rows.
+    { game_id: "3", home_team: "MIA", away_team: "DAL", completed: false, prediction: null },
+    { game_id: "4", home_team: "PHX", away_team: "GSW", completed: true, prediction: { home_win_prob: 0.99 } },
+  ]);
+  assert.equal(out.rows.length, 2);
+  assert.equal(out.rows[0].name, "LAL v GSW");
+  assert.equal(out.rows[0].value, "50%");
+  assert.equal(out.rows[0].qualifier, "Closest game");
+  assert.equal(out.rows[1].name, "NYK v BOS");
+  assert.equal(out.rows[1].value, "55%");
+  assert.equal(out.rows[1].qualifier, "Most confident pick");
+  assert.equal(out.rows[1].secondary, true);
+  assert.ok(
+    out.rows.every((r) => r.name !== "MIA v DAL" && r.name !== "PHX v GSW"),
+    "a game with no pick, or one already finished, appears in neither row",
+  );
+});
+
+test("one game that is genuinely both: one row that says so, never the same pick twice", () => {
+  // With one pick left in the week, closest and most confident are the same
+  // game by definition. Print it once and say it is both.
+  const football = selectFootball(
+    [{ game_id: "g1", home_team: "AAA", away_team: "BBB", gameday: "2026-11-05T00:00:00", spread_line: null }],
+    { g1: { home_win_prob: 0.51, away_win_prob: 0.49 } },
+  );
+  assert.equal(football.rows.length, 1, "the same pick must not print twice");
+  assert.equal(football.rows[0].name, "AAA v BBB");
+  assert.equal(football.rows[0].qualifier, "Closest game and most confident pick");
+  assert.equal(football.rows[0].secondary, undefined, "the only row is still row 1");
+
+  const nba = selectNBA([
+    { game_id: "1", home_team: "NYK", away_team: "BOS", completed: false, prediction: { home_win_prob: 0.55 } },
+  ]);
+  assert.equal(nba.rows.length, 1);
+  assert.equal(nba.rows[0].qualifier, "Closest game and most confident pick");
+
+  // PL can be both with two fixtures in hand: in a three-way market every
+  // called outcome can sit under 50%, and then nearest-to-0.5 and surest are
+  // the same fixture. Still one row.
+  const pl = selectPL({
+    current_gameweek: 9,
+    fixtures_by_gameweek: { 9: { gameweek: 9, fixtures: [
+      { event_id: "1", team_home: "A", team_away: "B", predicted_home_win: 0.44, predicted_draw: 0.30, predicted_away_win: 0.26, predicted_scoreline: "1-1", has_live_odds: false, value_bet_flags: [] },
+      { event_id: "2", team_home: "C", team_away: "D", predicted_home_win: 0.46, predicted_draw: 0.30, predicted_away_win: 0.24, predicted_scoreline: "1-1", has_live_odds: false, value_bet_flags: [] },
+    ] } },
+  });
+  assert.equal(pl.rows.length, 1, "two toss-ups with the same surest fixture is still one row");
+  assert.equal(pl.rows[0].name, "C v D");
+  assert.equal(pl.rows[0].qualifier, "Closest game and most confident pick");
 });
 
 // --- 7. The card's shape: three drivers, in probability order ---
