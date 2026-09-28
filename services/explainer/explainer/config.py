@@ -17,10 +17,21 @@ SPORTS = ("pl", "f1", "nfl", "cfb", "nba")
 #: reason.** It was refused alongside F1 because "the v2 panel is specified for the
 #: three sports whose facts carry the markets it draws" — a claim checked for F1
 #: and assumed for NBA. NBA's `/facts` carries `moneyline`, `spread` and `total`,
-#: the same three keys in the same shape as NFL and CFB, so every component the
-#: panel draws is fed. `test_unserved_sport.py` asserts that against the facts
-#: builder, so if NBA's markets ever change the question is asked again rather
-#: than assumed either way.
+#: so every component the panel draws is fed.
+#:
+#: **The shape is NOT the same as NFL and CFB's, and that difference is why serving
+#: NBA was not a one-line change.** NFL and CFB put the MARKET's line in `line`.
+#: NBA puts the MODEL's own projected margin there -- `"BOS by 4.2"`, or the literal
+#: `"Toss-up"` -- and the market's in a separate `market_line`, which it emits only
+#: when a pre-tip market row exists. A panel that reads `line` as the market's
+#: renders the model compared with itself, and renders it silently in the no-quote
+#: case that NBA hits most often.
+#:
+#: An earlier version of this comment said "the same three keys in the same shape
+#: as NFL and CFB". That sentence is what the refusal was justified on, and it was
+#: false in the one respect that mattered -- so the comment that a future session
+#: reads first is now the one that is true. The code carrying the difference is
+#: `template.MARKET_LINE_KEY`; `tests/test_template_quoted_line.py` pins it.
 #:
 #: Kept beside SPORTS so the "configured" set and the "answered" set are read
 #: together — a new sport has to be added to both deliberately rather than by

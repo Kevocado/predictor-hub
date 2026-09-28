@@ -131,7 +131,8 @@ class Explainer:
             # refused request must cost nothing and must not touch the upstream.
             #
             # A refusal, not a template. A template here would render a panel
-            # and spend nothing, which reads as success — and F1 is
+            # and spend nothing, which reads as success — and F1 is still
+            # configured, so nothing else would ever say it had gone.
             raise NotFound(f"{sport} is not served")
         facts = await self._facts(sport, id)
         news = await headlines(self.client, sport, _news_terms(facts))

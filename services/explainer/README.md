@@ -189,6 +189,27 @@ run against the wrong interpreter and fail collection with
 Tests never touch the network: OpenRouter and ESPN are mocked with `respx`,
 and sport APIs with mocked routes.
 
+**One test needs a sibling checkout, and it FAILS rather than skips if it cannot
+find one.** `tests/test_unserved_sport.py::test_nbas_facts_carry_the_markets_the_panel_draws`
+reads `NBA_Predictor`'s `src/nba_predictor/api/facts.py` from that repo's own
+git and runs its `_markets`, so the claim that NBA can serve is checked against
+the builder that has to produce the data rather than against a fixture written
+here. It looks for `../NBA_Predictor` (and any `NBA_Predictor` beside this
+checkout); set `NBA_REPO=/path/to/NBA_Predictor` to point it elsewhere.
+
+It fails rather than skips deliberately: a skip would make the whole
+justification for serving NBA unverifiable while still reporting a green suite,
+which is the failure mode this project keeps hitting. The cost is that a copy of
+`services/explainer` on its own, with no sibling, has one red test. That is
+documented here because this repo's only workflow is a manually-dispatched static
+deploy with no pytest job, so nothing else will tell you.
+
+Run the mutation harnesses the same way:
+
+```sh
+uv run --extra dev python tools/mutcheck_template_line.py
+```
+
 ## Rollout
 
 Follow spec section 4's staged order. Each step is independently reversible,

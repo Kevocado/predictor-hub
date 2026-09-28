@@ -13,8 +13,17 @@ reasoning was checked for F1 and assumed for NBA, and NBA's `/facts` carries
 NFL and CFB:
 
     {"market": "moneyline", "model": {home: p, away: 1 - p}}
-    {"market": "spread",    "model_margin": m, "line": <team> <n>}
-    {"market": "total",     "model_total": t}
+    {"market": "spread",    "model_margin": m, "line": <MODEL's own wording>,
+                            "market_line": <MARKET's line, only when quoted>}
+    {"market": "total",     "model_total": t,
+                            "market_line": <MARKET's total, only when quoted>}
+
+**The `line` key is the trap, and this listing used to hide it.** It showed NBA's
+spread as `line: <team> <n>`, which is what NFL emits, so the file justifying
+serving NBA depicted NBA as identical to the two football sports -- the original
+assumption, still in the file. NBA puts the MODEL's projected margin in `line`
+and the market's in `market_line`, and emits `market_line` only when a pre-tip
+market row exists. See `explainer/template.py` `MARKET_LINE_KEY`.
 
 Every component the v2 panel draws is fed by that. NBA was refused on a reason
 that was true of F1 and false of NBA, and it now serves.
@@ -55,6 +64,18 @@ UNSERVED = tuple(s for s in SPORTS if s not in SERVED_SPORTS)
 #: and market row all read from `markets`.
 NBA_REQUIRED_MARKETS = {"moneyline", "spread", "total"}
 
+#: What each market must CARRY, not merely be called. A decoy returning
+#: `[{"market": "moneyline"}, {"market": "spread"}, {"market": "total"}]` with no
+#: figures at all satisfied the name-only version of this check -- and so did NBA
+#: dropping `market_line` everywhere, which is the key the whole second commit
+#: turns on, so the panel would revert to the model-vs-model sentence with this
+#: test still green.
+NBA_REQUIRED_FIGURES = {
+    "moneyline": ("model",),
+    "spread": ("model_margin",),
+    "total": ("model_total",),
+}
+
 
 def build_app(tmp_path, **sport_apis):
     """The FastAPI app, for the status-code assertions."""
@@ -62,8 +83,9 @@ def build_app(tmp_path, **sport_apis):
 
 
 def build(tmp_path, **sport_apis):
-    """The Explainer, for the ledger and upstream assertions."""
-    """An Explainer wired the way the app's lifespan wires it.
+    """The Explainer, for the ledger and upstream assertions.
+
+An Explainer wired the way the app's lifespan wires it.
 
     `TestClient(app)` does NOT run the lifespan, so `app.state.explainer` is never
     built and every route raises `AttributeError: 'State' object has no attribute
@@ -155,19 +177,75 @@ def test_a_served_sport_with_a_dead_backend_is_a_502_not_a_404(tmp_path, respx_m
         res = app.get(f"/explain/{sport}/g1")
 
     assert res.status_code == 502, res.text
-    assert "not reachable" in res.json()["detail"] or "unreachable" in res.json()["detail"].lower(), res.text
+    # The first disjunct of the original -- `"not reachable" in detail` -- can
+    # never be true: the service's message is f"{sport} API unreachable: ...".
+    # A disjunct that cannot be satisfied is a test of nothing.
+    assert "unreachable" in res.json()["detail"].lower(), res.text
 
 
 def test_nba_is_served(tmp_path, respx_mock):
     """The regression this change exists to close: NBA was refused alongside F1 on
-    an assumption that was never checked against NBA's own facts."""
+    an assumption that was never checked against NBA's own facts.
+
+    **Two things were wrong with the first version, and both made it unable to
+    fail.**
+
+    *It asserted `answer.get("verdict")`.* `service._generate` catches every
+    exception and falls back to `minimal()`, whose verdict is the truthy string
+    "No explanation is available for this one yet." So mutating the template to
+    `raise RuntimeError` for every NBA render left THIS TEST PASSING -- verified.
+    The suite as a whole caught it elsewhere, but the guard whose stated job is
+    "NBA answers" was green while every NBA reader saw the not-ready stub. A
+    guard must assert something the failure cannot satisfy, so this one requires a
+    factor whose key is a market the bundle actually carries.
+
+    *It used `facts(sport="nba")`, which is an NFL bundle with the `sport` string
+    relabelled* -- "Chiefs at Ravens", a "before kickoff" record, one spread
+    market, and no `market_line` anywhere. So it exercised no NBA shape at all:
+    not the two-key problem, not the quoted line, not "tip-off". The bundle is
+    built here instead, and it is the shape NBA's own `_markets` returns.
+
+    (The old `test_no_explain_proxy.py` had the same relabelling habit, and the
+    project rule is that a double is built with the code that produces it.)
+    """
     _no_news(respx_mock)
     respx_mock.get(url__startswith="http://nba.test/api/facts/g1").mock(
-        return_value=httpx.Response(200, json=facts(sport="nba")))
+        return_value=httpx.Response(200, json=_nba_facts()))
 
     answer = asyncio.run(build(tmp_path, sport_api_nba="http://nba.test/api").explain("nba", "g1"))
 
-    assert answer.get("verdict"), answer
+    keys = {f["key"] for f in answer.get("factors", [])}
+    assert keys, f"NBA produced no factors at all: {answer}"
+    assert keys & {"moneyline", "spread", "total"}, (
+        f"NBA's answer carries none of the markets its own facts supply, so the "
+        f"panel has nothing to draw. Got {sorted(keys)}. A `minimal()` fallback "
+        f"would pass an `answer.get('verdict')` assertion with "
+        f"{answer.get('verdict')!r}, which is why this asserts factors instead."
+    )
+
+
+def _nba_facts() -> dict:
+    """An NBA facts bundle, built the shape NBA's own `_markets` produces.
+
+    Deliberately includes a quoted spread line, so the bundle exercises the
+    `market_line` path -- and a `record.label` that says "tip-off", because the
+    template's `_START` and the panel's record label have to agree for a sport
+    that does not use the word "kickoff".
+    """
+    return {
+        "sport": "nba", "id": "g1", "title": "MIA at BOS",
+        "starts_at": "2026-10-20T00:20:00Z", "status": "upcoming",
+        "pick_timing": "pre_kickoff", "pick": {"label": "BOS", "prob": 0.62},
+        "markets": [
+            {"market": "moneyline", "model": {"BOS": 0.62, "MIA": 0.38}},
+            {"market": "spread", "model_margin": 4.2,
+             "line": "BOS by 4.2", "market_line": "BOS -3.5"},
+            {"market": "total", "model_total": 226.5, "market_line": "224.5"},
+        ],
+        "drivers": [], "context": {}, "players": [],
+        "record": {"label": "Picks made before tip-off", "hits": 30, "settled": 50},
+        "result": None,
+    }
 
 
 def test_nba_is_in_the_served_list_and_f1_is_not():
@@ -211,8 +289,6 @@ def test_nbas_facts_carry_the_markets_the_panel_draws():
     make the whole justification for serving NBA unverifiable, which is the one
     thing this file exists to prevent.
     """
-    import re
-
     source = _nba_facts_source()
     if "def _markets" not in source:
         pytest.fail("could not find _markets() in NBA's facts.py, so the market "
@@ -232,8 +308,31 @@ def test_nbas_facts_carry_the_markets_the_panel_draws():
         f"now. It returns {sorted(set(markets))}."
     )
 
+    # The names are necessary and not sufficient. Each market must also carry the
+    # model figure the panel reads, because a bundle of three empty market dicts
+    # satisfies the name check while the panel has nothing to draw -- and the
+    # spread must carry the QUOTED key, because `template.MARKET_LINE_KEY` reads
+    # `market_line` for NBA and falls back to nothing at all.
+    for name, keys in NBA_REQUIRED_FIGURES.items():
+        market = markets.get(name)
+        assert market is not None, f"{name} missing entirely"
+        for key in keys:
+            assert market.get(key) is not None, (
+                f"NBA's {name} market has no {key!r}: {market}. A market with a name "
+                f"and no figure is a label, not a market."
+            )
+    assert markets["spread"].get("market_line"), (
+        "NBA's spread carries no `market_line`. The template reads that key for NBA "
+        f"and has no fallback -- `line` is the MODEL's own wording there -- so "
+        f"dropping it silently removes the model's disagreement with the market: "
+        f"{markets['spread']}"
+    )
+    assert markets["total"].get("market_line"), (
+        f"NBA's total carries no `market_line`: {markets['total']}"
+    )
 
-def _run_nba_markets(source: str) -> set[str]:
+
+def _run_nba_markets(source: str) -> dict[str, dict]:
     """Exec NBA's `_markets` with its own helpers and ask what it returns."""
     import re
 
@@ -260,27 +359,9 @@ def _run_nba_markets(source: str) -> set[str]:
     game = {"home_team": "BOS", "away_team": "PHI", "spread_line": -3.5, "total_line": 224.5}
     prediction = {"home_win_prob": 0.62, "predicted_margin": 4.2, "predicted_total": 226.5}
     out = env["_markets"](game, prediction)
-    return {str(m.get("market")) for m in out if isinstance(m, dict)}
+    return {str(m.get("market")): m for m in out if isinstance(m, dict)}
 
 
-def _markets_from_source(source: str) -> set[str]:
-    """A structural fallback: the markets inside the `_markets` body only.
-
-    Scoped to the function so a name in a comment elsewhere in the file cannot
-    satisfy it, and each market must be inside a dict that also carries a model
-    figure -- a bare `"market": "spread"` with no `model*` beside it is a label,
-    not a market.
-    """
-    import re
-
-    i = source.index("def _markets")
-    body = source[i:source.index("\ndef ", i + 1)]
-    found = set()
-    for block in re.finditer(r'\{[^{}]*"market":\s*"(\w+)"[^{}]*\}', body, re.S):
-        chunk = block.group(0)
-        if any(k in chunk for k in ('"model"', '"model_margin"', '"model_total"', '"model_cover_prob"')):
-            found.add(block.group(1))
-    return found
 
 
 def _nba_facts_source() -> str:
@@ -297,8 +378,21 @@ def _nba_facts_source() -> str:
         f"the panel's markets is UNVERIFIED rather than true. Set NBA_REPO. "
         f"Looked in {[str(c) for c in candidates[:4]]}"
     )
-    src = subprocess.run(
-        ["git", "-C", str(root), "show", "origin/main:src/nba_predictor/api/facts.py"],
-        capture_output=True, text=True, check=True).stdout
+    try:
+        src = subprocess.run(
+            ["git", "-C", str(root), "show", "origin/main:src/nba_predictor/api/facts.py"],
+            capture_output=True, text=True, check=True).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        # Not a bare re-raise. `origin/main` is absent in a fork, on a branch that
+        # has not pushed it, and when git is not installed at all, and the default
+        # `CalledProcessError` says none of that -- it prints a command line and an
+        # exit status. This test exists to keep a CLAIM honest, so when it cannot
+        # check the claim it has to say the claim is unchecked.
+        pytest.fail(
+            f"could not read NBA's facts.py from {root} "
+            f"(origin/main:src/nba_predictor/api/facts.py), so the claim that NBA "
+            f"carries the panel's markets is UNVERIFIED rather than true. "
+            f"Underlying error: {exc}"
+        )
     assert src.strip(), "NBA's facts.py came back empty; the check would pass vacuously"
     return src

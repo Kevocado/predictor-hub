@@ -20,6 +20,34 @@ from __future__ import annotations
 from .contract import as_dict, band_for, market_shape, pick_prob
 
 _TENS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]
+#: Which key holds the MARKET's quoted line, per sport. Read in order; the first
+#: key present with a non-empty value wins, and if none is present the factor is
+#: omitted rather than narrated against nothing.
+#:
+#: This is a table rather than a precedence rule because `line` does not mean one
+#: thing across the family. NFL and CFB put the market's line there; NBA puts the
+#: MODEL's own projected margin there and the market's in `market_line`. A blanket
+#: fallback reaches the model's wording whenever NBA has no pre-tip quote, and
+#: NBA omits `market_line` in exactly that case -- so the fallback fired on NBA's
+#: common path and rendered "against a line of Toss-up".
+#:
+#: The end state is NFL and CFB emitting `market_line` the way NBA already does
+#: (NBA's own facts.py says so: "`market_line` in every market, so the panel reads
+#: one key for the quoted book line. `line` is reserved for the model's own
+#: wording"). One line each in two sibling repos, and this table empties.
+#:
+#: Absent from the table means the default, which is right for a sport whose `line`
+#: IS the market's line. A new sport that puts its model's own wording in `line`
+#: must be added here -- and that is the failure this table exists to make
+#: visible rather than guess at.
+#: Only the sports whose `line` is NOT the market's need an entry. Everyone else
+#: gets the default, which prefers `market_line` and falls back to `line` -- right
+#: for a sport that puts the market's line in either key, and wrong for one that
+#: puts something else in `line`. NBA is currently the only such sport.
+MARKET_LINE_KEY: dict[str, tuple[str, ...]] = {
+    "nba": ("market_line",),
+}
+
 #: How each sport names the moment the game begins. NBA says "tip-off" in its
 #: prompts (`prompts.py` `SPORT_NOTES`) and in the record label the panel renders,
 #: so a sentence reading "rebuilt after kickoff" sat next to "picks made before
@@ -67,7 +95,7 @@ def _outcome_key(by_key: dict) -> str:
     return "context"
 
 
-def _quoted_line(market: dict | None) -> str | None:
+def _quoted_line(market: dict | None, keys: tuple[str, ...] = ("market_line", "line")) -> str | None:
     """The line a READER can check against a book, from whichever key this sport
     used to put it in.
 
@@ -82,10 +110,27 @@ def _quoted_line(market: dict | None) -> str | None:
     narrating a prediction without its timing, so the two are not adjacent
     concerns -- they are the same rule.
 
-    `market_line` wins when both are present, because the quoted line is the one a
-    reader can check and the model's own wording is not. Neither key means there is
-    no disagreement to narrate, and the caller omits the factor rather than
-    inventing one.
+    **Which key holds the market's line is a per-sport fact, not a precedence
+    rule.** NFL and CFB put it in `line` and have no `market_line`; NBA puts the
+    MODEL's own wording in `line` and the market's in `market_line`. So the
+    fallback to `line` is right for two sports and wrong for one, and for NBA it
+    renders the model compared with itself.
+
+    The first version of this helper preferred `market_line` and fell back to
+    `line`, on the reasoning that a lower-priority source of the same thing is
+    harmless. It is not, because the fallback key does not hold the same thing:
+    NBA emits `market_line` only when there is a pre-tip market row, so in the
+    no-quote state -- which is NBA's common case -- the fallback reached the
+    model's own wording and produced
+
+        It rates BOS 0.2 points better, against a line of Toss-up. That is the
+        market asking for more than the model thinks the gap is worth.
+
+    A precedence rule cannot distinguish "a worse source of the same fact" from
+    "a different fact that happens to share a key name", so the caller says which
+    is which: `MARKET_LINE_KEY` below. The end state is the two football sports
+    emitting `market_line` like NBA already does, at which point the table is
+    empty and every sport reads one key.
 
     **Numbers are accepted, not just strings.** A total's `line` is a float --
     `{"market": "total", "line": 45.5}` -- while a spread's is a worded string. The
@@ -94,10 +139,17 @@ def _quoted_line(market: dict | None) -> str | None:
     caught immediately. A truthy check is the honest one here: `0` and `False` are
     not lines anything would be quoted against.
     """
-    if not market:
+    if not isinstance(market, dict):
+        # The module docstring promises every read here is defensive, and a
+        # non-dict market would raise on `.get`. Nothing produces one -- `by_key`
+        # is built from `_dicts(...)` -- but the promise is cheap to keep.
         return None
-    for key in ("market_line", "line"):
+    for key in keys:
         value = market.get(key)
+        if isinstance(value, bool):
+            # `True` is truthy and would render "against a line of True". `_num`
+            # four lines up excludes bools explicitly for the same reason.
+            continue
         if isinstance(value, str):
             # Stripped before the truthiness test, so a whitespace-only line falls
             # through instead of rendering "against a line of    .". An earlier
@@ -152,7 +204,7 @@ def explain_from_template(facts: dict) -> dict:
 
     margin_market = by_key.get("spread") or by_key.get("handicap")
     margin = _num((margin_market or {}).get("model_margin"))
-    quoted = _quoted_line(margin_market)
+    quoted = _quoted_line(margin_market, MARKET_LINE_KEY.get(sport, ("market_line", "line")))
     if margin_market is not None and margin is not None and label and quoted:
         line = quoted
         # down: the market asking for more than the model rates the gap is a
@@ -163,7 +215,7 @@ def explain_from_template(facts: dict) -> dict:
 
     total_market = by_key.get("total") or by_key.get("total_goals")
     total = _num((total_market or {}).get("model_total"))
-    total_line = _quoted_line(total_market)
+    total_line = _quoted_line(total_market, MARKET_LINE_KEY.get(sport, ("market_line", "line")))
     if total_market is not None and total is not None and total_line is not None:
         factors.append(_fact(str(total_market["market"]), "up", "The total",
                              f"It projects {total:g} {unit} against a line of {total_line}."))

@@ -28,8 +28,6 @@ never ran before this change.
 and NBA's total market has no `line`, so the factor is dropped without a word. A
 reader sees a shorter explanation and has no way to know a figure was withheld.
 """
-import pytest
-
 from explainer.template import _quoted_line, explain_from_template
 
 UNIT = {"nfl": "points", "cfb": "points", "nba": "points", "pl": "goals"}
@@ -183,6 +181,20 @@ def test_a_numeric_total_line_is_still_read():
     assert "45.5" in f["text"], f["text"]
 
 
+def test_a_boolean_line_is_not_a_line():
+    """`True` is truthy, so without the bool guard it renders "against a line of
+    True" -- and a sentence with `True` in it reads as a bug report, not a line.
+
+    `_num()` four lines away in the same module excludes bools explicitly for the
+    same reason, so the asymmetry was visible in the file; it just had no test.
+    Found by mutation: dropping `isinstance(value, bool)` left the suite green.
+    """
+    assert _quoted_line({"market": "spread", "line": True}) is None
+    assert _quoted_line({"market": "spread", "market_line": False, "line": "BOS -3.5"}) == "BOS -3.5", (
+        "a boolean quoted line must fall through to the sport's own key"
+    )
+
+
 def test_an_empty_line_is_treated_as_no_line():
     """`""` and `None` mean there is no line to quote. A factor built on one would
     read "against a line of ." — and `0` is not a line either, so it is not
@@ -229,3 +241,179 @@ def test_nbas_rebuilt_pick_says_tip_off_not_kickoff():
     text = " ".join(f["text"] for f in body["factors"])
     assert "tip-off" in text, text
     assert "kickoff" not in text, f"NBA must not be told in football's word: {text}"
+
+
+# --- the gap the first version of this fix left open -----------------------
+
+def test_nbas_no_quote_state_does_not_render_the_models_wording_as_a_line():
+    """The case that actually ships, and the one the first fix did not cover.
+
+    NBA's `_markets` sets `market_line` only `if quoted is not None` -- there is
+    no pre-tip market row. So in that state the spread carries `line` (the
+    MODEL's wording, `"Toss-up"`) and **no `market_line` at all**, and the total
+    carries no line whatsoever.
+
+    `_quoted_line` preferred `market_line` and fell back to `line`, which is
+    correct for NFL and CFB and wrong for NBA, where `line` is never a market
+    line. So the fallback resurrected the exact sentence the fix exists to
+    remove, from the real builder rather than a fixture that always supplied a
+    quote:
+
+        It rates BOS 0.2 points better, against a line of Toss-up. That is the
+        market asking for more than the model thinks the gap is worth.
+
+    The trailing clause is the worse half: it makes a claim about the market
+    derived from a figure the model produced.
+
+    This is the state NBA is in most of the time, and the deploy runs
+    `EXPLAINER_ENABLED=false`, so this template is the only thing a reader sees.
+    A precedence rule cannot fix it -- for NBA the fallback key is not merely
+    lower-priority, it means something else entirely.
+    """
+    body = explain_from_template(bundle("nba", [
+        {"market": "moneyline", "model": {"BOS": 0.51, "MIA": 0.49}},
+        # exactly what NBA's `_markets` returns with no pre-tip market row
+        {"market": "spread", "model_margin": 0.2, "line": "Toss-up"},
+        {"market": "total", "model_total": 226.5},
+    ]))
+    # The factor is OMITTED, not reworded. There is no market line to disagree
+    # with, and "It rates BOS 0.2 points better" on its own is a number with no
+    # disagreement attached -- the same emptiness as a total with no line, which
+    # `test_a_total_with_no_quoted_line_is_still_omitted` already rules out.
+    assert factor(body, "spread") is None, (
+        "a spread with no market line must be omitted rather than narrated: "
+        f"{factor(body, 'spread')}"
+    )
+    rendered = " ".join(f["text"] for f in body["factors"])
+    assert "Toss-up" not in rendered, f"the model's own wording is shown: {rendered}"
+    assert "market asking" not in rendered, (
+        f"a claim about the market is derived from the model's own figure: {rendered}"
+    )
+    # And the total, which also has no quoted line in this state, likewise.
+    assert factor(body, "total") is None, f"the total has no line either: {body['factors']}"
+
+
+def test_the_fallback_key_is_never_a_models_wording_whatever_it_says():
+    """`line` is a spread's market line in NFL and CFB and the MODEL's wording in
+    NBA. `_quoted_line` is told which is which per sport rather than inferring it
+    from key order, because no precedence rule can distinguish "lower-priority
+    source of the same thing" from "a different thing that happens to share a
+    name".
+
+    NFL and CFB keep working, which is the other half of the obligation: if the
+    fix were simply "never read `line`", their spreads would lose their factor
+    and their sites would silently show less.
+    """
+    nfl = explain_from_template(bundle("nfl", [
+        {"market": "moneyline", "model": {"BAL": 0.62, "KC": 0.38}},
+        {"market": "spread", "model_margin": 3.4, "line": "BAL -2.5"},
+        {"market": "total", "model_total": 47.8, "line": 45.5},
+    ]))
+    assert "BAL -2.5" in factor(nfl, "spread")["text"]
+    assert "45.5" in factor(nfl, "total")["text"]
+
+    # And the same shape under a sport whose `line` means the other thing gets
+    # nothing, rather than the wrong sentence.
+    nba = explain_from_template(bundle("nba", [
+        {"market": "moneyline", "model": {"BOS": 0.62, "PHI": 0.38}},
+        {"market": "spread", "model_margin": 3.4, "line": "BOS by 3.4"},
+    ]))
+    assert factor(nba, "spread") is None, (
+        "a spread whose only line is the model's own wording must not be narrated "
+        f"as a disagreement with anyone: {factor(nba, 'spread')}"
+    )
+
+
+# --- two behaviour changes the review found were silent --------------------
+
+def test_a_padded_line_renders_without_its_padding():
+    """A line with padding around it now renders trimmed.
+
+    Silent, and an improvement: before, `"  BAL -2.5  "` rendered as *"against a
+    line of   BAL -2.5  "* with the padding carried into the sentence. Real data
+    is `f"{home_team} {-line:+.1f}"`, which has no padding, so this is inert in
+    production -- which is exactly why it needed a test. An inert improvement is
+    the change most likely to be reverted by someone who thinks it is a
+    regression.
+    """
+    body = explain_from_template(bundle("nfl", [
+        {"market": "moneyline", "model": {"BAL": 0.62, "KC": 0.38}},
+        {"market": "spread", "model_margin": 3.4, "line": "  BAL -2.5  "},
+    ]))
+    text = factor(body, "spread")["text"]
+    assert "against a line of BAL -2.5." in text, text
+    assert "  BAL" not in text, f"padding leaked into the sentence: {text}"
+
+
+def test_a_zero_total_line_drops_the_factor_rather_than_quoting_zero():
+    """A total whose `line` is `0` used to render *"It projects 47.8 points against
+    a line of 0"* and is now omitted.
+
+    Silent, and an improvement: a total of 0 is not a line anyone is quoted
+    against, and the old sentence read as though it were. The general rule is
+    already asserted in `test_an_empty_line_is_treated_as_no_line`; this pins the
+    numeric case specifically, because `0` is falsy in a way `""` is not and the
+    two took different paths through an earlier version of the helper.
+    """
+    body = explain_from_template(bundle("nfl", [
+        {"market": "moneyline", "model": {"BAL": 0.62, "KC": 0.38}},
+        {"market": "total", "model_total": 47.8, "line": 0},
+    ]))
+    assert factor(body, "total") is None, (
+        f"a total with line=0 must not be narrated as 'against a line of 0': "
+        f"{factor(body, 'total')}"
+    )
+    # And a total with a REAL zero-ish line still renders, so the rule is not
+    # "drop anything small".
+    body2 = explain_from_template(bundle("nfl", [
+        {"market": "moneyline", "model": {"BAL": 0.62, "KC": 0.38}},
+        {"market": "total", "model_total": 47.8, "line": 0.5},
+    ]))
+    assert "0.5" in factor(body2, "total")["text"]
+
+
+def test_an_nba_rebuilt_pick_with_all_three_markets_loses_the_record():
+    """NBA's factor budget is now full, and this is the displacement.
+
+    A REBUILT pick adds a `context` factor, so moneyline + spread + total +
+    context + record is five candidates against `MAX_FACTORS = 4`. The record is
+    what gets dropped.
+
+    Two corrections to how this was first written, both found by running it
+    rather than reasoning about it. A *final but not rebuilt* NBA game produces
+    exactly four factors and loses nothing -- so "a final game renders five" is
+    wrong, and the review that suggested it was wrong for the same reason I would
+    have been: the fifth factor is the rebuilt note, not the final-score one. And
+    the `context` factor sorts FIRST, not last, so the record is displaced by
+    appearing after it rather than by being appended.
+
+    Worth stating plainly: the panel's record strip is NOT this factor. A reader
+    still sees their record; what is lost is the record *sentence* inside the
+    explanation.
+    """
+    markets = [
+        {"market": "moneyline", "model": {"BOS": 0.62, "MIA": 0.38}},
+        {"market": "spread", "model_margin": 4.2,
+         "line": "BOS by 4.2", "market_line": "BOS -3.5"},
+        {"market": "total", "model_total": 226.5, "market_line": "224.5"},
+    ]
+    rebuilt = explain_from_template(bundle(
+        "nba", markets, pick_timing="rebuilt", status="final",
+        result={"pick_won": True}))
+    keys = [f["key"] for f in rebuilt["factors"]]
+
+    assert len(keys) == 4, f"MAX_FACTORS is not being applied: {keys}"
+    assert keys == ["context", "moneyline", "spread", "total"], keys
+    assert "record" not in keys, (
+        f"expected the record sentence to be the one dropped for a rebuilt NBA pick "
+        f"with all three markets: {keys}"
+    )
+
+    # And the control: the same game NOT rebuilt fits, so the displacement is
+    # caused by the rebuilt note rather than by NBA's three markets alone.
+    plain = explain_from_template(bundle(
+        "nba", markets, status="final", result={"pick_won": True}))
+    plain_keys = [f["key"] for f in plain["factors"]]
+    assert "record" in plain_keys, (
+        f"a non-rebuilt NBA game should keep its record sentence: {plain_keys}"
+    )
