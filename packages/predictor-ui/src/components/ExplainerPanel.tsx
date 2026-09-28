@@ -178,6 +178,32 @@ export function ExplainerPanel({
   const keyFor = (section: { market: string; title: string }, index: number) =>
     `${section.market}-${section.title}-${index}`;
 
+  /* §13c's linkage is a LOOKUP, and this is the half of it that was missing: a
+   * factor's `key` is only a reference to a figure if some figure carries it.
+   *
+   * The key used to be forwarded whatever it was, and `dim` then dimmed every
+   * segment whose `market` was not the highlight — so a key that matched nothing
+   * lit nothing and dimmed everything, which is the one outcome of a control that
+   * is worse than either alternative. It is not a rare edge: `template.py` always
+   * emits `record` (`:164`) and pads with `context` (`:178`/`:184`), and neither
+   * is a market, so on a no-pick panel *every* row is unlinkable and every click
+   * faded the whole panel with nothing lit. §2's rule is that a value on screen
+   * comes from something real or is absent; the de-emphasis is a value, and it was
+   * being derived from a reference that pointed at nothing.
+   *
+   * A key with no figure under it therefore clears the highlight instead of
+   * setting one. That is not a row that does nothing: every row means "light the
+   * figure this row is about, or clear the light if there is none to light", so
+   * an unresolvable row turns a light off, which is a change the reader can see
+   * and undo by pressing it again. The alternative — rendering such a row as
+   * plain text, so it is not a control at all — was rejected: a reader cannot
+   * tell which of their rows have figures, and the spec's §6 item 4 says a *why*
+   * row is "still a row like any other: selectable, and expandable". */
+  const linkable = (key: string) =>
+    tiles.some((t) => t.market === key) || !!segments?.some((s) => s.market === key);
+  const selectFactor = (key: string) =>
+    setHighlighted((was) => (linkable(key) ? (was === key ? null : key) : null));
+
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
       <PanelHeading id={headingId}>In plain English</PanelHeading>
@@ -239,6 +265,8 @@ export function ExplainerPanel({
               // nothing, which is the honest rendering of a bar with no pick.
               pick={v2 ? data.pick : null}
               highlightKey={highlighted}
+              // A segment's own `market`, so it resolves by construction — it is
+              // this figure's key. The guard above exists for the other caller.
               onSegmentFocus={(_, market) => market && setHighlighted(market)}
             />
           )}
@@ -252,7 +280,11 @@ export function ExplainerPanel({
           </h4>
           <FactorList
             factors={data.factors}
-            onSelect={(key) => setHighlighted((was) => (was === key ? null : key))}
+            onSelect={selectFactor}
+            // The row that asked for the light is the row that is pressed. Not
+            // passed before, so pressing a *why* row changed the tiles and the bar
+            // and left the row itself looking exactly as it had.
+            highlighted={highlighted}
             expanded={expanded}
             onToggle={(i) => setExpanded((was) => (was === i ? null : i))}
           />

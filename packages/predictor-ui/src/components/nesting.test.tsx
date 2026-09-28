@@ -180,6 +180,54 @@ describe("the nesting assertion is capable of catching the class", () => {
     expect(built.querySelectorAll("button button")).toHaveLength(1);
     expect(nestingFaults(built)).toEqual(["button > button"]);
   });
+
+  it("catches a real component in the shape a future call site would produce", () => {
+    // The other half of the `insideControl` case in `CASES`, and the reason that
+    // prop is not redundant. `ProbabilityBar` derives its labels' element from
+    // `onSegmentFocus`, which reads as though nesting inside a button were
+    // unreachable by accident — it is not, because a component cannot see its own
+    // ancestors, and this is the very component the green case there renders.
+    // So the mistake is pinned with the real component rather than a hand-built
+    // tree: pass a listener, wrap the bar in a button, and the sweep reports
+    // `button > button` twice.
+    //
+    // Deliberately NOT in `CASES`: that list asserts "no faults", so a case
+    // asserting a fault is reporting the rule rather than obeying it, and putting
+    // it there means either a permanently red suite or an exception the next
+    // person reads as permission.
+    //
+    // React logs this shape too, and its warning is caught here rather than
+    // allowed to scroll past: a suite that prints a nesting warning on every run
+    // teaches everyone to ignore nesting warnings, which is how the first one of
+    // these sat in the tree through three tasks. Asserting it also pins the
+    // consequence — this is not a style rule, it is markup a browser is entitled
+    // to refuse.
+    const said: string[] = [];
+    const real = console.error;
+    console.error = (...args: unknown[]) => said.push(args.map(String).join(" "));
+    try {
+      const faulted = render(
+        <button type="button">
+          <ProbabilityBar segments={NFL_BAR} onSegmentFocus={() => {}} />
+        </button>,
+      );
+      expect(nestingFaults(faulted.container)).toEqual(["button > button", "button > button"]);
+
+      // And the annotation is what changes it. Asserted here as well, so the prop
+      // cannot be dropped in a refactor that leaves both cases still passing.
+      const safe = render(
+        <button type="button">
+          <ProbabilityBar segments={NFL_BAR} onSegmentFocus={() => {}} insideControl />
+        </button>,
+      );
+      expect(nestingFaults(safe.container)).toEqual([]);
+    } finally {
+      console.error = real;
+    }
+    // React's own text, format placeholders and all — the assertion is that it
+    // flagged the nesting, not that it flagged it in our wording.
+    expect(said.join("\n")).toMatch(/cannot contain a nested/);
+  });
 });
 
 // ---------------------------------------------------------------- the sweep --
@@ -267,6 +315,31 @@ const CASES: { name: string; element: ReactElement; controls: number }[] = [
   { name: "ProbabilityBar with a listener: its labels are controls again", element: <ProbabilityBar segments={NFL_BAR} onSegmentFocus={() => {}} />, controls: 2 },
   { name: "ProbabilityBar, three-way with a listener", element: <ProbabilityBar segments={PL_BAR} legend={MARKET} highlightKey="result" onSegmentFocus={() => {}} />, controls: 3 },
   { name: "ProbabilityBar expandable", element: <ProbabilityBar segments={PL_BAR} legend={MARKET} expandable />, controls: 1 },
+
+  // The call site nobody has written yet, pinned before it is written.
+  //
+  // `MatchCard` is not evidence that a bar is safe inside a button: the card is a
+  // button by its own design and will stay one, but nothing says every surface
+  // that embeds a bar is. This is the shape a link-row, a fixture or a future
+  // card produces, and the rule has to hold there too.
+  //
+  // **The assumption this case found broken.** It was added expecting to pass,
+  // because `SegmentFigure`'s comment claims the unsafe answer is "unreachable by
+  // accident" — a caller that wraps the bar in a button and forgets a flag gets
+  // plain text. That is true of a caller that forgets the *listener*. It was never
+  // true of a caller that passes one: a component cannot see its own ancestors,
+  // and this case is `button > button` twice without the annotation. So the
+  // guarantee needed a prop, and the case is here to hold it — `controls: 1`, not
+  // 3, which fails on the arithmetic before anyone reads the fault list.
+  {
+    name: "a button wrapping a bar that has a listener",
+    element: (
+      <button type="button">
+        <ProbabilityBar segments={NFL_BAR} onSegmentFocus={() => {}} insideControl />
+      </button>
+    ),
+    controls: 1,
+  },
 
   // The composition a site actually ships: a frame's links and tabs, and a
   // card, all on one page. The only place an `<a>` and a `<button>` meet.

@@ -21,7 +21,7 @@ import userEvent from "@testing-library/user-event";
 
 import { ExplainerPanel, FactorList, KeyNumberTile, RecordStrip } from "../index";
 import { ProbabilityBar } from "./ProbabilityBar";
-import type { Explanation, MarketTile, Segment } from "../index";
+import type { Common, Explanation, MarketTile, Segment, Verdict } from "../index";
 
 /** The §7a NFL mock's facts, so the fixtures and the spec cannot drift. */
 const NFL: Explanation = {
@@ -50,6 +50,26 @@ const RESTING = { loading: false, error: false, onRetry: () => {} };
 
 /** A complete v2 answer, overridable, so a test names only what it is about. */
 const answer = (over: Partial<Explanation> = {}): Explanation => ({ ...NFL, ...over });
+
+/** The no-pick bundle `template.py` actually emits, taken from the rows that
+ *  need no pick to be written: `record` (`template.py:164`), the `context`
+ *  padding (`:178`/`:184`), and the two pseudo-market statements `total` and
+ *  `btts`, which are written whether or not a pick exists (`:139`, `:146`).
+ *  `record` and `context` are the two that can never resolve: they are the
+ *  record strip and the game's context, not markets, so no site hands the panel
+ *  a tile or a bar segment under either key. `total` is carried here so a test
+ *  cannot pass by there being nothing linkable on the panel at all. */
+const NO_PICK: Common & Verdict = {
+  verdict: "There is no pick for this one yet.",
+  band: "leaning",
+  factors: [
+    { key: "total", direction: "neutral", headline: "The total", text: "It projects 45.2 points against a line of 44.5." },
+    { key: "record", direction: "neutral", headline: "Its record so far", text: "41 of 68 picks have landed." },
+    { key: "context", direction: "neutral", headline: "Where this stands", text: "So there is little to weigh up here." },
+  ],
+  source: "template", model: "", generated_at: new Date().toISOString(),
+  sport: "nfl", pick_timing: "none",
+};
 
 const SEGMENTS: Segment[] = [
   { label: "KC", prob: 0.38, market: "moneyline" },
@@ -87,6 +107,13 @@ const MARKET: Segment[] = [
 /** What each segment is actually painted, in order. */
 function fills(container: HTMLElement): string[] {
   return [...container.querySelectorAll<HTMLElement>("[data-testid='pbar-fill']")].map((f) => f.style.backgroundColor);
+}
+
+/** How far each segment is dimmed, in order. The §13c de-emphasis is applied as
+ *  an opacity rather than a colour so a dimmed figure stays the figure it was,
+ *  so this reads the thing the reader sees. */
+function dims(container: HTMLElement): string[] {
+  return [...container.querySelectorAll<HTMLElement>("[data-testid='pbar-fill']")].map((f) => f.style.opacity);
 }
 
 describe("KeyNumberTile", () => {
@@ -612,6 +639,70 @@ describe("ExplainerPanel", () => {
   // this is the figure -> factor half of the pair above.
   it.todo("lights the factor whose key names the focused figure (spec §13c, direction two)");
 
+  it("dims nothing at all when the factor names a market this panel has no figure for", async () => {
+    // §13c's linkage is a LOOKUP: a factor names a `market` key and the figures
+    // carrying that key light. A key that matches no tile and no segment has
+    // nothing to look up, and it used to be forwarded anyway — which on a no-pick
+    // panel is not a rare edge, it is every control such a panel has.
+    // `template.py` always emits `record` (`:164`) and pads with `context`
+    // (`:178`/`:184`), and neither is a market, so the reader clicked a row and
+    // watched the whole panel fade to 0.4 with nothing lit anywhere: the only
+    // evidence that they had done anything. Every existing highlight test starts
+    // at `moneyline` or `spread`, and both have a tile, so the suite could not
+    // see it.
+    const user = userEvent.setup();
+    const { container } = render(<ExplainerPanel {...RESTING} data={NO_PICK} tiles={TILES} segments={SEGMENTS} />);
+    await user.click(screen.getByTestId("factor-record"));
+    expect(dims(container)).toEqual(["1", "1"]);
+    // And nothing is lit, so the row is not claiming a correspondence.
+    expect(document.querySelector('[data-seg="BAL"]')).toHaveAttribute("data-highlighted", "false");
+    expect(document.querySelector('[data-seg="KC"]')).toHaveAttribute("data-highlighted", "false");
+    expect(screen.getByTestId("tile-total")).toHaveAttribute("data-highlighted", "false");
+    expect(screen.getByTestId("factor-record")).toHaveAttribute("data-highlighted", "false");
+  });
+
+  it("presses the row the reader selected, and de-emphasises only what it did not light", async () => {
+    // The other half, so the fix above cannot be "stop dimming": a key that DOES
+    // resolve has to light the figure it names, press the row the reader just
+    // pressed, and de-emphasise everything else. `data-highlighted` and
+    // `aria-pressed` on a factor row used to track `expanded` — a different state
+    // entirely, one the reader never touched on a wide panel — so the row the
+    // reader had clicked gave no sign that the panel had changed at all.
+    // `SEGMENTS` is crossed again: `BAL` is the `spread` segment, so a bar that
+    // lit by position would dim `BAL` and light `KC` and fail here.
+    const user = userEvent.setup();
+    const { container } = render(<ExplainerPanel {...RESTING} data={NFL} tiles={TILES} segments={SEGMENTS} />);
+    await user.click(screen.getByTestId("factor-spread"));
+    expect(screen.getByTestId("factor-spread")).toHaveAttribute("data-highlighted", "true");
+    expect(screen.getByTestId("factor-spread")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("factor-moneyline")).toHaveAttribute("data-highlighted", "false");
+    expect(screen.getByTestId("factor-moneyline")).toHaveAttribute("aria-pressed", "false");
+    expect(dims(container)).toEqual(["0.4", "1"]);
+  });
+
+  it("takes the light back down when the next row names nothing, so no row is a dead control", async () => {
+    // What makes "do nothing" safe on a row whose key resolves to nothing. Left
+    // alone it is the defect `SegmentFigure`'s comment is about: a focus stop
+    // that announces itself and changes nothing. With this, every factor row
+    // means one thing — light the figure this row is about, or clear the light
+    // if there is none to light — so a row with no figure under its key turns a
+    // light off, which is a state change the reader can see and undo.
+    const user = userEvent.setup();
+    const data: Common & Verdict = {
+      ...NO_PICK,
+      factors: [
+        ...NO_PICK.factors,
+        { key: "spread", direction: "down", headline: "The line asks more", text: "The market is asking for more." },
+      ],
+    };
+    render(<ExplainerPanel {...RESTING} data={data} tiles={TILES} segments={SEGMENTS} />);
+    await user.click(screen.getByTestId("factor-spread"));
+    expect(screen.getByTestId("tile-spread")).toHaveAttribute("data-highlighted", "true");
+    await user.click(screen.getByTestId("factor-record"));
+    expect(screen.getByTestId("tile-spread")).toHaveAttribute("data-highlighted", "false");
+    expect(screen.getByTestId("factor-spread")).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("reveals no figure the facts do not carry, whatever the reader does", async () => {
     // The named failure for §13c: a hover tooltip reading "probably around
     // 55-60%". Nothing may compute, round or interpolate — so this is a NEGATIVE
@@ -736,5 +827,44 @@ describe("a rebuilt pick's band", () => {
     expect(screen.queryByTestId("band-chip")).toBeNull();
     expect(container.textContent).not.toMatch(/strong/i);
     expect(screen.getByText("Rebuilt after kickoff")).toBeInTheDocument();
+  });
+});
+
+/** §2 rule 3, and the one uncertainty in the verdict that failed **open**.
+ *  Every other one fails closed, in this file and in the panel: `footer` drops
+ *  the "AI" label on a blank model or a timestamp it cannot read, `KeyNumberTile`
+ *  returns null for an absent market, `RecordStrip` shows a dash, `pct()`
+ *  returns "—". The chip read `WORDS[band] ?? WORDS.moderate`, so a body with no
+ *  `band` — or one carrying a word this build has never heard of — rendered
+ *  **"Moderate"**: a specific confidence claim, derived from nothing, and derived
+ *  by default, which is the same failure `band_for` exists to stop a model doing
+ *  forty lines upstream. */
+describe("a body the band cannot be read from", () => {
+  /** The type says `band` is required and the wire does not promise it: a body
+   *  that lost the field, a renamed value, a row the cache let through. The cast
+   *  is the point — the type is the thing a renderer is tempted to trust in
+   *  place of the value. */
+  const bandless = (over: Record<string, unknown> = {}): Explanation =>
+    ({ ...answer(), band: undefined, ...over }) as unknown as Explanation;
+
+  it("shows no confidence word at all when the body carries no band", () => {
+    render(<ExplainerPanel {...RESTING} data={bandless()} />);
+    expect(screen.queryByTestId("band-chip")).toBeNull();
+    // Not one word standing in for another. "Moderate" here is a claim about
+    // this match that nothing in the response supports.
+    expect(document.body.textContent).not.toMatch(/leaning|moderate|strong/i);
+    // And the rest of the panel is unaffected: an answer we cannot read a band
+    // out of is still an answer, and the verdict is the part the reader came
+    // for. Fails closed on the claim, not on the panel.
+    expect(screen.getByText(NFL.verdict)).toBeInTheDocument();
+  });
+
+  it("shows none for a band word this build has never heard of either", () => {
+    // The same rule one step further out. `WORDS[band]` is undefined for any
+    // value outside the union, and an unrecognised confidence is exactly as
+    // unsayable as an absent one.
+    render(<ExplainerPanel {...RESTING} data={bandless({ band: "certain" })} />);
+    expect(screen.queryByTestId("band-chip")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/certain/i);
   });
 });
