@@ -324,6 +324,13 @@
   .teaser-row .teaser-edge { grid-column: 1 / -1; }
   .teaser-row a { color: inherit; text-decoration: none; }
   .teaser-row a:hover { text-decoration: underline; text-underline-offset: 2px; }
+  /* A row that IS the link. The rule above only reaches an anchor nested
+     inside a row; when paintRow makes the row itself an <a>, none of it
+     applies and the row falls back to the browser's default underline --
+     which is the one browser surface this page themes everywhere else. Same
+     treatment, written for the element that is actually the link. */
+  a.teaser-row { color: inherit; text-decoration: none; }
+  a.teaser-row:hover { text-decoration: underline; text-underline-offset: 2px; }
   .teaser-name { font-weight: 600; }
   .teaser-side { color: var(--color-pr-text-dim); }
   .teaser-num {
