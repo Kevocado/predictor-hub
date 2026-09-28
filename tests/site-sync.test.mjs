@@ -244,6 +244,36 @@ test("no credential is a loud skip that claims nothing, and does not read a repo
   assert.match(out, /gh auth token/);
 });
 
+test("an ENFORCED run with no credential FAILS, because it proved nothing", async () => {
+  // The hole that only opens once enforcement is on. While ENFORCE_SITE_SYNC was
+  // "0", exiting 0 on a skip was RIGHT: a developer with no token should not be
+  // blocked by a check they cannot run, and the skip is loud in both modes.
+  //
+  // Under enforcement the meaning inverts. The build now asserts that the sites
+  // are current, and a skip that returns 0 asserts it without looking at a single
+  // site. That is the one failure mode this check exists to prevent, and it is
+  // reachable the moment the credential stops working -- a token scope change, a
+  // site going private, a policy change -- which is precisely when nobody is
+  // watching. So an enforced skip fails, and says it failed for want of a
+  // credential rather than for want of a current site.
+  let asked = 0;
+  const fetchImpl = async () => { asked += 1; throw new Error("must not be called"); };
+  const lines = [];
+  const { code, rows } = await main({
+    env: { ENFORCE_SITE_SYNC: "1" }, out: (l) => lines.push(l), sites: oneSite, want: currentSource(), fetchImpl,
+  });
+  const out = lines.join("\n");
+  log(out);
+  assert.equal(code, 1, "an enforced run that compared 0 sites must not report success");
+  assert.equal(asked, 0, "it asked GitHub anyway");
+  assert.equal(rows.length, 0);
+  assert.match(out, /::error /, "failing without an annotation is a failure nobody is told about");
+  assert.doesNotMatch(out, /site-sync: PASS/, "a skip that also claims a pass is the worst version");
+  // It must not tell the reader to switch enforcement off to make this go away:
+  // that restores a check that cannot fail, which is the bug being fixed here.
+  assert.doesNotMatch(out, /set ENFORCE_SITE_SYNC: "0"/);
+});
+
 test("SITE_REPOS_TOKEN is preferred, because the automatic token is scoped to this repo", async () => {
   // The escape hatch is only an escape hatch if it is actually used, and the
   // order is the whole point: an installation token may not be honoured for a
