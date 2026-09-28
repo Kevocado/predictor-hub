@@ -211,6 +211,12 @@ so v1 rows are never read. The renderer additionally treats any cached body
 without a `verdict` as a **miss**, so a reused version can never serve prose
 into a structured panel.
 
+**The bump is also how a change to the *writer* reaches a reader, not only how a
+change to the *shape* does** — the cache key covers the version and a hit is
+served verbatim, so a new writer under an old version is never called. §13f states
+that as a deploy precondition, because it is the requirement this sentence used
+to leave implied.
+
 ### 5c. The facts the panel draws from (verified against the real bundles)
 
 **NFL** — `pick {label, prob}`; `markets[]` of `moneyline` (`model` map),
@@ -723,4 +729,57 @@ have made `band_for` conditional on `pick_timing`, which is a rule about
 rendering inside the module whose whole job is the contract. Tested both ways: a
 `rebuilt` answer renders no chip, and a `pre_kickoff` answer carrying the same
 `band` still does.
+
+### 13f. Deploy precondition: the `prompt_version` bump ships WITH the renderer
+
+**Adds to** §5b rather than overriding anything, and sits here because it is the
+requirement a person meets immediately before they deploy. The rest of §13 changes
+what the code should do; this one changes what the deploy must do, and a code
+review cannot enforce it, which is exactly why it is written down where the deploy
+is planned.
+
+**A deploy that changes how a response is *written* must move `prompt_version` in
+the same deploy. A PR that changes it is not optional housekeeping, and it is not
+the deploy's problem to remember.**
+
+§5b said the version is bumped so v1 prose cannot be read by a v2 renderer. That
+was about a *shape* change. This is the other case, and the cache makes it just
+as real: **the cache key covers `prompt_version`** (`cache.py:23`, and
+`service.py:158` builds it from `s.prompt_version`), and a row is served verbatim
+on a hit — `_answer` spreads `row["body"]` and re-derives only `band`, `pick` and
+`pick_timing`. So a body written before the deploy keeps being served, verbatim,
+for as long as its facts render to the same JSON.
+
+**The consequence, named.** Every change this design makes to the *generated
+body* — and that is where all of §5a's rules live, since `verdict` and `factors`
+come out of the cache while only `band` and `pick` are re-derived per read — is
+**inert in production** until the version moves. Specifically, without the bump:
+
+- A pre-deploy row for a **no-pick** bundle still carries `direction: "up"` on
+  every factor, because `contract.py:129` coerces an unrecognised direction to
+  `"up"` and `template.py` had no `_toward`. The new renderer then draws an up
+  triangle in the win colour and says "FOR THE PICK" beside a match with no pick
+  — the exact defect §5a's `neutral` and the no-pick wording rules remove. The
+  fixes are correct and never run.
+- An **`llm`** row is not retried at all: `_usable` only gives a retry window to a
+  template written while the model was unavailable, so it survives until its
+  **facts change**, and the key includes `facts_json`.
+- **The cache is not empty and a no-op deploy is not visible from outside.** §4
+  keeps the cache (a second open of a fixture is free), so every fixture a reader
+  has already opened holds a row, and those rows are written by the pre-deploy
+  writer. The panel then renders them without a regeneration, which means the
+  defect is not "some fixtures are stale" — it is "the fixtures readers have
+  already looked at are the stale ones", and the ones a reader opens next are the
+  ones that get fixed.
+
+**What the deploy has to do.** Move `prompt_version` off `"v2"` — any new string
+will do, and `"v3"` is the obvious one — in the same change that deploys a new
+writer. It costs one generation per cached row, which is the point: it is the
+price of the prose changing.
+
+**Why the bump is not in the renderer PR.** It spends the model budget, and
+budget is a deploy decision, not a reviewer's: a PR that bumps the version to
+prove its own renderer works spends real generations on rows nobody has asked for
+yet. So the requirement lives here, next to §13e, and the person who deploys
+meets it before they deploy rather than after a reader does.
 
