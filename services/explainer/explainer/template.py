@@ -114,6 +114,36 @@ _START = {"f1": "the session started", "pl": "kickoff", "nba": "tip-off"}
 #:
 #: Inclusive, because a margin of exactly 0.5 is one NBA is willing to word.
 MIN_SPREAD_MARGIN = 0.5
+
+#: What the padding row says, one wording per state of the bundle. Three
+#: wordings for three different CLAIMS, keyed by what the bundle actually carries
+#: -- see the block in `explain_from_template` that chooses between them.
+#:
+#: **The old single wording was "The facts for this one are still filling in",
+#: which is a claim about FIGURES HAVEN'T ARRIVED, and that is a *worse*
+#: description for NBA than it was before this branch.** Serving NBA is what made
+#: the difference visible: an NBA bundle that reaches the padding row carries
+#: `model_margin` and `model_total`, so the model HAS a projection and the absent
+#: thing is the MARKET's quoted price. Those are two different states and one
+#: sentence cannot be true of both -- so the row says which one it is in.
+#:
+#: A third state is kept out on purpose. "The model has no settled record on this
+#: one yet" is what an earlier draft padded with, and it was withdrawn because it
+#: claims a RECORD is missing, which is false for exactly the bundles that reach
+#: here. `PADDING_NO_PROJECTION` says the same honest thing about a figure the
+#: bundle really does lack, and says nothing about the record.
+PADDING_NO_QUOTE = "So there is a model number for this one, and no quoted price to read it against."
+#: Both figures present, so nothing is missing and the row is here only because a
+#: gate kept a real row from firing. A sentence about something being absent would
+#: be false, so this one names the two and stops.
+PADDING_BOTH = "So the model and the market both have a number here, and little else to weigh."
+#: No model figure at all, which is the football case and the only one in which
+#: the old wording was accurate. It is ALSO the wording for the one state with no
+#: name of its own -- a quoted price with no model figure, where the market priced
+#: the game and the model has nothing for it -- because it is the sentence that is
+#: true there. `PADDING_BOTH` would not be.
+PADDING_NO_PROJECTION = "So there is no model number for this one yet."
+
 MAX_FACTORS = 4
 
 
@@ -442,17 +472,51 @@ def explain_from_template(facts: dict) -> dict:
 
     # Two rows minimum, so the panel is never a single lonely line. Padding only
     # ever uses the pseudo-markets, which resolve regardless of what the facts
-    # carry, and it says plainly that there is nothing there rather than
-    # inventing a reason to read it.
+    # carry, and it says plainly what there is and is not rather than inventing
+    # a reason to read it.
     if len(factors) < 2:
-        # Only `context` padding, and never a claim that something is missing when
-        # it is present: an earlier draft padded with a `record` factor saying
-        # "no settled record yet", which would have been false for exactly the
-        # bundles that reach it.
+        # Which of the bundle's states this is, so the row states a fact rather
+        # than a guess. `margin`, `total`, `quoted` and `total_line` are the four
+        # values the spread and total rows above were GATED on, read here rather
+        # than re-scanned, so "the market has not quoted a price" cannot disagree
+        # with those two rows about whether a price exists. A re-scan of `by_key`
+        # for `model_margin` would be the same claim computed twice.
+        projected = margin is not None or total is not None
+        quoted_any = quoted is not None or total_line is not None
+        # `not projected` FIRST, so the one state that is reachable with a quote
+        # and no model figure -- the market priced it, the model has not -- takes
+        # the wording that is true of it. Ordering by how surprising the state is
+        # rather than by how often it happens is what keeps it from being missed.
+        if not projected:
+            padding_text = PADDING_NO_PROJECTION
+        elif quoted_any:
+            padding_text = PADDING_BOTH
+        else:
+            padding_text = PADDING_NO_QUOTE
+
         while len(factors) < 2:
             if not any(f["key"] == "context" for f in factors):
-                factors.append(_fact("context", _toward("down", has_pick), "Not much to go on",
-                                     "The facts for this one are still filling in."))
+                # NEUTRAL, always -- the same argument as the row below, with the
+                # sign reversed, and this row was `down`.
+                #
+                # `down` means "against the pick", and nothing here computes it.
+                # The row fires because the bundle carries little, and a bundle
+                # carrying little is exactly as consistent with a 99% pick as with
+                # a long shot -- so the mark was not merely unsupported, it was
+                # contradicted by the commonest case it renders in. The panel
+                # draws a triangle and the words "against the pick" from this mark,
+                # so a mark nothing supports is a wrong claim in a louder form
+                # than the sentence it sits on.
+                #
+                # NOT `_toward(NEUTRAL, has_pick)`, which is a no-op wrapping a no-
+                # op and reads like a rule. This row is a statement about the
+                # BUNDLE, and the bundle does not move when a pick is added. It is
+                # written as a constant, and `test_template_padding.py` holds that
+                # by RECORDING the calls `_toward` actually receives rather than by
+                # grepping the source -- because no rendered-output test can see a
+                # no-op, which is exactly how that survivor was found.
+                factors.append(_fact("context", NEUTRAL, "Not much to go on",
+                                     padding_text))
             else:
                 # Neutral always. "So there is little to weigh up here" is not an
                 # argument FOR a pick; it was given "up" because the row needed a
@@ -460,6 +524,16 @@ def explain_from_template(facts: dict) -> dict:
                 factors.append(_fact("context", NEUTRAL, "Where this stands",
                                      f"So there is little to weigh up here: {title}."))
 
+    # The most prominent sentence in the panel, and deliberately unadorned. It
+    # says which team is the pick and nothing else: `prompts.py` forbids the model
+    # from qualifying a pick ("a band is a word, and a word is the same defect as
+    # a number when nothing ties it to anything"), and a template that added
+    # "strong" here would put that word on screen beside the band chip the panel
+    # draws from `band_for` -- so on a 0.41 two-way pick the panel would read
+    # "strong pick" next to a `leaning` chip, at the same time, contradicting
+    # itself in the one sentence every reader sees first. The chip is the
+    # confidence; this is the name. Pinned exactly, across the band, in
+    # `test_template_padding.py`.
     verdict = f"{label} is the pick." if label and prob is not None else "There is no pick for this one yet."
     return {"verdict": verdict, "band": band_for(prob, market_shape(facts)),
             "factors": factors[:MAX_FACTORS]}

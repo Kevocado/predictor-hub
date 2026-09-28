@@ -21,7 +21,7 @@ for one — there is no background pre-generation.
   "pick": { "label": "BAL" },     // COMPUTED from the facts; the key is OMITTED
                                   // when there is no pick. Never null.
   "source": "llm", "model": "nemotron-3.5-lightning",
-  "generated_at": "2026-10-05T00:20:00Z", "prompt_version": "v3",
+  "generated_at": "2026-10-05T00:20:00Z", "prompt_version": "v4",
   "pick_timing": "pre_kickoff"
 }
 ```
@@ -70,13 +70,16 @@ Three properties worth knowing before changing anything here:
 covers it and a hit is served verbatim, so **a deploy that changes the writer
 and does not move the version changes nothing a reader sees** — the cached
 bodies keep being served under the old version's key and the deploy is green
-while the fix is inert. It is now `v3`; the cache measured on the VPS on
+while the fix is inert. It is now `v4`; the cache measured on the VPS on
 2026-09-27 held `v1`/`v2` rows written before the `neutral` direction default,
-the frame's rule on which number is bigger, and the spread sentence that names
-no side. Move it in the same change as the writer, and expect it to cost one
-generation per cached row: that is the price of the prose changing. Two tests
-hold the two halves apart — `tests/test_prompt_version.py` fails if the version
-is not above what the deployed cache was measured to hold, and
+the frame's rule on which number is bigger, the spread sentence that names no
+side, and rule 2's second sentence, which used to hand the model a
+model-vs-market comparison to imitate. (`v3` is recorded in the digest log and
+was never written under; the measured floor is `v2`.) Move the version in the
+same change as the writer, and expect it to cost one generation per cached row:
+that is the price of the prose changing. Two tests hold the two halves apart —
+`tests/test_prompt_version.py` fails if the version is not above what the
+deployed cache was measured to hold, and
 `tests/test_prompt_version_moves_with_the_prompt.py` fails if the prompt text
 moves without the version moving with it. The band is not on that list and
 never was: `service._answer` re-derives it on every read, so a cached row
@@ -281,6 +284,51 @@ above while you are there.
 2. **CFB, PL and NBA facts.** Add each `SPORT_API_*`. One game per sport. For
    PL and NBA, go through the site's own `/api/explain/...` proxy rather than
    the service directly, so the path translation is exercised.
+
+   **NBA specifically: a two-row panel is CORRECT today, and a four-row one
+   needs data this service does not produce.** Read a real NBA game and expect
+   the pick row ("The model makes BOS the pick at 62%") and then, because nothing
+   else is there to show, a padding row saying either that the model has a number
+   and the market has not quoted a price, or that there is no model number at
+   all. The verdict reads "BOS is the pick." with no qualifier anywhere in it,
+   and the `band` chip beside it is computed from `pick.prob` — the template does
+   not qualify the pick and never will, because a word nothing ties to a fact is
+   the same defect as a number, which is the whole reason the model is forbidden
+   from writing one either.
+
+   The two rows you will **not** see yet are "The line" (the model's projected
+   margin beside the market's quoted spread) and "The total". Both need the
+   market's own price, and NBA only quotes one when a pre-tip market row exists
+   for that game — a row written after tip-off is deliberately ignored, because
+   quoting a post-tip line is hindsight. Its `game_market_predictions` table was
+   measured at **0 rows** on 2026-09-28, in NBA_Predictor's tracking DB, so there
+   is no pre-tip row to quote and both factors are omitted. That is the correct
+   behaviour, not a bug: spec §6 has an absent market render *nothing*, and the
+   row is omitted rather than narrated against a number nobody could check it
+   against. The panel withholds nothing silently — but it is close to empty, and
+   the deployer is the first person who will see that.
+
+   **What to check, not what to file.** Before concluding NBA is broken, count
+   the rows that make the quote possible:
+
+   ```sh
+   sqlite3 "${TRACKING_DB_PATH:-$PROJECT_ROOT/data/tracking.db}" \
+     'SELECT count(*) FROM game_market_predictions'
+   ```
+
+   Zero, and a thin NBA panel is the expected state — nothing to file. Non-zero,
+   and a correct NBA panel should show "The line" and "The total". If the count
+   is non-zero and the figures are still missing, the thing to check is
+   `template.MARKET_LINE_KEY`: NBA's quoted line lives in `market_line` and has
+   **no fallback**, because `line` holds the *model's* own wording for NBA
+   ("BOS by 4.2", or the literal `"Toss-up"`), and reading it as the market's
+   renders the model compared with itself. `tests/test_unserved_sport.py` runs
+   NBA's real `_markets` to check that contract and
+   `tests/test_template_quoted_line.py` pins the template's side of it.
+
+   Re-measure the count rather than trusting the number above. It is a
+   measurement of a moment, and it is the one input to this step that will change
+   on its own.
 3. **F1 is not in this list, on purpose.** It has been refused at
    `/explain/{sport}/{id}` since the on-demand phase, so there is no F1 panel to
    check and `SPORT_API_F1` is only read by the deploy script's smoke loop. This

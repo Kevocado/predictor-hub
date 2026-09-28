@@ -21,8 +21,10 @@ Measured on the VPS 2026-09-27, on the deployed explainer volume:
     v2|41
 
 `v2` is not hypothetical. Those rows are being served today and they were
-written by a writer that predates the `neutral` direction default and the
-band-withheld-on-`rebuilt` rule — the two fixes this bump is what makes live.
+written by a writer that predates the `neutral` direction default -- the one
+writer-side fix this bump is what makes live. **The band is not on that list**,
+and that is the limit of the rule rather than an oversight: see the note below
+and the one in `config.py`, which say the same thing.
 """
 import re
 
@@ -37,6 +39,46 @@ from explainer.facts import Facts, render
 from explainer.llm import OPENROUTER_URL
 
 FACTS_URL = "http://nfl.test/api/facts/g1"
+
+#: What this module's docstring says the cached `v2` rows predate, stated as the
+#: literal text of the sentence and pinned rather than asserted in prose. The
+#: line break is part of it: the docstring is wrapped prose, so a pin that
+#: re-wrapped the sentence would stop matching a sentence that had not changed,
+#: and the alternative -- comparing whitespace-normalised text -- is a
+#: transformation whose failure would be opaque.
+#:
+#: **The version this text used to claim was wrong, and a third copy of it made
+#: the branch read as "the reviewer only checked one of two".** It said the cached
+#: rows predate "the `neutral` direction default and the band-withheld-on-`rebuilt`
+#: rule -- the two fixes this bump is what makes live". The band half is false, and
+#: it is false in the code rather than in the reading:
+#:
+#: * `service._answer` re-derives `band` from the facts on **every** read, hit or
+#:   miss -- `service.py` line 113, `"band": band_for(pick_prob(facts),
+#:   market_shape(facts))` -- so a cached `v2` row already gets the right one, and
+#:   no writer change can be the thing that makes the band correct.
+#: * §13e withholds the band chip on a rebuilt pick in
+#:   `packages/predictor-ui` `ExplainerPanel.tsx` line 232,
+#:   `{v2 && !rebuilt && <BandChip band={data.band} />}`. That is a RENDERING
+#:   decision about a value the response already carries, on the reader's side of
+#:   the wire, and it does not read `prompt_version` at all.
+#:
+#: The `neutral` default is writer-side and IS cached, because it lives in the
+#: stored `body`. So that one half was right and is what the sentence now says.
+#: `config.py` and the README were already corrected on this branch, and this
+#: module was the third copy left asserting the false claim.
+#:
+#: **What this test can and cannot do, stated because a pinned sentence is a
+#: copy.** It fails if the sentence is reworded, deleted, or replaced with the
+#: false claim alone. It survives an edit that keeps this sentence intact *and*
+#: adds the false claim elsewhere in the docstring -- so it is a pin, not a
+#: proof, and it is here because the honest alternative for prose is no guard at
+#: all, which is what let the false claim ship in the first place. The facts it
+#: rests on are re-derivable from the two files named above at any time.
+CACHED_ROWS_PREDATE = (
+    "written by a writer that predates the `neutral` direction default -- the one\n"
+    "writer-side fix this bump is what makes live."
+)
 
 #: Every prompt version the deployed cache was **measured** to hold, oldest
 #: first. Read this as production state, not as a preference.
@@ -68,6 +110,57 @@ def _v(n: int) -> str:
 
 FLOOR = max(DEPLOYED_PROMPT_VERSIONS, key=_order)
 README = Path(__file__).resolve().parents[1] / "README.md"
+
+
+def test_the_cached_rows_claim_does_not_assert_the_band_is_writer_side():
+    """The corrected sentence, pinned, because a docstring is a claim too.
+
+    Reads this module's own docstring -- the third copy of the sentence, and the
+    one `config.py` and the README were already corrected against. The fact
+    behind it is not asserted here because it is not this repo's to assert: the
+    band is re-derived in `service._answer` on every read, and the chip withheld
+    on a rebuilt pick is a rendering decision in `packages/predictor-ui`. Both
+    are named in the constant's docstring with the two lines to look at, so a
+    reader who doubts this can check it in a minute rather than take it.
+
+    The equality is on a SENTENCE inside the docstring rather than on the whole
+    docstring, because the rest of it is about the sqlite line, the measured
+    floor and why the floor lives in this file -- none of which this change
+    touches, and all of which a rewrite would be free to adjust.
+    """
+    docstring = (__doc__ or "")
+    assert docstring, "this module has no docstring, so the claim it pins is gone"
+    assert CACHED_ROWS_PREDATE in docstring, (
+        f"this module no longer states what the cached v2 rows predate:\n"
+        f"{docstring}\n"
+        f"It used to claim they predate the neutral default AND the "
+        f"band-withheld-on-rebuilt rule, 'the two fixes this bump is what makes "
+        f"live'. The band half was false: `service._answer` re-derives `band` on "
+        f"every read, hit or miss, and the chip withheld on a rebuilt pick is a "
+        f"reader-side rendering decision in `packages/predictor-ui` that this "
+        f"field does not gate. `config.py` and the README were corrected on this "
+        f"branch; this was the third copy, and leaving it made the branch read as "
+        f"'the reviewer only checked one of two'."
+    )
+
+
+def test_the_measured_floor_and_the_configured_version_are_untouched():
+    """The rest of the claim, asserted against the live values rather than prose.
+
+    Item 5 was a docstring fix and was told not to change behaviour or the
+    measured floor, so this is here to say so: the two values the module's rule
+    compares are still `v2` and the configured version, still distinct, and
+    `v2` is still the highest of what was measured to be deployed. A docstring
+    edit that quietly moved a number here would be a change of behaviour wearing
+    a change of wording.
+    """
+    assert FLOOR == "v2", f"the measured deployed floor is {FLOOR!r}, not 'v2'"
+    assert DEPLOYED_PROMPT_VERSIONS == ("v1", "v2"), DEPLOYED_PROMPT_VERSIONS
+    assert FLOOR != Settings().prompt_version, (
+        "the floor and the configured version are the same value, so the "
+        "precondition is a constant compared with itself"
+    )
+    assert _order(Settings().prompt_version) > _order(FLOOR), Settings().prompt_version
 
 
 def test_the_ordering_is_numeric_rather_than_lexicographic():

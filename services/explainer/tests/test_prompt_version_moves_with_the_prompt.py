@@ -60,11 +60,20 @@ from explainer.prompts import SPORT_NOTES, SYSTEM
 #: guard switching itself off, and it is why the fingerprint is a hash: a row
 #: that has to be a hash cannot be quietly replaced with a copy of the new text.
 #:
-#: `v3` is the first entry. `v1` and `v2` shipped before this file existed, so
-#: there is nothing honest to record for them -- and nothing needed: they are
-#: below the configured version, so they cannot be the value under test.
+#: `v3` and `v4` both have rows and **only `v4` has been written under**; the
+#: measured deployed floor is `v2` (`tests/test_prompt_version.py`, measured on
+#: the VPS 2026-09-27). `v3` was set on this branch, rule 2's second sentence was
+#: reworded before `v3` ever reached a reader, and the version was bumped rather
+#: than the `v3` row re-recorded -- see the note on `Settings.prompt_version` in
+#: `config.py` for why the append-only rule is worth one unused number. A row
+#: describing a prompt nobody was sent is a harmless oddity in a log; a row that
+#: can be edited in the same commit as the prompt is a guard that can be turned
+#: off. `v1` and `v2` shipped before this file existed, so there is nothing
+#: honest to record for them -- and nothing needed: they are below the configured
+#: version, so they cannot be the value under test.
 RECORDED_PROMPT_DIGEST = {
     "v3": "6b4bb345ea4138429dbc1876a065f79502d4616a58862dd6d9d2b55376fb5268",
+    "v4": "44057a9f0fafb366ce8f8a6b0de4e916ecc33e9971f199384572e068667a4f45",
 }
 
 _HEX64 = re.compile(r"[0-9a-f]{64}")

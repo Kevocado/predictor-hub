@@ -8,11 +8,13 @@ Why this is a file and not a shell loop: three harnesses in these projects
 reported "all passed" for the wrong reason, in three different ways, and two of
 those shipped inside a commit.
 
-* **It separates failed, passed and errored** and treats all three as a bite. An
-  earlier version read the PASSED count out of a line reading `1 failed, 9
-  passed`, so four mutations looked like partial passes; another read a collection
-  error -- a mutation that produced a syntax error -- as zero failures, i.e.
-  silent.
+* **It separates failed, passed and errored**, and it does NOT treat all three as
+  a bite. An earlier version read the PASSED count out of a line reading `1
+  failed, 9 passed`, so four mutations looked like partial passes; another read a
+  collection error -- a mutation that produced a syntax error -- as zero failures,
+  i.e. silent. Both are wrong, and the fix for the first is a tally taken from
+  the summary line; the second turned out to need a bucket of its own, because
+  `errored` is a THIRD state that is neither a bite nor a pass.
 * **It purges `__pycache__` and sets `PYTHONDONTWRITEBYTECODE`** before every run.
   Python treats a `.pyc` as current on the source's mtime *and size*, and the
   stored mtime has one-second resolution, so a mutation that keeps the file the
@@ -43,6 +45,13 @@ those shipped inside a commit.
   traceback. See `_last_count`.
 * **It checks a row's expected-silent MARK against what the run did**, and does
   not let the mark stand in for the observation. See `classify`.
+* **A row whose mutation does not parse gets its own bucket**, and a run holding
+  one exits non-zero. See `BROKEN`. A collection error used to be filed as
+  `BITES (collection error)`, i.e. as the good outcome -- so an anchor or
+  replacement that did not parse was recorded as *having bitten*, which is the
+  one thing a mutation table must never say about a row that never ran.
+* **It refuses a table whose anchors hold a DOTALL-unsafe `.`**, before the
+  baseline run and before anything is written. See `unescaped_dots`.
 """
 import os
 import pathlib
@@ -75,10 +84,11 @@ ORIGINALS: dict[pathlib.Path, str] = {
 #: failure, and the two must not share a verdict.
 EXPECTED_SILENT_MARK = "expected silent"
 CANARY = "CANARY: nothing covers this"
-#: The four buckets a row can land in. Named so `classify` reads as a rule rather
+#: The FIVE buckets a row can land in. Named so `classify` reads as a rule rather
 #: than as branching, and so a test can assert on the names.
 EXPECTED = "expected-silent"
 MISLABELLED = "mislabelled"
+BROKEN = "broken"
 SILENT = "silent"
 BITES = "bites"
 
@@ -155,6 +165,28 @@ MUTATIONS = [
      "Write NO figures in the panel. The panel draws every number from FACTS itself, "
      "so a figure in your text would either duplicate it or contradict it. Say which "
      "market the row is about and let the panel show the gap."),
+    # The comparative that survived the fix that removed its twin. `origin/main`
+    # told the model to SAY the comparison; this branch tells it not to; and the
+    # example sentence sat in rule 2 the whole time, byte-identical, in the rule
+    # whose subject is what the prose may not write. A model handed an example
+    # produces something close to it, so this is an instruction rather than an
+    # illustration.
+    #
+    # Anchored on rule 2 with `^...$` and `[^\n]*`, which is the DOTALL-safe
+    # spelling documented above, and the first match in the file: no comment
+    # quotes this line, and the `.` in `2\.` is escaped so the new static check
+    # accepts the row rather than refusing the table.
+    #
+    # The tests beside it are exact-equality and a structural quote inventory, so
+    # both of them also fail here. What this row is for is the case they cannot
+    # reach: a reworded example, or a test edited in the same commit as the
+    # prompt. `test_prompt_instructions.py` states that limit itself.
+    ("the comparative comes back to rule 2",
+     r"^2\. No betting advice:[^\n]*$",
+     '2. No betting advice: never write "lock", "bet", "value play", "hammer", '
+     '"guaranteed" or "sure thing". Disagreement with the market is information '
+     '("the model rates BAL a little better than the line does"), not a '
+     'recommendation.'),
 
     # --- the two call sites: these are the actual fix ---
     # The spread gate grew a `big_enough` term for the margin floor, so this
@@ -233,6 +265,68 @@ MUTATIONS = [
      r'^        factors\.append\(_fact\(str\(margin_market\["market"\]\), NEUTRAL, "The line",$',
      '        factors.append(_fact(str(margin_market["market"]), "down", "The line",'),
 
+    # --- the padding rows and the verdict ------------------------------------
+    # Reachable more than they look: measured, the "Not much to go on" row renders
+    # on NFL 271/272 bundles, CFB 555/888 and NBA 373/1760, and the "Where this
+    # stands" row on CFB 331, NFL 47, NBA 231, PL 50. So for a thin bundle these
+    # are most of the panel, not padding in the disposable sense -- and four edits
+    # to them were silent before `test_template_padding.py` existed.
+    #
+    # Every anchor here is whole-line with `[^\n]*` or an escaped literal dot, so
+    # the new static check accepts the table and the DOTALL trap cannot reach it.
+    # None of the four sentences is quoted verbatim in a comment above its line,
+    # which is the decoy this repo has been bitten by; the comments above the
+    # padding loop paraphrase rather than repeat.
+    #
+    # The removed sentence, byte for byte. An earlier draft padded with a `record`
+    # factor saying no settled record yet and it was withdrawn because that is
+    # false for exactly the bundles that reach this row -- so this row is a
+    # sentence that has already been removed once, on a ground a comment was the
+    # only guard for.
+    ("the padding row claims a settled record is missing again",
+     r'^PADDING_NO_QUOTE = "[^\n]*$',
+     'PADDING_NO_QUOTE = "The model has no settled record on this one yet."'),
+    # A comparison nothing computes, in the one row whose whole job is to say what
+    # the bundle is short of. The class this branch exists to remove.
+    ("the padding row compares the model with the market again",
+     r'^PADDING_BOTH = "[^\n]*$',
+     'PADDING_BOTH = "So the model strongly disagrees with the market here."'),
+    # A revert to the pre-branch wording, which is a claim about figures not having
+    # arrived and is wrong for every NBA bundle that reaches the row.
+    ("the padding row reverts to 'still filling in'",
+     r'^PADDING_NO_PROJECTION = "[^\n]*$',
+     'PADDING_NO_PROJECTION = "The facts for this one are still filling in."'),
+    # The state CHOICE rather than a wording: with the projection test forced on,
+    # a bundle carrying no model figure at all is told it has one.
+    ("the padding row assumes a model projection is always there",
+     r'^        projected = margin is not None or total is not None$',
+     "        projected = True"),
+    ("the padding row ignores a quoted price",
+     r'^        quoted_any = quoted is not None or total_line is not None$',
+     "        quoted_any = False"),
+    # The mark. `down` means "against the pick", nothing computes it, and the row
+    # fires beside a 99% pick. A keyword absence would not catch this; the emitted
+    # value is what `test_template_padding.py` compares.
+    ("the padding row's mark goes back to a pick-relative 'down'",
+     r'^                factors\.append\(_fact\("context", NEUTRAL, "Not much to go on",$',
+     '                factors.append(_fact("context", _toward("down", has_pick), "Not much to go on",'),
+    # And the second row's text, which used the same loop and so the same absence
+    # of a guard. The replacement is a comparison, so the row is the same class as
+    # the one above and a different row of the panel.
+    ("the second padding row compares the model with the market",
+     r'^                                     f"So there is little to weigh up here: \{title\}\."\)\)$',
+     '                                     f"So the model strongly disagrees with the market here: {title}."))'),
+    # The verdict, and the most prominent sentence in the panel. `prompts.py`
+    # forbids the model from exactly this, and the panel draws the band chip from
+    # the facts beside it -- so a 0.41 two-way pick would read "strong pick" next
+    # to a `leaning` chip, at the same time.
+    ("the verdict calls the pick a strong one",
+     r'^    verdict = f"\{label\} is the pick\." if label and prob is not None else "There is no pick for this one yet\."$',
+     '    verdict = f"{label} is a strong pick." if label and prob is not None else "There is no pick for this one yet."'),
+    ("the verdict stops naming the pick's team",
+     r'^    verdict = f"\{label\} is the pick\." if label and prob is not None else "There is no pick for this one yet\."$',
+     '    verdict = "That is the one to have." if label and prob is not None else "There is no pick for this one yet."'),
+
     # --- config.SERVED_SPORTS, via the module that reads it ---
     ("SERVED_SPORTS loses nba",
      r'SERVED_SPORTS = \("pl", "nfl", "cfb", "nba"\)', 'SERVED_SPORTS = ("pl", "nfl", "cfb")'),
@@ -263,6 +357,93 @@ MUTATIONS = [
 ]
 
 
+def unescaped_dots(pattern: str) -> list[str]:
+    r"""Every `.` in `pattern` that the regex engine would read as "any character".
+
+    Returned as readable fragments rather than offsets, because the only thing a
+    reader does with the result is look at it and fix the row.
+
+    **Why the character is dangerous HERE and nowhere else in Python.** These
+    patterns are applied with `flags=re.M | re.S`, and `re.S` is exactly what
+    turns `.` from "any character except a newline" into "any character". So
+    r"^    for key in keys:.*$" matches from that line to the END OF FILE, and
+    `re.subn(..., count=1)` replaces the whole tail of `template.py` with the
+    replacement. The file stops parsing, pytest exits 2, and -- before `BROKEN`
+    existed -- the table printed `BITES (collection error)` and the run exited 0.
+
+    A pattern is checked rather than banned, because the safe spellings are
+    ordinary:
+
+    * **Escape it**: r"^MIN_SPREAD_MARGIN = 0\.5$". A backslash consumes the
+      character after it, so the `.` is a literal.
+    * **Take it out of the pattern**: a whole-line anchor needs no `.` at all, and
+      `_SPREAD_SENTENCE` is written without one. This is the cheapest fix and the
+      reason that anchor is the shape other rows are asked to copy.
+    * **Spell the run**: r"^Write NO figures in the panel\.[^\n]*$". Inside a
+      character class a `.` IS already a literal, which is why `[^\n]*` is safe and
+      why this function has to track whether it is inside a class at all -- and why
+      a check that simply banned the character would reject the spelling the table
+      documents on two rows.
+
+    Its own limit, stated: this reads the PATTERN. A replacement that does not
+    parse is still only caught by `BROKEN`, which is why the two are both here
+    rather than one standing in for the other. A decoy with a `.*`-free anchor and
+    a replacement that is not valid Python is a `BROKEN` row, and it fails the run.
+    """
+    hits: list[str] = []
+    in_class = False
+    i = 0
+    while i < len(pattern):
+        ch = pattern[i]
+        if ch == "\\":
+            # An escape consumes the next character, so neither this one nor the
+            # one it hides can be a bare `.`. `i += 2` and not `i += 1`: a
+            # `\\.` is a literal backslash followed by a wildcard, so skipping one
+            # character would report the wildcard as safe.
+            i += 2
+            continue
+        if in_class:
+            if ch == "]":
+                in_class = False
+        elif ch == "[":
+            in_class = True
+        elif ch == ".":
+            hits.append(pattern[max(0, i - 12):i + 13])
+        i += 1
+    return hits
+
+
+def dot_problems(rows=None) -> list[tuple[str, str]]:
+    """(label, fragment) for every row whose anchor holds a DOTALL-unsafe dot.
+
+    Read from `MUTATIONS` by default, so a test that deletes rows cannot make the
+    check vacuous -- an empty table passes this and the separate
+    `test_every_marked_row_in_the_table_names_a_reason` is what holds the mechanism
+    from being dropped wholesale.
+    """
+    return [(label, fragment)
+            for label, pattern, _ in (MUTATIONS if rows is None else rows)
+            for fragment in unescaped_dots(pattern)]
+
+
+def _report_dot_problems() -> bool:
+    """Print every DOTALL-unsafe anchor and say whether the run may proceed."""
+    problems = dot_problems()
+    if not problems:
+        return True
+    print(f"  {len(problems)} anchor(s) in the table hold a `.`, which under re.S "
+          f"means 'any character")
+    print("  including a newline' -- so the match runs to the end of the file and")
+    print("  `re.subn(count=1)` replaces everything after it:")
+    for label, fragment in problems:
+        print(f"    - {label}: ...{fragment}...")
+    print("  Every row would report a collection error, which is not a bite, so the")
+    print("  table would report coverage for rows that never ran. Write the anchor")
+    print("  whole-line (`^...$`), spell any run as `[^\\n]*`, or escape the dot as")
+    print("  `\\.`. No mutation has been written; the run stops here on purpose.")
+    return False
+
+
 def _purge_bytecode() -> None:
     """Delete every `__pycache__` so a mutation can never be masked by a stale
     `.pyc`. See the module docstring for why this is load-bearing."""
@@ -271,7 +452,16 @@ def _purge_bytecode() -> None:
 
 
 def run() -> tuple[int, int, int]:
-    """(failed, passed, errored). Any of the first and third counts as a bite."""
+    """(failed, passed, errored).
+
+    **`errored` is returned rather than folded into `failed` or ignored.** A
+    mutation that does not parse makes pytest exit 2 without collecting the
+    suite, so `failed == 0` and the tally reads a row as SILENT -- "no test covers
+    this" -- which is a statement about coverage derived from a run that never
+    executed a test. The early return below is what stops that, and it is why
+    the value exists: `count("failed")` on a collection-error output is a number
+    about a traceback.
+    """
     _purge_bytecode()
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     p = subprocess.run(
@@ -328,12 +518,19 @@ def _last_count(out: str, word: str) -> int:
     return int(found[-1]) if found else 0
 
 
-def classify(label: str, bite: bool) -> str:
+def classify(label: str, bite: bool, broken: bool = False) -> str:
     """Where a row goes, as one function so the rule can be tested directly.
 
-    The three outcomes a row can have, and the mark is checked AGAINST the
+    The FIVE outcomes a row can have, and the mark is checked AGAINST the
     observation rather than in place of it:
 
+    * `BROKEN` -- the run ERRORED, so the row's mutation did not parse and the
+      suite was never collected. The row did not bite, and it did not pass: it
+      did not run. Checked FIRST, before the mark, because "was the
+      expected-silent label right?" is unanswerable about a run that never
+      happened, and because the old behaviour -- reading a collection error as
+      `BITES` -- put the best possible news in a table cell that should have said
+      the row is untested.
     * `EXPECTED` -- the row is marked expected-silent and did not bite. The mark
       is a claim about what should happen, and the run agreed.
     * `MISLABELLED` -- the row is marked expected-silent and DID bite. A
@@ -344,11 +541,13 @@ def classify(label: str, bite: bool) -> str:
     * `SILENT` / `BITES` -- an unmarked row, reported as observed.
 
     Extracted from `main` because a rule that can only be exercised by running
-    27 mutations is a rule nobody runs on purpose, and because the bug being
+    30 mutations is a rule nobody runs on purpose, and because the bug being
     fixed here is a rule about ORDER: a table that lists `not bite` after the
     mark has decided the outcome. As one function the order is the code, and
-    `tests/test_mutation_tally.py` covers all five cases without a subprocess.
+    `tests/test_mutation_tally.py` covers all cases without a subprocess.
     """
+    if broken:
+        return BROKEN
     marked = EXPECTED_SILENT_MARK in label
     if marked:
         return EXPECTED if not bite else MISLABELLED
@@ -376,6 +575,12 @@ def _drop_backups() -> None:
 
 
 def main() -> int:
+    # BEFORE the baseline run and before a single byte is written. A table whose
+    # first row is wrong would otherwise cost a full sweep to discover, and a
+    # refusal that came after the mutations had been applied would have put 30
+    # mutated files on disk with the `.bak` as the only way back.
+    if not _report_dot_problems():
+        return 1
     base_failed, base_passed, base_errored = run()
     if base_errored or base_failed:
         print(f"  BASELINE IS RED: {base_failed} failed, {base_errored} errored "
@@ -390,6 +595,7 @@ def main() -> int:
     silent: list[str] = []
     expected: list[str] = []
     mislabelled: list[str] = []
+    broken: list[str] = []
     canary_ok = False
     for path, text in ORIGINALS.items():
         backup = path.with_suffix(path.suffix + ".bak")
@@ -423,7 +629,13 @@ def main() -> int:
                 silent.append(f"{label} [not applied]")
                 continue
             if errored:
-                verdict, bite = "BITES (collection error)", True
+                # Its OWN verdict string, because "BITES" here would be a
+                # statement about a guard and this is a statement about a row. A
+                # mutation that did not parse tells the reader nothing about
+                # whether any test covers the code it was aimed at, and printing
+                # the good outcome is how two historical rows came to read as
+                # coverage when they had destroyed the file they were mutating.
+                verdict, bite = "BROKEN (collection error)", False
             elif failed > 0:
                 verdict, bite = f"BITES ({failed} failed)", True
             else:
@@ -437,7 +649,15 @@ def main() -> int:
                 # printed "BITES (1 failed)" and then "the canary stayed silent as
                 # it should", and exited 0. A control that cannot fail is not a
                 # control, and this is the only negative control the tool has.
+                #
+                # A BROKEN canary is `not bite` and so would set `canary_ok`. A
+                # canary that destroys the file is not a passing control either,
+                # so `broken` is checked separately: the canary is the one row
+                # whose own bucket is asserted, and a canary filed under BROKEN
+                # means the run is not measuring anything.
                 canary_ok = not bite
+                if errored:
+                    broken.append(CANARY)
             else:
                 # The mark records an EXPECTATION and is checked against the
                 # observation by `classify`; see its docstring for the case that
@@ -450,8 +670,10 @@ def main() -> int:
                 # make every clean run report a silent mutation and exit 1 -- the
                 # mirror of the defect being fixed here, and one this refactor
                 # introduced before it was caught by the first clean run.
-                bucket = classify(label, bite)
-                if bucket == EXPECTED:
+                bucket = classify(label, bite, errored)
+                if bucket == BROKEN:
+                    broken.append(label)
+                elif bucket == EXPECTED:
                     expected.append(label.split(" [")[0])
                 elif bucket == MISLABELLED:
                     mislabelled.append(label)
@@ -490,6 +712,26 @@ def main() -> int:
         print("  Either the expectation is now wrong (a test was added, so the row is "
               "a real guard and the mark must go) or the mark is on the wrong row.")
         return 1
+    # Checked alongside the mislabelled rows and BEFORE the `silent` report, for
+    # the reason the order is the fix rather than a style: a broken row is
+    # simultaneously the loudest and the quietest finding in the table. It is not
+    # on the silent list (so a reader stopping there concludes the table is
+    # clean), and it used to be printed as a BITE (so a reader skimming the rows
+    # concludes it is covered). Reported on its own, with its own return of 1, so
+    # a run holding one cannot exit 0 -- which is what it did while a reviewer's
+    # `.*` anchor was in the table.
+    if broken:
+        print(f"  {len(broken)} mutation(s) did not parse, so they were never "
+              f"collected:")
+        for s in broken:
+            print(f"    - {s}")
+        print("  A collection error is NOT a bite: it says the row's mutation broke")
+        print("  the file, so the row tested nothing at all and proves no coverage.")
+        print("  It is also the reason an anchor holding a DOTALL `.` is refused")
+        print("  before this loop starts -- such a match runs to the end of the file.")
+        print("  Fix the anchor (whole-line `^...$`, `[^\\n]*` for a run, `\\.` for a")
+        print("  literal dot) or the replacement, and re-run.")
+        return 1
     if silent:
         print(f"  {len(silent)} mutation(s) did not bite:")
         for s in silent:
@@ -505,8 +747,12 @@ def main() -> int:
     # The `.bak` files were already removed above, once the restore was
     # confirmed; nothing to do here. Named so a reader looking for the unlink
     # finds that it moved and why, rather than concluding it was dropped.
-    print("  every mutation bit or was documented as expected-silent, "
-          "and the canary stayed silent as it should")
+    #
+    # Reached only when `silent`, `mislabelled` and `broken` are all empty and the
+    # canary stayed silent, so every claim in this sentence is a list the run just
+    # checked rather than a thing the reader has to take on trust.
+    print("  every mutation bit, or was documented as expected-silent; none was "
+          "broken, none was mislabelled, and the canary stayed silent as it should")
     return 0
 
 

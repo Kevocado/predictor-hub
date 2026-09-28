@@ -67,8 +67,10 @@ class Settings(BaseSettings):
     #: floor `v2` — and fails if this stops being strictly above it. What the bump
     #: puts live under this version is the cached half of a response, `verdict`
     #: and `factors`: the no-pick `neutral` direction default, the frame's rule
-    #: that a factor names a market instead of saying which number is bigger, and
-    #: the spread sentence that states both figures without naming a side.
+    #: that a factor names a market instead of saying which number is bigger, the
+    #: second sentence of rule 2 rewritten so the anti-advice ban no longer hands
+    #: the model a model-vs-market comparison to imitate, and the spread sentence
+    #: that states both figures without naming a side.
     #:
     #: The band is deliberately NOT in that list, and this is the limit of the
     #: rule rather than an oversight: `service._answer` spreads the stored body
@@ -78,12 +80,25 @@ class Settings(BaseSettings):
     #: in `packages/predictor-ui` for the same reason — it is a reader-side
     #: decision about an unsayable claim, not a writer change.
     #:
+    #: **One version is recorded and not deployed, and that is deliberate.**
+    #: `tests/test_prompt_version_moves_with_the_prompt.py` is append-only: a row
+    #: is never edited, because editing one to match a prompt you have just
+    #: changed is the guard switching itself off. A prompt edit made while a
+    #: version is still undeployed would strictly be allowed to re-record that
+    #: version's row — and `v3` is exactly that case, having never been written
+    #: under, since the measured floor is `v2`. It is still bumped rather than
+    #: re-recorded, because the cost of the rule being absolute is one number and
+    #: the cost of it not being is a guard that can be turned off by editing a
+    #: table in the same breath as the prompt. A `v3` row that describes a prompt
+    #: nobody was ever sent is a harmless oddity in a log; a re-recordable row is
+    #: not.
+    #:
     #: Two rules, two files, and neither substitutes for the other.
     #: `tests/test_prompt_version.py` bounds this against production; the other
     #: is `tests/test_prompt_version_moves_with_the_prompt.py`, which holds a
     #: digest of everything the writer sends, so the frame cannot move without
     #: this and leave a green suite behind.
-    prompt_version: str = "v3"
+    prompt_version: str = "v4"
     sport_api_pl: str | None = None
     sport_api_f1: str | None = None
     sport_api_nfl: str | None = None

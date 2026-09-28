@@ -321,18 +321,53 @@ def test_dropping_the_spread_row_does_not_drop_the_others():
 def test_the_floor_is_the_one_nba_uses():
     """The number is not invented here, and this is what holds it to that.
 
-    `0.5` because NBA's `_margin_line` words a gap only at `value >= 0.5`. A
-    different floor would be a second disagreement with the bundle's producer,
-    which is the shape of bug this file is about: the template quietly holding a
-    threshold the sport it serves does not.
+    NBA's real `_margin_line` is the authority: it is the function that decides
+    whether a projected margin is worded as a gap or as the literal `"Toss-up"`,
+    and a bundle whose margin it called a toss-up has therefore already been told
+    so by the time it reaches this file. A different floor here would be a second
+    disagreement with the bundle's producer, which is the shape of bug this file
+    is about: the template quietly holding a threshold the sport it serves does
+    not.
 
-    Only the MAGNITUDE half of NBA's rule is adopted. NBA also requires the
-    margin to point at the pick's team before wording it, and that check is not
-    available here -- the bundle carries no home/away designation, which is the
-    same missing fact `test_a_negative_model_margin_is_written_as_a_magnitude`
-    documents. So a bundle whose margin disagrees with the moneyline's favourite
-    still gets its row; fixing that needs a home/away designation in the facts,
-    and is reported rather than guessed at.
+    **The floor is DERIVED by running NBA's function, not read out of its source
+    and not compared with a literal in this file.** Both of those are the same
+    guard wearing different clothes:
+
+    * A literal (`assert MIN_SPREAD_MARGIN == 0.5`) is a copy of the number, so
+      the two values can disagree without anything noticing. Proven, not
+      asserted: against a decoy NBA whose floor is `0.6`, the literal version
+      passed with the template disagreeing with its data by a tenth of a point --
+      the entire suite green and the file's stated purpose unfulfilled.
+    * A regex over NBA's source would be satisfied by NBA's DOCSTRING, which
+      quotes `"Toss-up"` and the reasoning in prose, and by any comment above the
+      line -- the decoy this repo keeps re-learning. The harness documents the
+      same trap for its own anchors, and the `count=1` takes the first match, so a
+      comment wins over the code.
+
+    So the probe asks NBA's function what it does, at a thousand margins, and
+    takes the smallest one it words as a gap. That is a question about behaviour,
+    and a decoy that changed the floor changes the answer.
+
+    **Only the MAGNITUDE half of NBA's rule is derived, and the probe is built so
+    that is true by construction rather than by hope.** `_margin_line` gates on
+    two things: that the margin points at the pick's own team, and that its
+    magnitude is at least the floor. The bundle carries no home/away designation,
+    so the first gate is not adoptable here at all
+    (`test_a_negative_model_margin_is_written_as_a_magnitude` documents the same
+    missing fact). The probe therefore supplies `home_prob = 0.62` and a
+    non-negative margin, which makes `pick_team == home_team == team` -- so the
+    side gate is satisfied at every magnitude and the only thing left to decide
+    anything is the magnitude. A `"Toss-up"` found below the floor is therefore
+    about the magnitude and cannot be the side gate misfiring. Fixing the side
+    half needs a home/away designation in the facts, and is reported rather than
+    guessed at.
+
+    The literal assertion is kept as well, deliberately: the derivation says the
+    two floors agree, and the literal says what they agree *on*, so a future
+    change to the real number has to be made in two places on purpose rather than
+    by one of them moving alone. See the decoy in
+    `test_the_floor_probe_would_notice_nba_moving_its_own_floor` for what the
+    derivation catches that the literal cannot.
     """
     from explainer.template import MIN_SPREAD_MARGIN
 
@@ -340,6 +375,233 @@ def test_the_floor_is_the_one_nba_uses():
         f"the floor is {MIN_SPREAD_MARGIN}, which is not the half-point floor "
         "NBA's own facts builder uses"
     )
+    assert _nba_margin_floor() == MIN_SPREAD_MARGIN, (
+        f"NBA's own `_margin_line` words a margin as a gap from "
+        f"{_nba_margin_floor()} and this template's floor is {MIN_SPREAD_MARGIN}. "
+        f"One of the two is a copy of the other and the copy is wrong: a bundle "
+        f"whose margin NBA called a toss-up arrives here already described as one, "
+        f"and a template with a different floor contradicts the producer of its own "
+        f"data. NBA's docstring says it ports `marginLine`; the floor is not a "
+        f"number this repo gets to choose."
+    )
+
+
+# --- deriving NBA's floor from NBA's own function ---------------------------
+
+#: What NBA words a margin that is not a gap as. Read out of the function's
+#: output rather than written here, because a literal is exactly the kind of copy
+#: this derivation exists to remove -- if NBA renames the word, a test holding
+#: "Toss-up" would compare against a string NBA no longer emits and report a
+#: floor of "the first margin that is not that string", which happens to still be
+#: right. So it is a parameter of the probe and the assertion is about the SHAPE
+#: of the answer (a gap names a team; a toss-up does not).
+TOSS_UP = "Toss-up"
+
+#: How finely the probe steps. A thousandth of a point: every floor a sports
+#: builder would plausibly use (0.25, 0.3, 0.5, 0.6) lands exactly on a step, so
+#: the derived value is that floor rather than an approximation of it, which is
+#: what lets the assertion be exact equality. And the sweep is a BEHAVIOURAL
+#: sweep, not a source read, so a floor NBA writes as `0.5` on one line and
+#: `1.0 / 2` on another is the same number to this probe.
+PROBE_STEP = 0.001
+PROBE_MAX = 2.0
+
+
+def _nba_margin_line_fn():
+    """NBA's real `_margin_line`, cut out of its own `origin/main` and run.
+
+    Reuses the source-reading machinery from `test_unserved_sport.py` rather than
+    re-implementing it, for the same reason that file gives: the probe has to
+    read what SHIPS, and a second copy of the extraction is a second thing to keep
+    in step with the first. It fails rather than skips when the sibling is
+    absent, which is the behaviour documented in the README: a skip would make
+    the claim that NBA sets this floor unverifiable while still reporting a green
+    suite.
+
+    The module cannot be exec'd whole -- it imports pandas and the storage layer --
+    so the one function is cut and run, exactly as `_run_nba_markets` does for
+    its six. `_margin_line` takes four floats/strings and calls nothing but
+    `abs`, so it stands alone and needs no other name in scope.
+    """
+    import re
+
+    from test_unserved_sport import _nba_facts_source
+
+    source = _nba_facts_source()
+    assert "def _margin_line" in source, (
+        "NBA's facts.py has no `_margin_line`, so the floor could not be derived "
+        "from the function that sets it and the assertion would compare the "
+        "template with a constant it chose itself"
+    )
+    m = re.search(r"^def _margin_line\(.*?(?=^def |^@router|\Z)", source, re.S | re.M)
+    assert m, (
+        "NBA's `_margin_line` could not be cut out of its source; the probe would "
+        "pass vacuously rather than ask NBA's function anything"
+    )
+    env: dict = {}
+    exec(compile("from __future__ import annotations\n" + m.group(0),
+                 "<nba _margin_line>", "exec"), env)
+    assert "_margin_line" in env, "the cut produced no callable"
+    return env["_margin_line"]
+
+
+def _nba_margin_floor(margin_line=None) -> float:
+    """The smallest margin NBA's own `_margin_line` words as a gap, not a toss-up.
+
+    Swept behaviourally, on the argument shapes that make the SIDE gate a
+    non-question: `home_prob = 0.62` puts the pick at home, a non-negative margin
+    puts the projection at home too, so "is this margin pointed at the pick's
+    team" is true at every magnitude and whatever NBA returns is decided by the
+    magnitude alone. That is what makes this the MAGNITUDE half of NBA's rule --
+    see the docstring of `test_the_floor_is_the_one_nba_uses`.
+
+    **The function is a parameter, and that is the whole point of the parameter.**
+    A first version took no argument and every sensitivity test re-implemented the
+    sweep locally -- which meant the test was pinning a COPY of the sweep while
+    the shipped one was untested, so replacing the body of `_nba_margin_floor`
+    with `return 0.5` would have passed the entire file, including against a decoy
+    NBA. Injecting the function makes the sensitivity test drive the SHIPPED
+    sweep, so that mutation is caught here rather than only in an out-of-process
+    decoy run. `None` means "NBA's real one", so the default call is the claim
+    and no caller has to pass anything to make it.
+    """
+    margin_line = _nba_margin_line_fn() if margin_line is None else margin_line
+    step = PROBE_STEP
+    n = int(round(PROBE_MAX / step))
+    for i in range(n + 1):
+        value = round(i * step, 6)
+        if margin_line("BOS", "MIA", 0.62, value) != TOSS_UP:
+            return value
+    raise AssertionError(
+        f"NBA's `_margin_line` called every margin up to {PROBE_MAX} a toss-up, so "
+        f"it sets no magnitude floor this file could adopt. Whatever this repo "
+        f"picks would be a second disagreement with the bundle's producer."
+    )
+
+
+def test_the_floor_probe_asks_nba_rather_than_reading_it():
+    """The probe is about BEHAVIOUR, and this is the anti-vacuity half.
+
+    Three things have to be true of NBA's function for the derivation above to
+    mean anything, and none of them is visible in the number it returns:
+
+    * the function exists and is callable (asserted in the probe, and here by
+      having got this far);
+    * a large margin really is worded as a gap naming a team, and a tiny one
+      really is a toss-up -- so `TOSS_UP` is a word NBA emits rather than a
+      constant the probe invented and compared against;
+    * the boundary is a BOUNDARY: at the derived value NBA words a gap, and one
+      step below it does not. A probe that returned the first non-toss-up out of a
+      sweep whose comparison never matched would report `0.0`, and a probe
+      comparing against the wrong word would report the same `0.0`; neither would
+      be distinguishable from a real answer by the floor value alone.
+    """
+    margin_line = _nba_margin_line_fn()
+    floor = _nba_margin_floor()
+
+    assert margin_line("BOS", "MIA", 0.62, 5.0) != TOSS_UP, (
+        "NBA words a five-point margin as a toss-up, so `Toss-up` is not the word "
+        "this probe is looking for and the derived floor is an artefact"
+    )
+    assert margin_line("BOS", "MIA", 0.62, 5.0).startswith("BOS by"), (
+        f"a five-point gap is not worded as a gap naming a team: "
+        f"{margin_line('BOS', 'MIA', 0.62, 5.0)!r}. This probe assumes NBA's gap "
+        f"and toss-up wordings are what it takes them to be."
+    )
+    assert margin_line("BOS", "MIA", 0.62, 0.0) == TOSS_UP, (
+        "a zero margin is not a toss-up, so the sweep would have found no floor "
+        "at all and the whole derivation would be measuring the wrong boundary"
+    )
+    assert margin_line("BOS", "MIA", 0.62, floor) != TOSS_UP, (
+        f"the derived floor {floor} is a toss-up, so it is not a floor"
+    )
+    just_under = round(floor - PROBE_STEP, 6)
+    assert margin_line("BOS", "MIA", 0.62, just_under) == TOSS_UP, (
+        f"a margin of {just_under} is worded as a gap, so the derived floor {floor} "
+        f"is not the smallest one -- the sweep is not measuring the boundary it "
+        f"claims to"
+    )
+    # And the side gate really is out of the way at the floor, which is the whole
+    # reason the derivation is the magnitude half and not a guess at the rule.
+    assert margin_line("MIA", "BOS", 0.38, floor) == TOSS_UP or floor == 0, (
+        f"with the pick on the away side, a margin of {floor} is still worded as a "
+        f"gap, so the probe's chosen arguments do not isolate the magnitude half "
+        f"and the derived floor is contaminated by the side gate"
+    )
+    # **The floor this probe derives IS the one the template ships**, asserted here
+    # as well as in `test_the_floor_is_the_one_nba_uses`, and that repetition is a
+    # survivor being closed rather than a copy being made.
+    #
+    # Deleting the derived comparison from the test above left the whole file
+    # green. This test pins the probe's SHAPE -- a boundary, a gap at it, a
+    # toss-up a step below -- and any value with that shape satisfies it, so
+    # removing the one assertion that tied the probe to `MIN_SPREAD_MARGIN`
+    # disconnected the two without anything noticing. Splitting the claim across
+    # its two ends means an edit to either test leaves the other asserting it.
+    #
+    # It is not the same assertion twice: this one's subject is the PROBE, and
+    # whether the number it produces is the number anything else uses is part of
+    # whether the probe is any good.
+    from explainer.template import MIN_SPREAD_MARGIN
+    assert floor == MIN_SPREAD_MARGIN, (
+        f"the probe derives {floor} from NBA's own function and the template "
+        f"ships {MIN_SPREAD_MARGIN}, so the two disagree about the same rule"
+    )
+
+
+def test_the_floor_probe_would_notice_nba_moving_its_own_floor():
+    """The mutation the literal assertion cannot catch, demonstrated in-process.
+
+    The reviewer found `test_the_floor_is_the_one_nba_uses` comparing
+    `MIN_SPREAD_MARGIN` to the literal `0.5` in the same repository, so NBA's
+    floor could move and the test would stay green. That was verified out of
+    process too: against a decoy repo whose floor is `0.6`, the old assertion
+    passed with the template disagreeing with its data by a tenth of a point --
+    the entire suite green and this file's stated purpose unfulfilled.
+
+    So this drives the **shipped** sweep against a stand-in whose floor is
+    `0.6` and asserts it reports `0.6`, and does the same for three other floors.
+    The parameter is what makes that a test of the probe rather than of a copy of
+    it: a sweep re-implemented locally would pass while `_nba_margin_floor` was
+    `return 0.5`, and that mutation survives everything else in this file --
+    including the boundary-shape test above, which is satisfied by any value with
+    a toss-up one step under it. Only driving the real function closes it.
+
+    A stand-in, deliberately: the real function's floor is a literal in NBA's
+    source and there is no honest way to move it in-process. What is checked is
+    that the sweep finds whatever boundary the function it is handed actually
+    has. The two are not the same claim -- this proves the probe is sensitive to
+    a moved floor, not that `NBA_REPO` is wired up -- and the decoy run is what
+    separates those. Both are done and both are reported.
+    """
+    def margin_line_with_floor_at(floor: float):
+        """NBA's rule with the floor moved, written the way NBA writes it.
+
+        Deliberately close to the real function's shape, including the side gate,
+        so the sweep is exercised through both gates rather than a shortcut that
+        only one of them.
+        """
+        def _margin_line(home_team, away_team, home_prob, margin):
+            pick_team = home_team if home_prob >= 0.5 else away_team
+            team = home_team if margin >= 0 else away_team
+            value = abs(margin)
+            if team == pick_team and value >= floor:
+                return f"{team} by {value:.1f}"
+            return TOSS_UP
+        return _margin_line
+
+    assert _nba_margin_floor() == 0.5, (
+        "NBA's own `_margin_line` does not set a half-point floor, so the literal "
+        "assertion above and this file's comment are both wrong about NBA"
+    )
+    for moved in (0.6, 0.25, 1.0, 0.1):
+        assert _nba_margin_floor(margin_line_with_floor_at(moved)) == moved, (
+            f"the shipped sweep reported the wrong floor for a builder that words "
+            f"a gap from {moved}: it is reading something other than the boundary, "
+            f"so it would not notice NBA moving its own"
+        )
+
+
 
 
 # --- the margin belongs to a SIDE, and the sentence named one ----------------

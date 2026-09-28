@@ -172,6 +172,278 @@ def test_a_collection_error_is_still_counted_as_an_error_not_a_zero():
     assert subprocess.run(["true"]).returncode == 0
 
 
+# --- a row that does not parse is not a guard ------------------------------
+#
+# **The reviewer's finding, and it is the one this file's whole method exists to
+# catch.** A row whose anchor or replacement does not parse makes pytest exit 2,
+# `run()` returns `errored`, and the loop used to read that as
+# `verdict, bite = "BITES (collection error)", True`. So the one outcome that
+# means *this row tested nothing at all* was filed under the one outcome that
+# means *this row proved a guard is load-bearing*. The reviewer's own added row
+# demonstrated it end to end: an anchor ending in `.*` (matched with `re.S`, so
+# it swallows to end of file) replaced the rest of `template.py`, the harness
+# printed `BITES (collection error)`, then printed "every mutation bit or was
+# documented as expected-silent, and the canary stayed silent as it should", and
+# exited 0.
+#
+# The module docstring already records two historical rows that did exactly this
+# by hand, so the file is not making a novel claim -- it is making a claim about
+# a hole that two previous passes already fell into.
+
+
+def test_a_collection_error_is_its_own_bucket_rather_than_a_bite():
+    """BROKEN, checked BEFORE the mark, and never a bite.
+
+    A broken row is not a guard that bit; it is a row that never ran. Filing it
+    as `BITES` puts "this mutation is covered" into a table cell when the truth is
+    "this mutation is untested", and the reader of that table is looking for
+    coverage.
+
+    Checked before the `EXPECTED_SILENT_MARK` deliberately. A row can be both
+    marked expected-silent and broken, and the question "was the mark right?" is
+    unanswerable while the row is untested -- so the untested answer is the one
+    that gets reported, and MISLABELLED stays a statement about rows that ran.
+    """
+    assert harness.classify(UNMARKED, bite=True, broken=True) == harness.BROKEN, (
+        "a collection error is still filed as BITES, so a row that never ran is "
+        "reported as a guard that held"
+    )
+    assert harness.classify(MARKED, bite=True, broken=True) == harness.BROKEN, (
+        "a broken row was judged by its expected-silent mark, which is a claim "
+        "about a run that did not happen"
+    )
+    # And a row that is NOT broken still reaches the ordinary four buckets, so
+    # the new parameter cannot swallow the existing decisions.
+    assert harness.classify(UNMARKED, bite=True, broken=False) == harness.BITES
+    assert harness.classify(UNMARKED, bite=False, broken=False) == harness.SILENT
+    assert harness.classify(MARKED, bite=False, broken=False) == harness.EXPECTED
+    assert harness.classify(MARKED, bite=True, broken=False) == harness.MISLABELLED
+
+
+def test_a_broken_row_exits_non_zero_and_is_reported_before_the_silent_one(tmp_path):
+    """Not the classification, the consequence -- the shape the reviewer found.
+
+    `main` printed its success line and returned 0 with a broken row in the table.
+    So the exit code is asserted, the success line is asserted ABSENT, and the
+    broken rows are asserted to be reported **before** the silent-mutation report.
+
+    "Before" is asserted as `return 1` and not as two lists printed in an order:
+    the broken check returns immediately, so on a table holding both a broken row
+    and a silent row the silent report is never reached at all. That is the
+    ordering the fix asks for -- a reader who stops at the first finding cannot
+    stop at the wrong one -- and asserting the absence is what pins it, because a
+    version that collected both and printed broken-then-silent would satisfy a
+    looser check while the important property (the run is already over) is what
+    keeps it honest.
+
+    Driven with a replacement of `BROKEN = ((( ` -- a real syntax error, so the
+    demonstration does not depend on a stub inventing the exit code.
+    """
+    rows = [
+        SILENT_CANARY,
+        ("a decoy that does not parse", r"^MARKER = 1$", "BROKEN = ((( "),
+        ("a decoy that stays silent", r"^MARKER = 1$", "MARKER = 1"),
+    ]
+    # One answer per `run()` call, in order: the baseline, then one per row, then
+    # the post-restore run. The canary is a ROW here, so it takes the second
+    # answer -- and it has to take a clean one, or the run fails for the canary's
+    # sake and this test stops being about the broken row.
+    runs = [(0, 300, 0), (0, 300, 0), (-1, 0, 1), (0, 300, 0), (0, 300, 0)]
+
+    code, printed = _run_main(rows, runs, tmp=tmp_path)
+
+    assert code == 1, f"a broken row exited {code}, not 1\n{printed}"
+    assert "every mutation bit" not in printed, (
+        f"the success line printed with a broken row in the table:\n{printed}"
+    )
+    # The per-row verdict column is the table working: the broken row is labelled
+    # BROKEN there and the silent one SILENT, and neither is called a bite.
+    assert "BROKEN (collection error)" in printed, printed
+
+    # Everything from the post-restore run on is the REPORT, and the report is
+    # what a reader reads as a conclusion. Scoped to it, because the per-row
+    # column above names every row by design and the absence claims are about
+    # findings, not labels.
+    report = printed.split("restored:")[-1]
+    assert "1 mutation(s) did not parse" in report, report
+    assert "a decoy that does not parse" in report, report
+    # The silent report is unreachable while a broken row stands, so the reader
+    # cannot be left reading a silent-mutation list that omits the untested row.
+    assert "did not bite" not in report, (
+        f"the silent report printed alongside a broken row:\n{report}"
+    )
+    assert "a decoy that stays silent" not in report, (
+        f"the silent row was reported while an untested row was standing:\n{report}"
+    )
+    assert "ACTUALLY BITES" not in report, report
+
+
+def test_a_broken_canary_is_not_a_silent_control(tmp_path):
+    """The one row whose own bucket is asserted, and the second half of the canary
+    check.
+
+    The canary's whole job is to be a control that can FAIL, and a run that filed
+    a broken canary as `not bite` would set `canary_ok` -- printing a table in
+    which the control destroyed the file and reporting the run as clean. The
+    broken bucket is what makes that combination visible, and the run still exits
+    non-zero either way; this pins that the broken finding is *named*, so the exit
+    is for the reason a reader can act on rather than an accident of ordering.
+    """
+    rows = [("CANARY: nothing covers this", r"^MARKER = 1$", "BROKEN = ((( ")]
+    runs = [(0, 300, 0), (-1, 0, 1), (0, 300, 0)]
+
+    code, printed = _run_main(rows, runs, tmp=tmp_path)
+
+    assert code == 1, printed
+    assert "did not parse" in printed, printed
+    assert "CANARY: nothing covers this" in printed, (
+        f"a broken canary was not reported as broken:\n{printed}"
+    )
+    assert "every mutation bit" not in printed, printed
+
+
+def test_a_broken_row_with_nothing_else_wrong_still_exits_one(tmp_path):
+    """The broken row on its own, which is the reviewer's actual scenario.
+
+    A table of one broken row and a silent canary has an EMPTY silent list, so the
+    ordering assertion above has nothing to order against and this is the case that
+    would have slipped past it: nothing else wrong, one row untested, and the only
+    question is the exit code.
+    """
+    rows = [SILENT_CANARY, ("a decoy that does not parse", r"^MARKER = 1$", "BROKEN = ((( ")]
+    runs = [(0, 300, 0), (0, 300, 0), (-1, 0, 1), (0, 300, 0)]
+
+    code, printed = _run_main(rows, runs, tmp=tmp_path)
+
+    assert code == 1, f"a broken row and nothing else wrong exited {code}\n{printed}"
+    assert "every mutation bit" not in printed, printed
+    assert "did not bite" not in printed, (
+        f"a broken row was also filed as a silent mutation:\n{printed}"
+    )
+    assert "1 mutation(s) did not parse" in printed, printed
+
+
+def test_a_clean_run_says_nothing_about_broken_rows(tmp_path):
+    """The control for the row above.
+
+    If `broken` were non-empty on a clean run -- a list initialised wrong, or the
+    check placed so it fires on the canary -- the new failure would mask the
+    results instead of adding to them, and a green run would start reporting a
+    problem it does not have.
+    """
+    code, printed = _run_main([SILENT_CANARY], [(0, 300, 0)] * 3, tmp=tmp_path)
+    assert code == 0, printed
+    assert "did not parse" not in printed, printed
+    assert "every mutation bit" in printed, printed
+
+
+# --- the static check: an anchor may not hold a DOTALL `.` ------------------
+#
+# The two halves of the fix, and this is the cheaper one. The broken bucket above
+# makes a bad row *fail*; it does not make it *obvious*. A pattern containing an
+# unescaped `.` is matched with `re.S`, where `.` means "any character, including
+# a newline" -- so `r"...keys:.*$"` matches to the END OF FILE, and
+# `re.subn(..., count=1)` replaces the entire tail of the source with the
+# replacement. The file stops parsing, the run errors, and (before the bucket
+# above) the table reported a bite.
+#
+# The whole-line spelling `^...$` with `[^\n]*` is the DOTALL-safe one and the
+# table already documents it on the two rows that were fixed by hand. This is the
+# check that stops the third one.
+
+
+def test_no_anchor_in_the_table_holds_a_dot_the_regex_would_read_as_any_character():
+    """Every row, on every file. This is the guard, and it is a property of the
+    TABLE rather than of one row -- which is what makes it hold for the next row
+    somebody adds rather than the ones that are already here.
+
+    Asserted on `MUTATIONS` itself rather than on a checked-in copy of it, so
+    deleting the rows does not make the check vacuous: the list is read from the
+    harness module, which is the same object `main` iterates.
+    """
+    offenders = harness.dot_problems()
+    assert offenders == [], (
+        "an anchor in the table contains a `.`, which under re.S means 'any "
+        "character including a newline' and so matches to the end of the file:\n"
+        + "\n".join(f"  {label}: {fragment!r}" for label, fragment in offenders)
+        + "\nWrite the anchor whole-line (`^...$`) and spell any run as "
+          "`[^\\n]*`, or escape the dot."
+    )
+
+
+@pytest.mark.parametrize("pattern,expected", [
+    # The two shapes a DOTALL-unsafe anchor takes, both of which the reviewer and
+    # the module docstring have already hit by hand.
+    (r"^    for key in keys:.*$", True),
+    (r"^Write NO figures in the panel\..*do not say which number is bigger\.$", True),
+    # And the spellings that are safe, so the check is not "reject every dot".
+    (r"^    for key in keys:$", False),
+    (r"^    big_enough = margin is not None and abs\(margin\) >= MIN_SPREAD_MARGIN$", False),
+    (r"^Write NO figures in the panel\.[^\n]*$", False),
+    (r"^MIN_SPREAD_MARGIN = 0\.5$", False),
+    (r"^    if margin_market is not None and margin is not None and label and quoted and big_enough:$", False),
+    (r'SERVED_SPORTS = \("pl", "nfl", "cfb", "nba"\)', False),
+    # A dot INSIDE a character class is a literal and is safe, so the check has to
+    # be about what the regex reads rather than about the character appearing.
+    (r"^MARK[.]{1}A = 1$", False),
+    (r'    "nba": \("market_line"\),$', False),
+], ids=[
+    "a trailing .* swallows the file",
+    "an interior . spans the newlines under re.S",
+    "a whole-line anchor with no dot",
+    "escaped parens and a bare >=",
+    "the DOTALL-safe run spelling the table documents",
+    "an escaped literal dot",
+    "a long whole-line anchor",
+    "escaped quotes and parens",
+    "a dot inside a character class is a literal",
+    "the only unescaped dots here are inside quoted source",
+])
+def test_the_dot_check_reads_the_pattern_the_way_the_regex_will(pattern, expected):
+    r"""The check itself, on the shapes that decide it -- including the two that
+    must be ACCEPTED, so it cannot degenerate into a ban on the character.
+
+    The last case is the one that could go wrong quietly: an anchor quoting source
+    with double quotes has no `\.` in it, because `"` is not a regex metacharacter
+    and needs no escape. A check that banned unescaped dots would still pass it --
+    and a check that banned dots *before* the class/escape logic would reject the
+    two rows the table documents as safe, which is how a guard gets deleted.
+    """
+    assert bool(harness.unescaped_dots(pattern)) is expected, (
+        f"{pattern!r}: expected a dot-finding check to be "
+        f"{'TRUE' if expected else 'FALSE'}"
+    )
+
+
+def test_a_table_holding_a_dot_anchor_is_refused_before_any_mutation_is_written(tmp_path):
+    """The demonstration, as a test, so it does not depend on anyone remembering
+    to add the row by hand.
+
+    Two things are asserted, and the second is the one that matters. The run
+    refuses with a message naming the row, and it does so **before the baseline
+    pytest run**: a table that is wrong in its first row would otherwise cost a
+    full 30-row sweep to discover, and a reviewer who ran out of patience would
+    be right to.
+
+    The refusal is also total rather than partial. A run that applied 31 rows and
+    then refused would have written 31 mutations into the working tree, and the
+    `.bak` is the only thing standing between that and a lost fix.
+    """
+    rows = [SILENT_CANARY, ("an anchor ending in .*", r"^MARKER = 1.*$", "MARKER = 1")]
+    baks = _baks(tmp_path)
+
+    code, printed = _run_main(rows, [(0, 300, 0)] * 3, tmp=tmp_path)
+
+    assert code == 1, f"a table with a DOTALL-unsafe anchor exited {code}\n{printed}"
+    assert "ends in a dot" in printed or "dot" in printed, printed
+    assert "an anchor ending in .*" in printed, printed
+    # No baseline, no mutation, no recovery copy: nothing was ever written.
+    assert "baseline" not in printed, f"the static check ran after the baseline:\n{printed}"
+    assert "BITES" not in printed, printed
+    for bak in baks:
+        assert not bak.exists(), f"{bak} was written by a run that refused the table"
+
+
 # --- the expected-silent mark, checked against the observation -------------
 
 #: The one row that carries the mark, spelled the way `MUTATIONS` spells it.

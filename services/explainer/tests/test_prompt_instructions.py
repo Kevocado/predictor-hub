@@ -51,6 +51,8 @@ answer for a change to no behaviour.
 """
 from __future__ import annotations
 
+import re
+
 from explainer.config import SERVED_SPORTS
 from explainer.prompts import SPORT_NOTES, SYSTEM, messages
 
@@ -76,6 +78,214 @@ FIGURES_RULE = (
 #: deleted because the sentence that forbids a comparison has to name one. See
 #: `test_the_figures_rule_offers_no_sentence_to_imitate`.
 COMPARATIVES: tuple[str, ...] = ()
+
+# --- rule 2, and the example sentence it used to hand the model --------------
+#
+# **The branch halved this contradiction rather than creating it.** `origin/main`
+# told the model to *say* the comparison -- "the line asks for more than the model
+# rates the gap" -- and this branch tells it not to. The example sentence itself
+# survived byte-identical, in a different rule, under a different justification:
+#
+#     Disagreement with the market is information ("the model rates BAL a little
+#     better than the line does"), not a recommendation.
+#
+# So rule 2 was left holding the one sentence the frame exists to stop the model
+# writing, in the voice of a piece of house style, in the rule whose subject is
+# the anti-advice ban -- the one rule whose whole job is to say what the prose may
+# not do. It is not a leftover nobody reads: `deploy-explainer.sh setup`
+# re-derives `EXPLAINER_ENABLED` from the presence of the key line, so the first
+# `setup` after `golive` turns the model on, and this is the prompt it is sent.
+#
+# A model handed an example produces something close to it, so an example that
+# asserts a comparison is an instruction to assert a comparison however the
+# instruction is worded. That is why the guard below is STRUCTURAL -- it reads
+# what the frame quotes -- and not a keyword test: `validate()` cannot catch this
+# class at all, for the reason this module's docstring gives.
+
+#: The terms rule 2 bans, in the order it names them. Held here as a list rather
+#: than a set, because the order is part of the instruction and the assertion
+#: below is a sequence equality: a rule that quoted one of these twice, or in a
+#: different order, is a different prompt.
+BANNED_TERMS = ("lock", "bet", "value play", "hammer", "guaranteed", "sure thing")
+
+#: Rule 2, in full. Pinned for the same reason `FIGURES_RULE` is: the claim this
+#: section exists for is not "a word is missing" but "the instruction says
+#: something else", and a keyword test goes green on a rewording that
+#: reintroduces the comparison in other words -- which is the only kind of edit
+#: that matters.
+#:
+#: Kept to the anti-advice ban, which is rule 2's real subject and the only part
+#: of it the model needs in order to comply. The second sentence keeps the half
+#: that was always true -- that a disagreement is information and not a
+#: recommendation -- and replaces the example with an instruction that hands the
+#: model nothing to imitate: name the market, let the panel draw the two figures,
+#: do not rank them. It asks for no comparison, and it asks for no figures either,
+#: so it does not collide with the figures rule two paragraphs later.
+RULE_TWO = (
+    "2. No betting advice: never write \"lock\", \"bet\", \"value play\", "
+    "\"hammer\", \"guaranteed\" or \"sure thing\". If the model and the market do "
+    "not agree, that is information, not a recommendation: name the market the row "
+    "is about, let the panel draw the two figures side by side, and do not rank "
+    "them."
+)
+
+
+#: Everything the frame's numbered rules quote, in order.
+#:
+#: **An inventory, not a ban list**, and the distinction is the whole guard. A
+#: first version of this test asserted that the only quoted things anywhere in the
+#: frame were rule 2's six banned terms, and it failed on six chunks that are all
+#: legitimate and all deliberate: rule 1 quoting a phrase FORM for a quantity
+#: ("a little more than the line", "about four times in ten"), rule 3 quoting two
+#: `pick_timing` VALUES the model has to key off ("rebuilt", "none"), and rule 4
+#: quoting a worked illustration of expressing uncertainty. So "no quotes" is not
+#: available, and a keyword blacklist over the rest is not either -- which words
+#: count as a comparison is a judgement about English, and `validate`'s own comment
+#: rejects that shape for exactly this reason.
+#:
+#: What IS available is a complete, ordered snapshot: every quote the frame makes,
+#: pinned. Then any ADDITION fails -- which is the deleted comparative coming
+#: back, in rule 2 or in a rule nobody thought to check -- and so does any removal
+#: or any move, because the sequence is compared end to end.
+#:
+#: Its own limit, stated: a snapshot is a copy, so editing this list in the same
+#: commit as the prompt satisfies it. That is not fixable by any assertion on
+#: prompt prose, and it is why the harness table carries a row that reinstates the
+#: comparative -- a mutation nobody can satisfy by editing a test.
+FRAME_QUOTES = [
+    # rule 1 -- how to express a quantity without computing a new figure
+    "a little more than the line",
+    "about four times in ten",
+    # rule 2 -- the six words it bans, and NOTHING else
+    "lock", "bet", "value play", "hammer", "guaranteed", "sure thing",
+    # rule 3 -- pick_timing values, which are inputs rather than things to write
+    "rebuilt",
+    "none",
+    # rule 4 -- a worked illustration of expressing uncertainty
+    "62% still loses about four times in ten",
+]
+
+
+def _rules() -> list[str]:
+    """The numbered rules, which is the part of the frame that is an instruction.
+
+    Scoped away from the JSON schema below them, which is full of double quotes
+    and is a shape specification rather than prose. `SYSTEM` is a module attribute
+    read at call time, so a comment above the literal cannot satisfy a check here
+    and a comment-only change cannot break one.
+    """
+    return [line for line in SYSTEM.split("\n") if re.match(r"^\d+\. ", line)]
+
+
+def _quotes(rule: str) -> list[str]:
+    """Every double-quoted chunk of a rule, in the order it appears.
+
+    Splitting on the quote character and taking the odd segments, which is the same
+    read the figures-rule test uses -- so one definition of "what the frame quotes"
+    rather than two that can disagree about the edge cases.
+    """
+    return [chunk.strip(' "“”') for chunk in rule.split('"')[1::2]]
+
+
+def _rule_two() -> str:
+    """Rule 2, or a failure that says what is there instead."""
+    found = [r for r in _rules() if r.startswith("2. ")]
+    assert len(found) == 1, (
+        f"expected exactly one rule starting '2. ', found {len(found)}: {found}"
+    )
+    return found[0]
+
+
+def test_rule_two_says_exactly_this():
+    """The anti-advice ban, and the replacement for the example sentence.
+
+    Reads the imported constant, so the string here and the string shipped are two
+    separate objects and a comment above the literal cannot stand in for either.
+    """
+    assert _rule_two() == RULE_TWO, (
+        f"rule 2 now reads:\n{_rule_two()!r}\nwhich is not the instruction this "
+        f"test pins."
+    )
+
+
+def test_rule_two_quotes_the_banned_terms_and_nothing_else():
+    """**The structural guard for this whole section**, and it reads the LIVE
+    constant rather than the copy above -- so it does not go quiet when `RULE_TWO`
+    is edited to match a prompt.
+
+    Rule 2 is the one rule that has to quote, because a ban nobody names is not a
+    ban: it has to list the six words. What it may not do -- what it used to do --
+    is quote anything else, and there is no honest way for it to: a quoted sentence
+    in the rule whose subject is what the prose may not say is a sentence the model
+    is being shown how to say.
+
+    An exact list equality, not a keyword test. It rejects nothing on the grounds
+    of what a word MEANS, so it cannot reject an honest sentence -- the objection
+    `validate._verdict_problems` raises against a phrase blacklist and raises
+    correctly. It says only: these six quoted things, in this order, and no
+    seventh.
+    """
+    assert _quotes(_rule_two()) == list(BANNED_TERMS), (
+        f"rule 2 quotes {_quotes(_rule_two())!r}, and the only things it may quote "
+        f"are the {list(BANNED_TERMS)} it bans. Anything else in the rule that tells "
+        f"the model what to write is a sentence to imitate, and a model handed an "
+        f"example produces something close to it: the deleted clause here was a "
+        f"model-vs-market comparison the service cannot compute, and this is what "
+        f"stops it returning in any wording."
+    )
+
+
+def test_the_frame_quotes_only_what_it_quotes_today():
+    """The whole-frame inventory, so the guard is not confined to rule 2.
+
+    Rule 3 quotes two `pick_timing` values and rule 1 quotes two phrase forms, so
+    "the frame quotes only banned terms" is not available and "the frame quotes
+    nothing" never was. What is available is a complete ordered snapshot, which
+    fails on an addition (the deleted comparative returning, here or in a rule
+    nobody thought to check), on a removal, and on a move between rules.
+
+    `test_rule_two_quotes_the_banned_terms_and_nothing_else` is the sharper
+    guard, because it is scoped to the one rule that must not quote and reads the
+    live constant. This one is the wider net: it is what notices a quote appearing
+    somewhere the sharper guard is not looking, and the per-rule breakdown in the
+    failure message is what makes that locatable.
+    """
+    rules = _rules()
+    assert len(rules) == 6, (
+        f"expected the frame's six numbered rules, found {len(rules)}: {rules}"
+    )
+    per_rule = {rule.split(".")[0]: _quotes(rule) for rule in rules}
+    assert list(per_rule) == [str(n) for n in range(1, 7)], (
+        f"the rules are not numbered 1..6 in order: {list(per_rule)}"
+    )
+    found = [chunk for rule in rules for chunk in _quotes(rule)]
+    assert found == FRAME_QUOTES, (
+        f"the frame now quotes {found!r}, against the {FRAME_QUOTES!r} it quoted "
+        f"when this inventory was taken. Per rule: {per_rule}. An addition is the "
+        f"deleted comparison coming back; a removal is a ban or an illustration "
+        f"the frame still relies on."
+    )
+
+
+def test_the_anti_advice_ban_survives_the_rewording():
+    """The half of rule 2 that must NOT move, stated separately.
+
+    A rewrite that removed the comparative could equally have removed the rule's
+    reason for existing. This is the assertion that says the second sentence is a
+    refinement rather than a replacement, and it is checked against the pinned
+    replacement rather than against `SYSTEM` so it is not a second copy of the
+    check above: the quotes are already pinned there, so this holds the parts of
+    the rule that are not quotes.
+    """
+    assert RULE_TWO.startswith("2. No betting advice:"), RULE_TWO
+    assert "not a recommendation" in RULE_TWO, (
+        f"rule 2 no longer says that a disagreement is information rather than a "
+        f"recommendation, which is the half of it that was always true: {RULE_TWO}"
+    )
+    # And the shipped rule is the one that carries it, so the check is not a test
+    # of a constant nothing sends.
+    assert "not a recommendation" in _rule_two(), _rule_two()
+
 
 
 def _figures_paragraph() -> str:
@@ -127,7 +337,7 @@ def test_the_figures_rule_offers_no_sentence_to_imitate():
     assert len(paragraph) > len(FIGURES_RULE_HEAD) + 80, (
         f"the paragraph is too short for this test to have read anything: {paragraph!r}"
     )
-    quoted = [chunk.strip(' "“”') for chunk in paragraph.split('"')[1::2]]
+    quoted = _quotes(paragraph)
     assert quoted == [], (
         f"the paragraph still offers the model a sentence to imitate: {quoted}. "
         f"It is the instruction, not the example, that has to carry the rule."
