@@ -461,3 +461,150 @@ a multi-hour price. This is a decision for the user: (a) merge PL #7 on local ev
 fix CI separately, (b) invest in the network-test split, which fixes the gate properly, or
 (c) run one manual cache-warm with a large budget so the cache populates and PR runs go
 fast.
+
+
+## Session 2, 2026-09-28 — verification pass, and a false negative in the safety net
+
+Started from `Handover.MD` to run its verify-on-main block, then work Tasks 1–6.
+Two of the block's six content checks are wrong, and **one of them was covering a
+real unfixed defect.** That is the headline of this session.
+
+### The near-miss: a check that returned 0, and the story I told about it
+
+The block's NFL check is `store.py | grep -c "_pair_present"  # expect 1`. It returns
+**0**. I read that as a stale check — NFL's helper is named `_present`, not
+`_pair_present` — and moved on, reporting it as a false negative.
+
+**That was wrong.** `_pair_present` was never in NFL, but the reason the check
+matters is not the helper's name, it is the *aggregate filter*. And NFL's
+`_summarize_games` had none:
+
+```python
+ats = resolved[resolved["ats_hit"].notna()]      # NFL — no pair-presence filter
+ats = resolved[resolved["ats_hit"].notna() & _pair_present("home_cover_prob", "away_cover_prob")]  # CFB
+```
+
+NFL's `get_game_verdict` *does* check `_present` (store.py:593), so the same game
+got two opposite answers: a per-game view reporting no ATS market, beside an ATS
+percentage that counted it. The defect the ledger records as fixed in CFB
+(`822e45d`) was never fixed in NFL, and the twin repos had drifted.
+
+I had a plausible explanation and no evidence for it. The standing caution added
+below is written because of this, not in spite of it.
+
+Ruling: **a content check that returns an unexpected value is a finding, not a
+stale check.** Trace it to the line that does the work before explaining it away.
+`git log -S` on the symbol would have shown the rename; reading the aggregate would
+have shown the absence. I did neither and still wrote a confident sentence.
+
+### Fixed: NFL aggregate counted fabricated ATS/totals calls (PR #15, merged)
+
+Ported CFB's filter. TDD: RED first at `0.5 == 1.0`; the per-game verdict already
+returned `None` for the same row. Two deliberate breakages initially **survived**
+— dropping the totals filter, and narrowing the pair to one column. Both closed:
+the genuine fixture scored a totals MISS so its value matched the fabricated one
+and could not distinguish them, and nothing covered a half-present market. Now
+killed, no survivors. This changes reported history deliberately: `pct_ats_correct`
+rises wherever fabricated rows were dragging it down.
+
+### Fixed: CFB's pair-presence guard had a surviving mutant (PR #19, merged)
+
+CFB's fix *is* tested — I initially said otherwise from a grep against a stale
+checkout, and was wrong twice in one sitting. Verifying by mutation: narrowing
+`_pair_present` to a single column left all 26 tests green, because the
+fabricated-row test nulls *both* probabilities. The half-present case
+(`0.6` against `None`) is the one that kills it, and `_present`'s own docstring
+names it. Added.
+
+### Fixed: a retracted claim was still live in a docstring (PR #18, merged)
+
+`tests/test_team_stats.py` still published the retracted `max 550 / p99 54 /
+92.3%` figures while a comment 60 lines below in the same file carried the
+corrected `max 337 / p99 50 / 92.4%`. Two measurements for one population in one
+file, stale one first. Corrected, with a test that keeps the two docstrings
+agreeing and both naming their population.
+
+Also `reconcile_against_players`' docstring told readers to call
+`attach_schedule_weeks` (PR #20) — the exact call that cost 31% of the frame, per
+this ledger's own `CFB PR #12` entry. A reader following it reintroduces the
+regression. The branch that says otherwise was untested; now pinned, 4/4 mutants
+killed, and the first version of that test had a survivor of its own
+(`"game_id" in message` was already satisfied by an earlier clause).
+
+### Task 1 — PL CI warm/gate split: PR #14, open, CI cold-warming
+
+As briefed, spliced out of `Handover.MD` programmatically rather than retyped.
+Do **not** read the result as "the gate is offline": only **1 of 554** tests
+carries the `network` marker, and it is a meta-test in `test_network_guard.py`.
+The gate still runs 553 tests against the warmed cache. What the split buys is
+that the gate no longer needs any upstream to be *up* at gate time.
+
+Residual risk, stated because it is unmeasured: 150 minutes is a guess, not a
+measurement. The cold fetch is known to exceed 60; nothing establishes 150
+suffices. If it does not, the cancellation deadlock returns, just further out.
+
+### Task 2 — the `cache_HIDDEN` instruction is UNSAFE. Do not run it
+
+`Handover.MD` Task 2 calls `data/cache/cache_HIDDEN` "a complete duplicate of the
+real cache" and ends with `rm -rf`. It is not a duplicate:
+
+| | real cache | cache_HIDDEN |
+|---|---|---|
+| files | 4,695 | 5,423 |
+| `fpl_players` | **0** | **659** |
+| `pulselive` | **0** | 80 |
+| `sportsbook` | **0** | 21 |
+| `odds` | **0** | 1 |
+
+**772 files exist only in `cache_HIDDEN`**, across four sources the real cache
+lacks entirely (4.8MB), dated 2026-08-23…09-12. The two sources present in both
+are *older* there (Aug) than in the real cache (Sep 27) — the signature of a
+period when `CACHE_DIR` pointed one level too deep, later corrected and re-fetched
+for `fpl_events` and `understat_shots` but never for the other four.
+
+The handover's supporting evidence is true but does not imply its conclusion:
+`git log -S cache_HIDDEN` returns nothing, which shows no code names the
+*directory*. It cannot show whether the *data* is needed, because the consumers
+address `data/cache/<source>` and would simply re-fetch.
+
+**And the prescribed verification cannot detect the loss.** `CACHE_DIR` is fixed at
+`PROJECT_ROOT/data/cache` with no env override and no nested-cache construction, so
+`data/cache/cache_HIDDEN` is unreachable by any code path. Deleting it cannot
+change a single test result. Running the two named test files afterwards would
+pass, and that pass would be worthless.
+
+Left in place. 93MB of local disk in a gitignored directory is a fair price for an
+irreversible deletion resting on a disproven premise.
+
+### Task 3 — measured: the warm step is unavoidable
+
+The gate's binding failure is `RuntimeError: No FPL player-gameweek history could
+be loaded` (`data/fpl_history.py:81`) — i.e. `fpl_history`, **41M**, not the 4.3M
+`football_data` + `fpl_events` slice the handover hoped to seed. Seeding the small
+slice would not remove the warm step; 41M of daily-changing data is also too big
+and too churny to commit. Confirms PR #14's architecture.
+
+Not done: the full 23-test enumeration with the network blocked. Three other
+agents were active and the ledger records prior full-suite runs dying under
+resource pressure, so this rests on the one binding error rather than an
+exhaustive sweep.
+
+### Also this session
+
+- Sports_Predictor (PR #10, merged): `playerRank.ts` repeated the
+  `POSITION_MARKETS` claim, and cited `POSITION_YARDAGE_MARKET` — **a symbol that
+  does not exist in either repo**. Comment-only, verified comment-only by
+  stripping comments and diffing. Tracked `*.tsbuildinfo` untracked. Found, not
+  fixed: `keyYardage` never reads `prop.position`, so its position-based labels
+  agree by coincidence of today's table.
+- `Handover.MD` is at `predictor-hub/Handover.MD` — capital `.MD`, and untracked.
+  A case-sensitive glob misses it.
+- Its other bad check: CFB `_pair_present` expects 1, actually 3 (one definition
+  plus two call sites). Imprecise, not a missing fix.
+
+### Standing caution added
+
+**An unexpected result from a verification check is the finding.** The instinct to
+resolve it as "the check is stale" is cheap, feels like rigour, and cost a live
+defect a full pass. The tell was available immediately: the check's own comment
+said what it was protecting, and I had not read the aggregate it protects.
