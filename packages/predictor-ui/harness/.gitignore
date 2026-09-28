@@ -1,0 +1,5 @@
+# The harness is a review instrument: its output and its dependencies are
+# reproducible from `npm install && npm run build`, and committing either would
+# put 40 MB of node_modules and a build artefact in the history of a library.
+node_modules/
+dist/

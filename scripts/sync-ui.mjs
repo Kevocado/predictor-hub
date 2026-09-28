@@ -6,35 +6,15 @@
 // copied in rather than installed. Every copied file starts with a
 // do-not-edit header, and SYNC.json records a sha256 per file so a hand edit
 // in a site fails --check (wire it into the site's tests).
-import { createHash } from "node:crypto";
-import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { SRC, contentVersion, read, sha256, shippedFiles, sourceFor, walk } from "./ui-package.mjs";
 
-const HUB = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SRC = join(HUB, "packages", "predictor-ui", "src");
-const sha256 = (text) => createHash("sha256").update(text).digest("hex");
-
-function walk(dir) {
-  return readdirSync(dir).flatMap((name) => {
-    const full = join(dir, name);
-    return statSync(full).isDirectory() ? walk(full) : [full];
-  });
-}
-
-const isShipped = (file) => /\.(ts|tsx|css)$/.test(file) && !/\.test\.(ts|tsx)$/.test(file);
-
-// LF everywhere, so a Windows (CRLF) checkout hashes the same as the VPS.
-const read = (file) => readFileSync(file, "utf8").replace(/\r\n/g, "\n");
-
-// Stamp a hash of the package's own contents (not the hub commit): a sync
-// from an unchanged package is byte-identical, and uncommitted edits can't
-// masquerade as a clean commit.
-function contentVersion(files) {
-  const h = createHash("sha256");
-  for (const file of files) h.update(relative(SRC, file).split("\\").join("/")).update("\0").update(read(file)).update("\0");
-  return h.digest("hex").slice(0, 12);
-}
+// The shipped-file set and the hash that names it live in ui-package.mjs,
+// because check-site-sync.mjs compares every site against the same number this
+// writes into SYNC.json. Two copies would drift apart by a changed line, and
+// the checker would go on comparing sites against a value nothing produces —
+// green forever, and meaningless.
 
 function header(file, rev) {
   const text = `Synced from predictor-ui@${rev}. Do not edit here: change predictor-hub/packages/predictor-ui and re-run scripts/sync-ui.mjs.`;
@@ -44,7 +24,7 @@ function header(file, rev) {
 function sync(siteSrc) {
   const out = join(siteSrc, "predictor-ui");
   rmSync(out, { recursive: true, force: true });
-  const shipped = walk(SRC).filter(isShipped).sort();
+  const shipped = shippedFiles();
   const rev = contentVersion(shipped);
   const files = {};
   for (const file of shipped) {
@@ -54,7 +34,7 @@ function sync(siteSrc) {
     writeFileSync(join(out, rel), body);
     files[rel] = sha256(body);
   }
-  writeFileSync(join(out, "SYNC.json"), JSON.stringify({ source: `predictor-ui@${rev}`, files }, null, 2) + "\n");
+  writeFileSync(join(out, "SYNC.json"), JSON.stringify({ source: sourceFor(shipped), files }, null, 2) + "\n");
   console.log(`Synced ${Object.keys(files).length} files into ${out} (predictor-ui@${rev})`);
 }
 

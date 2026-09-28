@@ -47,6 +47,30 @@ describe("tokens", () => {
     expect(css).toMatch(/--font-pr-body:\s*"Barlow"/);
     expect(css).not.toMatch(/Inter/);
   });
+
+  it("keeps the bar's neutral ramp three steps deep and in order", () => {
+    // ProbabilityBar paints a segment that is not the pick from this ramp, and
+    // a three-way market has three segments. Two steps would make the draw the
+    // same grey as one of the sides, which is the failure this ramp exists to
+    // prevent — so the order and the depth are both pinned.
+    const ramp = ["text-dim", "text-faint", "fill-mute"].map((k) => contrast(base[k], base.panel));
+    for (const [i, ratio] of ramp.entries()) {
+      expect(ratio, `ramp step ${i} on panel`).toBeGreaterThanOrEqual(1.6);
+      if (i) expect(ratio, `ramp step ${i} is quieter than ${i - 1}`).toBeLessThan(ramp[i - 1]);
+    }
+  });
+
+  it("holds the fill tone to the fill bar, not the text bar, and says so", () => {
+    // `--color-pr-fill-mute` paints a bar segment; it is not a text colour, so
+    // the 4.5:1 gate above does not apply to it and adding it to that list's
+    // `text` entries would fail. It sits in the same 3:1 band the spec already
+    // sets for a sport accent on the panel, so it is unmistakably visible
+    // without being the brightest thing in the component.
+    expect(contrast(base["fill-mute"], base.panel)).toBeGreaterThanOrEqual(3);
+    expect(contrast(base["fill-mute"], base.panel)).toBeLessThan(4.5);
+    // And the name says what it paints, so nobody reaches for it as a text colour.
+    expect(css).not.toMatch(/--color-pr-text-mute/);
+  });
 });
 
 describe("review fixes", () => {
