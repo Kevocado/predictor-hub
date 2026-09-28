@@ -48,18 +48,20 @@ jobs:
           # and re-run — nothing else changes.
           SITE_REPOS_TOKEN: ${{ secrets.SITE_REPOS_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # 0 while the sites are being re-vendored. Adoption is a migration and
-          # the first run is expected to be behind somewhere, so a check that
-          # lands red on main is a check nobody reads.
+          # ENFORCED as of 2026-09-28. It shipped as "0" on purpose: adoption is a
+          # migration, and a check that lands red on main is a check nobody reads.
           #
-          # FLIP TO "1" once every entry in SITES reads the version the hub is
-          # at. On 2026-09-27, with this workflow added, NBA_Predictor and
-          # F1_Predictor were at predictor-ui@e4f15576b8e0 against the hub's
-          # predictor-ui@9c14c67d91df; PL_Predictor and Sports_Predictor were
-          # already current. Two re-vendor PRs, and this becomes "1".
+          # The precondition is met. All four registered sites now read the version
+          # the hub is at:
+          #   NBA_Predictor      #10  e4f15576b8e0 -> 9c14c67d91df  (merged 38bd6df)
+          #   F1_Predictor       #11  e4f15576b8e0 -> 9c14c67d91df  (merged 498ffde)
+          #   PL_Predictor       #5   already current
+          #   Sports_Predictor   #5   already current
+          # Both re-vendors were checked before syncing, and both were CLEAN, so
+          # nothing a person had written by hand was destroyed to get here.
           #
-          # Until then it warns and cannot fail the build — which also means it
-          # cannot catch a site falling behind *after* today. The warning prints
-          # this sentence on every run, so it cannot rot quietly.
-          ENFORCE_SITE_SYNC: "0"
+          # Until this flip it could not catch a site falling behind *after* today.
+          # It can now. If it goes red, the fix is `node scripts/sync-ui.mjs` on the
+          # stale site, not loosening this.
+          ENFORCE_SITE_SYNC: "1"
         run: node scripts/check-site-sync.mjs
