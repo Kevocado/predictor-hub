@@ -195,7 +195,10 @@ reads `NBA_Predictor`'s `src/nba_predictor/api/facts.py` from that repo's own
 git and runs its `_markets`, so the claim that NBA can serve is checked against
 the builder that has to produce the data rather than against a fixture written
 here. It looks for `../NBA_Predictor` (and any `NBA_Predictor` beside this
-checkout); set `NBA_REPO=/path/to/NBA_Predictor` to point it elsewhere.
+checkout); set `NBA_REPO=/path/to/NBA_Predictor` to point it elsewhere. That path must be a
+git checkout with an `origin/main`; a plain directory is skipped and the sibling
+beside this repo is used instead, so a typo in the variable is a silent no-op
+rather than an error.
 
 It fails rather than skips deliberately: a skip would make the whole
 justification for serving NBA unverifiable while still reporting a green suite,
@@ -232,9 +235,13 @@ above while you are there.
 2. **CFB, PL and NBA facts.** Add each `SPORT_API_*`. One game per sport. For
    PL and NBA, go through the site's own `/api/explain/...` proxy rather than
    the service directly, so the path translation is exercised.
-3. **F1 facts and the race story.** Open a session. The panel is collapsed to
-   the headline behind "Read the race story". Confirm a rebuilt session says
-   "Rebuilt after the session".
+3. **F1 is not in this list, on purpose.** It has been refused at
+   `/explain/{sport}/{id}` since the on-demand phase, so there is no F1 panel to
+   check and `SPORT_API_F1` is only read by the deploy script's smoke loop. This
+   step used to walk an operator through the race story; it described a panel that
+   does not exist, and a checklist item that cannot be performed is worse than no
+   item, because it reads as an omission. If F1 is ever un-refused, the race-story
+   check comes back with it.
 4. **Watch `used_today` in `/status`.** On-demand spend is per reader now, so
    the number to watch is requests-per-unique-fixture rather than a steady climb
    every 3 h. Confirm a second visit to the same fixture is a cache hit and

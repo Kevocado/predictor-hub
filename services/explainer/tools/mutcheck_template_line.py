@@ -27,10 +27,14 @@ those shipped inside a commit.
   `test_unserved_sport.py` -- and two did survive a review that way.
 * **It carries a canary** that must stay silent, so a harness which never applies
   its mutations is distinguishable from a set of guards that never fail.
-* **It restores under `try/finally` and keeps a `.bak`**, because an interrupted
-  run must not leave a mutated source. Demonstrated on the sibling harness: a bug
-  in its own unpacking raised mid-table and the `git checkout` used to recover
-  reverted three unrelated fixes along with the mutation.
+* **It restores under `try/finally`, and keeps a `.bak` beside each file it
+  touches**, because an interrupted run must not leave a mutated source. The
+  docstring used to claim the `.bak` and nothing wrote one; and the `config.py`
+  restore was `write_text(read_text())`, a no-op that would have left the file
+  mutated if anything raised mid-table. Both are now real. The `.bak` exists
+  because on the sibling harness a bug in its own unpacking raised mid-table, and
+  the `git checkout` used to recover **reverted three unrelated fixes along with
+  the mutation** -- so "restore what you mutated" has to name which file.
 """
 import os
 import pathlib
@@ -40,8 +44,14 @@ import subprocess
 import sys
 
 TARGET = pathlib.Path("explainer/template.py")
+CONFIG = pathlib.Path("explainer/config.py")
 SUITE = "tests/"  # the whole suite, on purpose -- see the docstring
+#: Both originals, captured at import. The `config.py` restore used to be
+#: ``write_text(read_text())`` -- writing back what it had just read, so an
+#: exception between the write and the restore left the file mutated. Capturing
+#: the text is the only version of this that is not a no-op.
 KEEP = TARGET.read_text()
+CONFIG_KEEP = CONFIG.read_text()
 
 #: Expected to be silent, with the reason recorded. Surviving because a property
 #: is order-independent is a pass; surviving because nothing covers an input is a
@@ -84,6 +94,11 @@ MUTATIONS = [
      r'    "nba": \("market_line",\),\n', ""),
     ("NFL's line is added to the table, re-enabling the model-vs-model sentence",
      r'    "nba": \("market_line",\),', '    "nfl": ("market_line",),\n    "nba": ("market_line",),'),
+    ("_START: f1 and pl entries swapped",
+     r'_START = \{"f1": "the session started", "pl": "kickoff", "nba": "tip-off"\}',
+     '_START = {"f1": "kickoff", "pl": "the session started", "nba": "tip-off"}'),
+    ("_START: the f1 phrase mangled",
+     r'"f1": "the session started"', '"f1": "the race started"'),
     ("NBA's tip-off wording removed again",
      r'_START = \{"f1": "the session started", "pl": "kickoff", "nba": "tip-off"\}',
      '_START = {"f1": "the session started", "pl": "kickoff"}'),
@@ -139,14 +154,17 @@ def main() -> int:
     silent: list[str] = []
     expected: list[str] = []
     canary_ok = False
-    results: list[tuple[str, str, int]] = []
+    for path, text in ((TARGET, KEEP), (CONFIG, CONFIG_KEEP)):
+        backup = path.with_suffix(path.suffix + ".bak")
+        backup.write_text(text)
+    print(f"  originals also at {TARGET}.bak and {CONFIG}.bak, in case this run is interrupted")
 
     try:
         for label, pattern, replacement in MUTATIONS:
             # Two files are mutated: the template, and config.py for the
             # SERVED_SPORTS rows. Applied to whichever contains the anchor.
-            for target in (TARGET, pathlib.Path("explainer/config.py")):
-                keep = KEEP if target == TARGET else target.read_text()
+            for target in (TARGET, CONFIG):
+                keep = KEEP if target == TARGET else CONFIG_KEEP
                 new, n = re.subn(pattern, replacement, keep, count=1, flags=re.M | re.S)
                 if n == 1:
                     target.write_text(new)
@@ -164,19 +182,22 @@ def main() -> int:
             else:
                 verdict, bite = f"*** SILENT *** ({passed} passed)", False
             print(f"  {label[:56]:<56} {verdict}")
-            results.append((label, verdict, failed if not errored else 1))
-            if bite and label == CANARY:
-                canary_ok = True
-            elif not bite and label == CANARY:
-                canary_ok = True
+            if label == CANARY:
+                # The canary must be SILENT. It was previously `canary_ok = True`
+                # in BOTH the biting and the silent branch, which made the check
+                # below unreachable and the closing line a lie: pointed at
+                # `MAX_FACTORS` -- which this round pins, so it bites -- the run
+                # printed "BITES (1 failed)" and then "the canary stayed silent as
+                # it should", and exited 0. A control that cannot fail is not a
+                # control, and this is the only negative control the tool has.
+                canary_ok = not bite
             elif EXPECTED_SILENT_MARK in label:
                 expected.append(label.split(" [")[0])
             elif not bite:
                 silent.append(label)
     finally:
-        for target in (TARGET, pathlib.Path("explainer/config.py")):
-            target.write_text(KEEP if target == TARGET else
-                              pathlib.Path("explainer/config.py").read_text())
+        TARGET.write_text(KEEP)
+        CONFIG.write_text(CONFIG_KEEP)
 
     failed, passed, errored = run()
     print(f"\n  restored: {passed} passed, {failed} failed, {errored} errored")
@@ -193,8 +214,14 @@ def main() -> int:
             print(f"    - {s}")
         return 1
     if not canary_ok:
-        print("  the canary BORE -- the harness is misreporting; distrust the table")
+        print("  THE CANARY BIT -- the harness is misreporting; distrust the table "
+              "above entirely.")
+        print("  Either the canary now covers something real (a test was added for "
+              "it, so it is no longer a control) or the mutations are not being "
+              "applied. Fix the canary before reading any row.")
         return 1
+    for path in (TARGET, CONFIG):
+        path.with_suffix(path.suffix + ".bak").unlink(missing_ok=True)
     print("  every mutation bit or was documented as expected-silent, "
           "and the canary stayed silent as it should")
     return 0

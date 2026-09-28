@@ -417,3 +417,51 @@ def test_an_nba_rebuilt_pick_with_all_three_markets_loses_the_record():
     assert "record" in plain_keys, (
         f"a non-rebuilt NBA game should keep its record sentence: {plain_keys}"
     )
+
+
+# --- the moment each sport names the start of a game ------------------------
+
+def test_every_served_sport_names_the_moment_in_its_own_word():
+    """A rebuilt pick renders "This pick was rebuilt after {moment}".
+
+    Only NBA's word was pinned, and swapping the `f1` and `pl` entries survived
+    with the whole suite green. That is the same shape as every other gap this
+    file started with: one sport's row tested, the rest assumed.
+
+    The list is derived from `SERVED_SPORTS`, so a newly served sport is covered
+    the moment it is added rather than the moment someone remembers.
+    """
+    from explainer.config import SERVED_SPORTS
+
+    expected = {
+        "pl": "kickoff",      # a league match kicks off
+        "nfl": "kickoff",
+        "cfb": "kickoff",
+        "nba": "tip-off",     # not a kickoff, and the panel says so elsewhere too
+    }
+    assert set(expected) == set(SERVED_SPORTS), (
+        f"this test's table is out of step with SERVED_SPORTS: "
+        f"{sorted(set(expected) ^ set(SERVED_SPORTS))}"
+    )
+    for sport, word in expected.items():
+        body = explain_from_template(bundle(
+            sport, [{"market": "moneyline", "model": {"A": 0.6, "B": 0.4}}],
+            pick_timing="rebuilt"))
+        text = " ".join(f["text"] for f in body["factors"])
+        assert f"after {word}" in text, f"[{sport}] {text}"
+
+
+def test_f1s_moment_is_the_session_because_that_is_the_word_f1_uses():
+    """`_START["f1"]` is **unreachable today** -- F1 is refused at the edge, so the
+    template never runs for it -- and it is pinned anyway.
+
+    Not an oversight. The default for an unlisted sport is "kickoff", which is the
+    wrong word for a Formula 1 session, so the entry is the only thing standing
+    between "F1 is un-refused" and "F1 says 'rebuilt after kickoff'". Asserting a
+    table's contents is legitimate when the row exists precisely for a future
+    caller; leaving it unpinned is how it becomes a wrong word nobody notices.
+    """
+    from explainer.template import _START
+
+    assert _START["f1"] == "the session started", _START
+    assert "kickoff" not in _START["f1"], _START

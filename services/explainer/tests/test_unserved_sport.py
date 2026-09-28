@@ -36,6 +36,7 @@ line for F1 either, so a model-vs-market tile has nothing honest to show.
 """
 import asyncio
 import os
+import re
 import subprocess
 
 import httpx
@@ -216,12 +217,19 @@ def test_nba_is_served(tmp_path, respx_mock):
 
     keys = {f["key"] for f in answer.get("factors", [])}
     assert keys, f"NBA produced no factors at all: {answer}"
-    assert keys & {"moneyline", "spread", "total"}, (
-        f"NBA's answer carries none of the markets its own facts supply, so the "
-        f"panel has nothing to draw. Got {sorted(keys)}. A `minimal()` fallback "
-        f"would pass an `answer.get('verdict')` assertion with "
-        f"{answer.get('verdict')!r}, which is why this asserts factors instead."
-    )
+    # Subset, not intersection. An intersection tolerates the spread factor being
+    # ABSENT -- which is precisely the state commit f1d14b9 was written about, so an
+    # intersection here would pass with the very bug this test exists to protect
+    # against reintroduced. The bundle carries a quoted `market_line`, so the
+    # spread is free to assert and names the thing at stake.
+    for required in ("moneyline", "spread", "total"):
+        assert required in keys, (
+            f"NBA's answer has no {required} factor: {sorted(keys)}. Its own facts "
+            f"supply all three, and this bundle supplies a quoted `market_line`, so "
+            f"the spread is the one that must not be dropped. A `minimal()` "
+            f"fallback would pass an `answer.get('verdict')` assertion with "
+            f"{answer.get('verdict')!r}, which is why this asserts factors."
+        )
 
 
 def _nba_facts() -> dict:
@@ -321,47 +329,70 @@ def test_nbas_facts_carry_the_markets_the_panel_draws():
                 f"NBA's {name} market has no {key!r}: {market}. A market with a name "
                 f"and no figure is a label, not a market."
             )
-    assert markets["spread"].get("market_line"), (
-        "NBA's spread carries no `market_line`. The template reads that key for NBA "
-        f"and has no fallback -- `line` is the MODEL's own wording there -- so "
-        f"dropping it silently removes the model's disagreement with the market: "
-        f"{markets['spread']}"
-    )
-    assert markets["total"].get("market_line"), (
-        f"NBA's total carries no `market_line`: {markets['total']}"
-    )
+    for name, expected in NBA_EXPECTED_LINES.items():
+        assert markets[name].get("market_line") == expected, (
+            f"NBA's {name} `market_line` is "
+            f"{markets[name].get('market_line')!r}, expected {expected!r}. The "
+            f"template reads this key for NBA and has NO fallback -- `line` is the "
+            f"MODEL's own wording there -- so a wrong or model-derived value here "
+            f"renders the model compared with itself, silently, which is the exact "
+            f"failure this branch exists to prevent."
+        )
 
 
 def _run_nba_markets(source: str) -> dict[str, dict]:
-    """Exec NBA's `_markets` with its own helpers and ask what it returns."""
-    import re
+    """Exec NBA's real quoted-line chain and ask what it puts in `market_line`.
 
+    **The stub moved, and that is the whole point.** The earlier version stubbed
+    `_market_line` -- the one function that decides what lands in `market_line` --
+    so it could prove the KEY was present and say nothing about the VALUE. A
+    decoy built from NBA's real helpers with only `_market_line` changed to
+    return the model's own wording passed the whole suite, and the template then
+    rendered *"against a line of Toss-up"* from the real code path.
+
+    So the stub is now the **storage read** (`_market_rows`) and the tip-off
+    filter (`made_before_tip`), and the real `_market_line` and `_line_from_market`
+    run. `_line_from_market` is the function that knows a spread is signed and
+    team-attributed (`'BOS -3.5'`) while a total is neither (`'Over 224.5'`) --
+    and the ledger records that a totals line once rendered as `Over +224.5`. None
+    of that is re-implemented here, so the probe cannot drift from it.
+    """
     def cut(name: str) -> str:
         m = re.search(rf"^def {name}\(.*?(?=^def |^@router|\Z)", source, re.S | re.M)
-        assert m, f"NBA's facts.py has no {name}()"
+        assert m, f"NBA's facts.py has no {name}(); the probe would pass vacuously"
         return m.group(0)
 
-    body = "".join(cut(n) for n in ("_num", "_favourite", "_margin_line", "_markets"))
+    body = "".join(cut(n) for n in (
+        "_num", "_favourite", "_margin_line", "_line_from_market", "_market_line", "_markets",
+    ))
     env: dict = {}
-    exec(compile("from __future__ import annotations\n"
-                 "from typing import Any\n" + body, "<nba markets>", "exec"), env)
+    exec(compile("from __future__ import annotations\nfrom typing import Any\n" + body,
+                 "<nba markets>", "exec"), env)
 
-    # `_market_line` reads the quoted book price out of NBA's tracking row, which
-    # needs the storage layer this test deliberately does not import. It is not
-    # what is under test here -- which markets EXIST is -- so it is stubbed to
-    # return a line. Returning a real one is better: it keeps the `market_line`
-    # branch live, so the probe exercises the same code path production does.
-    def _market_line(game, market, default_team=None):
-        return {"spread": "BOS -3.5", "totals": "224.5"}.get(market)
+    #: One pre-tip row per market, in the shape `_market_line` reads.
+    rows = [
+        {"market": "spread", "point": -3.5, "created_at": "2026-10-19T12:00:00Z",
+         "selection": "BOS"},
+        {"market": "totals", "point": 224.5, "created_at": "2026-10-19T12:00:00Z",
+         "selection": "Over"},
+    ]
+    env["_market_rows"] = lambda game_id: rows
+    env["made_before_tip"] = lambda created_at, game: True
 
-    env["_market_line"] = _market_line
-
-    game = {"home_team": "BOS", "away_team": "PHI", "spread_line": -3.5, "total_line": 224.5}
+    game = {"game_id": "401585", "home_team": "BOS", "away_team": "MIA"}
     prediction = {"home_win_prob": 0.62, "predicted_margin": 4.2, "predicted_total": 226.5}
     out = env["_markets"](game, prediction)
     return {str(m.get("market")): m for m in out if isinstance(m, dict)}
 
 
+#: The exact strings NBA's real `_line_from_market` produces from the rows above.
+#: A spread is signed and team-attributed; a total is neither. Pinned as literals
+#: because a spread reading `'Over 224.5'` or `'BOS -3.5'` where the other belongs
+#: is precisely the class of defect the ledger already records NBA shipping once.
+NBA_EXPECTED_LINES = {
+    "spread": "BOS -3.5",
+    "total": "Over 224.5",
+}
 
 
 def _nba_facts_source() -> str:

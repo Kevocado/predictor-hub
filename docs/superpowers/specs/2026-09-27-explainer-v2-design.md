@@ -86,6 +86,20 @@ verdict at all. This must land with v2, not after it.
 | F1 | **remove** | **refuses** | out of scope |
 | NBA | **remove** | **refuses** | out of scope |
 
+> **Superseded for NBA, 2026-09-27.** The rows below say the service *refuses*
+> `f1` and `nba`. That is true of **F1 only**, and it was true of neither when the
+> decision was made: NBA was refused on F1's reason without being checked, and its
+> `/facts` carries the same `moneyline`/`spread`/`total` the panel draws. NBA now
+> serves. F1 is refused as a product decision, not a data gap — a win probability
+> *is* the explanation.
+>
+> The refusal also had a consequence nobody wrote down here: NBA's `line` is the
+> **model's own wording**, not the market's line, so serving it required the
+> template to know which key holds the quoted price per sport. See
+> `services/explainer/explainer/template.py` `MARKET_LINE_KEY`. Every other
+> "refuses `f1`/`nba`" line in this document is stale in the same way; they are
+> left as the approved record rather than rewritten.
+
 **Wiring, precisely.** NFL and CFB are served by the **Sports_Predictor**
 frontend (`sports.<host>/?sport=nfl|cfb`), so their single panel lives in
 `Sports_Predictor/src/components/GameDetailModal.tsx`, which already takes an
