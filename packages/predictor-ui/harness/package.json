@@ -1,0 +1,24 @@
+{
+  "name": "predictor-ui-harness",
+  "private": true,
+  "type": "module",
+  "description": "Screenshot harness for the explainer panel. A review instrument, not a site: it renders every state from the same components and tokens the sites use, so what a screenshot shows is what ships. It has its own dependencies so adding a build tool here can never disturb the library's.",
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview --port 4180"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.0.4",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~5.9.3",
+    "vite": "^8.2.0"
+  },
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  }
+}

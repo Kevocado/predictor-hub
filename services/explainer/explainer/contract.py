@@ -13,13 +13,31 @@ be a *number*, because no fact supports one. That was half the argument: a band
 is a **word**, and a word is the same defect with less checking, since nothing
 ties "strong" to anything. So the band is computed from `pick.prob` by
 `band_for`, and the model is never asked for one.
+
+And the pick is here for that reason too, by `pick_for`. The panel has to know
+which segment of a bar to emphasise, and a model asked to name its own pick can
+disagree with the facts the verdict was computed from — which would leave the bar
+emphasising a different side than the sentence describes. So the pick is read off
+the facts, and `None` when the facts carry none, because the panel acts on its
+absence.
 """
 from __future__ import annotations
 
 import math
 
 VERDICT_BANDS = ("leaning", "moderate", "strong")
-DIRECTIONS = ("up", "down")
+
+#: The direction that claims nothing about the pick. It is a real value rather
+#: than an absence because the panel has to draw a row either way, and because
+#: "there is no pick to be for or against" is itself a thing worth saying.
+NEUTRAL = "neutral"
+
+#: `up` is a factor arguing FOR the pick, `down` one arguing AGAINST it, and
+#: `neutral` one that is neither — a statement about the game (the total, both
+#: teams to score) or about the record, neither of which is for or against
+#: anything. The third value exists because a factor with no pick-relative
+#: meaning used to be given one anyway, and the one it was given was "up".
+DIRECTIONS = ("up", "down", NEUTRAL)
 #: Things a factor may point at that are not markets in `facts["markets"]`.
 PSEUDO_MARKETS = ("record", "context")
 
@@ -93,6 +111,53 @@ def pick_prob(facts) -> float | None:
     return float(prob) if math.isfinite(prob) and 0.0 <= prob <= 1.0 else None
 
 
+def pick_for(facts) -> dict | None:
+    """The pick's identity, derived from the facts. None when there is none.
+
+    The panel has to know WHICH segment of a two-way bar to emphasise, and until
+    this existed nothing in the answer said: the response carried the verdict and
+    the factors but not the pick, so a renderer could only fall back on segment
+    order — which emphasises the wrong side whenever the pick is the second one.
+
+    Derived here for the same reason the band is. A model asked to name its own
+    pick can disagree with the facts the verdict was computed from, and then the
+    bar would emphasise a different segment than the verdict describes: the
+    "right number, wrong attribution" shape. So the facts are the only source,
+    and the panel follows them.
+
+    `None` rather than a placeholder, because the renderer acts on the ABSENCE:
+    a `{"label": ""}` or `{"label": null}` would still be an object to emphasise,
+    and the failure this is here to prevent is emphasising a segment. `as_dict`
+    above is what lets this read a pydantic `Facts` and a `model_dump()` alike.
+
+    Gated on a usable label AND a usable probability — the same two things
+    `pick_prob` and the template's verdict require — so "is there a pick" is one
+    decision rather than three that can drift. A label with no probability is a
+    half-written pick, and the answer says so in words ("There is no pick for this
+    one yet."); carrying a `pick` beside that sentence would point the panel at a
+    segment for a pick the verdict just denied.
+
+    The probability is deliberately NOT in the result. The panel draws every
+    figure from the facts itself (§5a-bis); a second copy here is a second thing
+    that can disagree with the bar.
+    """
+    pick = as_dict(facts).get("pick")
+    if not isinstance(pick, dict):
+        return None
+    raw = pick.get("label")
+    label = str(raw) if raw not in (None, "") else None
+    if not label or pick_prob(facts) is None:
+        return None
+    out = {"label": label}
+    # `side` is PL's `home`/`away` against a draw; NFL's pick has none, and the
+    # panel joins on the label either way, so this rides along when it is there
+    # rather than being invented when it is not.
+    side = pick.get("side")
+    if isinstance(side, str) and side.strip():
+        out["side"] = side.strip()
+    return out
+
+
 def market_keys(facts) -> set[str]:
     markets = as_dict(facts).get("markets")
     return {str(m.get("market")) for m in (markets or [])
@@ -126,7 +191,12 @@ def _factors(body: dict) -> list[dict]:
             continue
         out.append({
             "key": key,
-            "direction": f.get("direction") if f.get("direction") in DIRECTIONS else "up",
+            # NEUTRAL, not "up", for a direction this contract does not know.
+            # "up" renders as "for the pick", so defaulting to it reads a model
+            # that said nothing — or wrote something unknown — as having argued
+            # FOR the pick. The neutral value fails closed: it claims nothing
+            # rather than claiming the wrong thing.
+            "direction": f.get("direction") if f.get("direction") in DIRECTIONS else NEUTRAL,
             "headline": str(f.get("headline") or ""),
             "text": str(f.get("text") or ""),
         })

@@ -168,6 +168,85 @@ async def test_sport_api_errors_are_typed(tmp_path, no_news):
         await ex.explain("pl", "x")  # sport not configured
 
 
+async def test_the_response_carries_the_pick(tmp_path, no_news):
+    """The response has to say what the pick is, or the panel cannot follow it.
+
+    `ProbabilityBar` emphasises a segment, and with nothing in the answer saying
+    which side the pick is on, the only thing it could follow was segment order —
+    which is how BAL at 62% came to be drawn in grey while KC at 38% wore the
+    accent. The value is derived, so this is the same on both paths.
+    """
+    no_news.get(FACTS_URL).mock(return_value=httpx.Response(200, json=facts()))
+    no_news.post(OPENROUTER_URL).mock(return_value=reply(good()))
+    ex = make(tmp_path)
+    out = await ex.explain("nfl", "g1")
+    assert out["source"] == "llm"
+    assert out["pick"] == {"label": "BAL"}, out.get("pick")
+    # And on the template path, and on a cache hit, because the panel cannot tell
+    # which path wrote the words it is rendering.
+    no_news.post(OPENROUTER_URL).mock(side_effect=httpx.ConnectError("down"))
+    other = tmp_path / "template"
+    other.mkdir()
+    assert (await make(other).explain("nfl", "g1"))["pick"] == {"label": "BAL"}
+    assert (await ex.explain("nfl", "g1"))["pick"] == {"label": "BAL"}
+
+
+async def test_the_pick_is_the_facts_pick_not_the_model_says(tmp_path, no_news):
+    """Derived, never asked. The model's verdict names the other side.
+
+    A model told to name its own pick can disagree with the facts the verdict was
+    computed from, and then the bar emphasises a different segment than the
+    sentence describes — the "right number, wrong attribution" shape. So the
+    model's opinion here changes nothing, and the test is only worth anything
+    because the body is accepted: `source == "llm"` below is the proof.
+    """
+    no_news.get(FACTS_URL).mock(return_value=httpx.Response(200, json=facts()))
+    no_news.post(OPENROUTER_URL).mock(return_value=reply(good(
+        verdict="Kansas City is the pick, but the line is thinner than the number.")))
+    out = await make(tmp_path).explain("nfl", "g1")
+    assert out["source"] == "llm", f"the body was rejected, so this proves nothing: {out['source']}"
+    assert out["pick"] == {"label": "BAL"}, out.get("pick")
+
+
+@pytest.mark.parametrize("pick", [
+    None,                             # no pick at all
+    {},                               # a stub
+    {"label": "BAL"},                 # a label and no probability
+    {"label": "BAL", "prob": 1.4},    # a probability that cannot mean anything
+])
+async def test_no_pick_means_no_pick_key_at_all(tmp_path, no_news, pick):
+    """ABSENT, not null, not an object with a label in it.
+
+    The renderer acts on the absence — it decides whether to emphasise a segment
+    at all — so `"pick": null` and `"pick": {"label": ""}` are both answers to a
+    question that was not asked. The key not being there is the whole signal.
+    """
+    no_news.get(FACTS_URL).mock(return_value=httpx.Response(200, json=facts(pick=pick)))
+    no_news.post(OPENROUTER_URL).mock(return_value=reply(good(
+        verdict="There is no pick for this one yet.")))
+    out = await make(tmp_path).explain("nfl", "g1")
+    assert "pick" not in out, (
+        f"a bundle with pick={pick!r} carried {out.get('pick')!r} — the panel would "
+        "emphasise a segment for a pick that is not there"
+    )
+    # The band is the other half of the same rule: no pick, no confidence to claim.
+    assert out["band"] == "leaning", out["band"]
+
+
+async def test_the_template_path_carries_no_pick_either(tmp_path, no_news):
+    """The no-pick answer comes from the template as often as from a model.
+
+    A test that only drove the model path would pass while the template path
+    served a `pick` it made up — and this is the path that runs when the model is
+    over budget, which is most days.
+    """
+    no_news.get(FACTS_URL).mock(return_value=httpx.Response(200, json=facts(pick=None)))
+    no_news.post(OPENROUTER_URL).mock(side_effect=httpx.ConnectError("down"))
+    out = await make(tmp_path).explain("nfl", "g1")
+    assert out["source"] == "template", out["source"]
+    assert "pick" not in out, out.get("pick")
+
+
 async def test_a_confident_model_cannot_promote_a_52_percent_pick(tmp_path, no_news):
     """§13a's deliberately-broken input, end to end.
 
