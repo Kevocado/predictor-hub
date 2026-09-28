@@ -1,25 +1,29 @@
 /** Shared v2 panelFacts adapter.
  *
- *  One function, two call sites. PL passes a FixtureSummary; Sports passes a
- *  pair (GameSummary, GamePrediction | null). The union signature means each
- *  site imports and calls it unchanged — the function dispatches on the shape it
- *  receives.
+ *  One function, two call sites.  Each call site passes an input tagged with
+ *  `kind: "PL"` or `kind: "SP"`.  The function dispatches on that tag and
+ *  returns a union output type.
  *
- *  The return type carries `legend` only when the input guarantees it (PL's
- *  `implied` field). Sports never sends `implied`, so `legend` is `undefined`
- *  for that call site. `news_date` is present when the service sends it;
- *  otherwise it is `undefined` and the footer omits the element.
+ *  PL input: `{ kind: "PL"; fixture: FixtureSummary }`
+ *  SP input: `{ kind: "SP"; game: GameSummary; prediction: GamePrediction | null }`
+ *
+ *  PL output: `{ tiles: MarketTile[]; segments: Segment[]; legend: Segment[] | undefined }`
+ *  SP output: `{ tiles: MarketTile[]; segments: Segment[]; legend: undefined }`
+ *
+ *  `news_date` is an optional field on the output, read from the service; when
+ *  absent the footer element is omitted.  This task does not depend on Plan 1.
  */
 import type { MarketTile, Segment } from "./predictor-ui";
 import type {
-  FixtureSummary as PLFixture,
-  GameSummary as SGame,
-  GamePrediction as SPred,
+  FixtureSummary,
+  GameSummary,
+  GamePrediction,
 } from "../types";
 
 /** PL three-way result shape — the adapter keeps `legend` when `implied` is present. */
 interface PLInput {
-  fixture: PLFixture;
+  kind: "PL";
+  fixture: FixtureSummary;
 }
 interface PLOutput {
   tiles: MarketTile[];
@@ -29,8 +33,9 @@ interface PLOutput {
 
 /** Sports two-way moneyline + spread + total shape. */
 interface SPInput {
-  game: SGame;
-  prediction: SPred | null;
+  kind: "SP";
+  game: GameSummary;
+  prediction: GamePrediction | null;
 }
 interface SPOutput {
   tiles: MarketTile[];
@@ -42,17 +47,15 @@ interface SPOutput {
 /** Union output — the callee selects the branch that matches its input. */
 export type PanelFactsOutput = PLOutput | SPOutput;
 
-/** Shared adapter — dispatch on the shape received. */
+/** Shared adapter — dispatch on the `kind` tag. */
 export function panelFacts(
-  input: PLInput & { kind: "PL" }
+  input: PLInput
 ): PLOutput;
 export function panelFacts(
-  input: SPInput & { kind: "SP" }
+  input: SPInput
 ): SPOutput;
-export function panelFacts(
-  input: PLInput | SPInput
-): PanelFactsOutput {
-  if ("fixture" in input && input.kind === "PL") {
+export function panelFacts(input: PLInput | SPInput): PanelFactsOutput {
+  if (input.kind === "PL") {
     const { fixture } = input;
     const tiles: MarketTile[] = [];
     const segments: Segment[] = [];
@@ -74,12 +77,12 @@ export function panelFacts(
               ? fixture.team_away
               : "Draw";
         segments.push({ label, prob: e.prob, market: "result" });
+        // Only add to legend when implied is present and the outcome is not draw.
+        // The committed snapshot has implied === null for all 380 fixtures, so in
+        // practice the row is omitted; the branch that draws it is the one that
+        // needs a test, or it ships unexercised.
         if (e.key !== "draw" && fixture.implied !== null) {
-          // only add to legend when implied is present and the outcome is not draw
-          // (the committed snapshot has implied === null for all 380 fixtures,
-          // so in practice the row is omitted; the branch that draws it is the one
-          // that needs a test, or it ships unexercised).
-          legend.push({ label, prob: fixture.implied!, market: "result" });
+          legend.push({ label, prob: fixture.implied, market: "result" });
         }
       }
 
@@ -125,7 +128,7 @@ export function panelFacts(
   }
 
   // --- Sports two-way moneyline + spread + total -------------------------
-  if ("game" in input && input.kind === "SP") {
+  if (input.kind === "SP") {
     const { game, prediction } = input;
     const tiles: MarketTile[] = [];
     const segments: Segment[] = [];
@@ -165,18 +168,15 @@ export function panelFacts(
         : null;
 
     if (spreadLine !== null && predictedMargin !== null) {
-      // The tile names the HOME team, always — per nflverse/CFB convention:
-      // spread_line is the home team's expected margin (positive = home favored),
+      // The tile names the HOME team, always — per nflverse/CFB convention.
+      // spread_line is the home team's expected margin (positive = home favored).
       // predicted_margin is home minus away. The tile value is the line,
-      // and the sub-text carries the disagreement.
-      const absLine = Math.abs(spreadLine);
-      const absMargin = Math.abs(predictedMargin);
+      // and the sub-text carries the discrepancy.
       const discrepancy = Math.abs(predictedMargin - spreadLine);
-      const sign = spreadLine >= 0 ? "+" : "-";
       tiles.push({
         market: "spread",
         label: "spread",
-        value: absLine,
+        value: Math.abs(spreadLine),
         sub: `model +${discrepancy.toFixed(1)}`,
       });
     }
