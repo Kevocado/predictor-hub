@@ -71,6 +71,27 @@ affordance, and it also means **nothing is spent until a reader asks** — which
 matters against the 1000/day budget, where most opens are repeat views of the
 same fixture.
 
+## Previously-designed v2 work, folded in here
+
+The v2 redesign (§11 of `2026-09-27-explainer-v2-design.md`) left three findings
+"independent of the redesign" that "should not wait for it", plus two phase-4
+tasks. Checked against `origin/main` on 2026-09-28:
+
+| item | state | where it goes |
+|---|---|---|
+| NFL/CFB shipping two probabilities for one pick in one bundle | **done** — the moneyline is sourced from `pick_source` | — |
+| the validator comparing numbers by absolute value, so a flipped spread sign passes | **done** — `validate.py` collects a `flippable` set and checks `_sign_ok`; `test_validate_signs.py:61` asserts a flipped sign is caught | — |
+| **the Sports Caddy block being the only proxy of four that forwards an upstream body** | **open** — `Sports_Predictor#6`, unreviewed | reviewed and merged as a **prerequisite** (§Sequencing) |
+| **remove the v1 `LegacyExplanation` shape** | **open** — still in `ExplainerPanel.tsx`, documented as *"the shape v1 returned. Still accepted, and removed in v2 phase 4"* | **PR B**, with the shared component |
+| `sport_api_f1` cleanup (old task T10) | **obsolete** | T10 said remove it as dead once F1 was refused. Decision 4 un-refuses F1, so it is **required** again. T10 is dropped, not done, and the ledger's Task 37 ruling ("not dead weight") applies |
+
+The v1 shape is the last piece of the redesign rather than an optional extra: it
+exists so `main` stays green *between* phases, and every site is now on v2, so the
+shim outlived the reason for it. Carrying it means a v1 body can still render —
+and a v1 body is exactly the shape that carries the claims the honesty rules now
+forbid. Removing it also makes `response_model` honest, since the annotation would
+otherwise admit a shape nothing produces.
+
 ## Architecture
 
 One shared component in `predictor-ui`, copied into each site by `sync-ui.mjs`
@@ -215,8 +236,9 @@ what F1's `drivers` already carry.
 
 | # | Repo | PR | Contents |
 |---|---|---|---|
+| 0 | Sports_Predictor | — | **Prerequisite:** review and merge the open `caddy-no-echo` PR (#6). The last of the four proxies that still forwards an upstream body. Nothing here depends on it, but it should not ship after this. |
 | 1 | predictor-hub | A | Un-refuse `f1`; extend the template path for it |
-| 2 | predictor-hub | B | `FixtureExplainer`, `FixtureFlow`, `SummaryButton`, shared `panelFacts` |
+| 2 | predictor-hub | B | `FixtureExplainer`, `FixtureFlow`, `SummaryButton`, shared `panelFacts`, **and remove the v1 `LegacyExplanation` shape** |
 | 3 | predictor-hub | C | News resolver, freshness key, prompt instruction |
 | 4 | NBA_Predictor | D | Merge #9, then mount the panel |
 | 5 | PL_Predictor | E | Re-vendor, delete the local copy, mount |
@@ -224,7 +246,8 @@ what F1's `drivers` already carry.
 | 7 | F1_Predictor | G | Re-vendor, mount the reduced panel |
 | 8 | — | — | Deploy, then check a Bears game with a real injury headline |
 
-D depends on NBA_Predictor#9; nothing else blocks on ordering.
+D depends on NBA_Predictor#9. Every site PR re-vendors, so **B must merge before
+E, F and G** — they carry a copy of the component it defines.
 
 ## Risks
 
