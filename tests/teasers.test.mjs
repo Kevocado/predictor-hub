@@ -696,3 +696,167 @@ test("a session card shows exactly the top three, highest probability first", ()
   assert.deepEqual(out.rows.map((r) => r.name), ["Norris", "Verstappen", "Russell"],
     "highest probability first, and the title-cased name, not the raw id");
 });
+
+// --- a teaser row that links to the game it names --------------------------
+//
+// paintRow is internal and this repo has no jsdom (see the render-contract
+// tests above), so the render is exercised the way the browser exercises it:
+// a minimal DOM, a fetch stub for two sports — NBA, whose site accepts a game
+// identifier, and PL, whose site accepts nothing — and a fresh evaluation of
+// teasers.js. The import URL carries a query so Node's module cache hands
+// back a new instance rather than the one imported at the top of this file,
+// which saw no `document` and therefore never hydrated. The new instance
+// hydrates on import *because* a document exists, so the fake DOM has to be
+// installed before the import and removed afterwards.
+
+function fakeEl(tag) {
+  return {
+    tagName: tag.toUpperCase(),
+    className: "",
+    textContent: "",
+    children: [],
+    attrs: {},
+    append(...nodes) { this.children.push(...nodes); },
+    replaceChildren(...nodes) { this.children = [...nodes]; },
+    setAttribute(name, value) { this.attrs[name] = String(value); },
+    getAttribute(name) { return name in this.attrs ? this.attrs[name] : null; },
+  };
+}
+
+/** Everything a screen reader would read out of an element: its own text plus
+ *  its descendants' text, in order. */
+const textOf = (el) => [el.textContent, ...el.children.map(textOf)].join("");
+
+/** Every descendant with the given tag, in document order. */
+const tagsIn = (el, tag) =>
+  el.children.flatMap((child) =>
+    child.tagName === tag.toUpperCase() ? [child, ...tagsIn(child, tag)] : tagsIn(child, tag));
+
+const until = async (predicate, tries = 200) => {
+  for (let i = 0; i < tries; i += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error("the teasers never painted");
+};
+
+const ok = (payload) => ({ ok: true, status: 200, json: async () => payload });
+
+const META = { generated_at: "2026-09-27T22:12:44.448691+00:00", source: "public_snapshot" };
+
+const NBA_GAMES = [
+  { game_id: "g-nyk-bos", home_team: "NYK", away_team: "BOS", completed: false, prediction: { home_win_prob: 0.55 } },
+  { game_id: "g-lal-gsw", home_team: "LAL", away_team: "GSW", completed: false, prediction: { home_win_prob: 0.8 } },
+];
+
+const PL_FIXTURES = {
+  current_gameweek: 9,
+  fixtures_by_gameweek: {
+    9: {
+      gameweek: 9,
+      fixtures: [
+        { event_id: "e1", team_home: "Arsenal", team_away: "Chelsea", predicted_home_win: 0.6, predicted_draw: 0.25, predicted_away_win: 0.15, predicted_scoreline: "2-1", has_live_odds: false, value_bet_flags: [] },
+        { event_id: "e2", team_home: "Leeds", team_away: "Everton", predicted_home_win: 0.47, predicted_draw: 0.3, predicted_away_win: 0.23, predicted_scoreline: "1-1", has_live_odds: false, value_bet_flags: [] },
+      ],
+    },
+  },
+};
+
+/** Paint the NBA and PL teasers against a fake DOM and return their slots.
+ *  The other three sports have no slot, so hydrate skips them without ever
+ *  calling fetch — one fake covers both the linked and the unlinked case. */
+let renderCount = 0;
+async function paintTeasers() {
+  const slots = { nba: fakeEl("div"), pl: fakeEl("div") };
+  const previous = { document: globalThis.document, fetch: globalThis.fetch };
+  globalThis.document = {
+    readyState: "complete",
+    createElement: fakeEl,
+    querySelector: (selector) => {
+      const match = /data-teaser="(\w+)"/.exec(selector);
+      return (match && slots[match[1]]) || null;
+    },
+  };
+  globalThis.fetch = async (path) => {
+    if (path.startsWith("/nba/games/week")) return ok(NBA_GAMES);
+    if (path.startsWith("/nba/snapshot-meta")) return ok(META);
+    if (path.startsWith("/pl/api/fixtures/gameweek")) return ok({ current_gameweek: 9 });
+    if (path.startsWith("/pl/api/snapshot-meta")) return ok(META);
+    if (path.startsWith("/pl/api/fixtures")) return ok(PL_FIXTURES);
+    throw new Error(`no fixture for ${path}`);
+  };
+  try {
+    renderCount += 1;
+    await import(new URL(`../teasers.js?paint=${renderCount}`, import.meta.url).href);
+    await until(() => slots.nba.children.length > 0 && slots.pl.children.length > 0);
+    return slots;
+  } finally {
+    globalThis.document = previous.document;
+    globalThis.fetch = previous.fetch;
+  }
+}
+
+test("a row with an href renders an <a> whose accessible text names the game; a row without one renders no anchor", async () => {
+  const slots = await paintTeasers();
+
+  const anchors = tagsIn(slots.nba, "a");
+  assert.equal(anchors.length, 2, "both NBA rows carry an href, so both must paint as links");
+  assert.match(textOf(anchors[0]), /NYK v BOS/, "the link's accessible text must contain the game it names");
+  assert.match(textOf(anchors[1]), /LAL v GSW/);
+  assert.ok(
+    anchors.every((a) => /^https:\/\/nba\./.test(a.href)),
+    `an href must be a URL the NBA site actually serves, got: ${anchors.map((a) => a.href).join(", ")}`,
+  );
+
+  // PL's site has no URL a row could point at, so its rows carry no href and
+  // must paint as plain rows — no anchor anywhere in the slot.
+  assert.deepEqual(tagsIn(slots.pl, "a"), [], "a row with no href must render no anchor");
+  const plRows = slots.pl.children.filter((child) => child.className === "teaser-row");
+  assert.equal(plRows.length, 2, "the PL teaser still paints both of its rows");
+  for (const row of plRows) assert.equal(row.tagName, "DIV", "an unlinked row is a div, not a link");
+  assert.match(textOf(slots.pl), /Arsenal v Chelsea/, "the unlinked rows keep their text");
+});
+
+test("a teaser whose sport has no deep-link support produces rows with no href", () => {
+  // The hub must never advertise a link the site cannot honour. This pins the
+  // absence at both unlinked sports: PL and F1 (whose rows name a driver, not
+  // a game) gain an href only when their sites can accept one, which today
+  // they cannot — neither site has a router, a path route or a query
+  // parameter to link to.
+  const pl = selectPL({
+    current_gameweek: 9,
+    fixtures_by_gameweek: { 9: { gameweek: 9, fixtures: [
+      { event_id: "e1", team_home: "A", team_away: "B", predicted_home_win: 0.44, predicted_draw: 0.25, predicted_away_win: 0.31, has_live_odds: false, value_bet_flags: [] },
+      { event_id: "e2", team_home: "C", team_away: "D", predicted_home_win: 0.86, predicted_draw: 0.08, predicted_away_win: 0.06, has_live_odds: false, value_bet_flags: [] },
+    ] } },
+  });
+  assert.ok(pl.rows.length > 0, "the fixture is there to link — and must still not carry one");
+  for (const row of pl.rows) assert.equal(row.href, undefined, "PL serves no deep link, so its rows carry no href");
+
+  const f1 = selectF1(TIMINGLESS_RACES, {
+    16: { race: { source: "live", predictions: RACE_PREDICTIONS } },
+  }, BEFORE_QUALIFYING);
+  assert.ok(f1.rows.length > 0);
+  for (const row of f1.rows) {
+    assert.equal(row.href, undefined, "an F1 row names a driver, and the F1 site has no URL state to link to");
+  }
+});
+
+test("the teaser link is a real link element, not a div with a role", async () => {
+  const slots = await paintTeasers();
+  const [anchor] = tagsIn(slots.nba, "a");
+  assert.ok(anchor, "no link painted at all");
+  assert.equal(anchor.tagName, "A");
+  assert.equal(anchor.attrs.role, undefined, "role on a real link only renames it");
+  assert.equal(anchor.attrs.tabindex, undefined, "a real <a> is focusable without tabindex");
+  // Activation is the browser's own — that is what makes Enter work — so no
+  // click handler anywhere in the module, and no role= to be tempted by.
+  assert.doesNotMatch(src, /addEventListener\(\s*["']click/, "a link must not need a click handler");
+  assert.doesNotMatch(src, /\brole\s*=/, "no role: the element itself is the semantics");
+  // The page's focus ring is a bare `:focus-visible` rule with no tag or
+  // ancestor qualifier, so it reaches a row that is now an <a> as readily as
+  // it reached a div. (A second, qualified rule exists for .pr-notch; the
+  // bare one is the one that applies here.)
+  const indexHtml = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(indexHtml, /:focus-visible\s*\{/, "no focus-visible rule for the link to inherit");
+});

@@ -334,6 +334,44 @@ export function selectNBA(games) {
 // on a fetch, so with every API dead the page degrades to the working index
 // of five sites it is today.
 
+// Where a linked row sends a visitor. The five sport frontends are served on
+// their own subdomains: the hub's host only proxies their APIs (the
+// `handle_path /pl/*` etc. blocks in the VPS Caddyfile), so a hub-relative
+// "/nba/?game=…" would be answered by the API proxy rather than the site —
+// a 200 that is not the page, which is exactly the NBA "/api" failure this
+// file's comments keep warning about. Absolute URLs, to the same host
+// index.html's cards already link to. A real domain later has to change both
+// files; hub.test.mjs pins the host in index.html, the tests here pin it here.
+const HOST = "40-160-91-131.sslip.io";
+const NBA_SITE = `https://nba.${HOST}`;
+const SPORTS_SITE = `https://sports.${HOST}`;
+
+/** Give each row the URL of the game it names, or no href at all.
+ *
+ *  Rows carry the game's *name* ("NYK v BOS") — the row contract gains `href`
+ *  and nothing else, so there is no id on a row to build a URL from. The
+ *  mapping from name back to id therefore happens here, in the fetcher, which
+ *  is also the layer that knows which sport this is and therefore which URL
+ *  shape it serves. A name that matches more than one game in the payload
+ *  gets NO href: sending a row to one of two candidates is a link that looks
+ *  right and opens the wrong game — worse than no link, and the same failure
+ *  shape as a wrong API path returning a confident 200.
+ *
+ *  Sports whose site accepts no game identifier (PL and F1 today: neither has
+ *  a router, a path route or a query parameter to send anyone to) never call
+ *  this, so their rows keep rendering as plain, plainly unclickable rows. */
+function linkRows(rows, games, urlPrefix) {
+  const ids = new Map();
+  for (const game of games) {
+    const name = `${game.home_team} v ${game.away_team}`;
+    ids.set(name, ids.has(name) ? null : game.game_id);
+  }
+  return rows.map((row) => {
+    const id = ids.get(row.name);
+    return id ? { ...row, href: `${urlPrefix}${encodeURIComponent(id)}` } : row;
+  });
+}
+
 // selectFootball returns label: "" because one selector serves two sports, so
 // each football entry carries its own label here -- otherwise the NFL and CFB
 // teasers would render headerless.
@@ -352,10 +390,19 @@ async function getJSON(path) {
 }
 
 /** One teaser row. Text only -- no innerHTML anywhere in this file, because
- *  every string in it comes from an API payload. */
+ *  every string in it comes from an API payload.
+ *
+ *  A row that carries an href paints as a real <a>: focusable, activatable
+ *  with Enter, its own text (which contains the game) serving as its
+ *  accessible name. A row without an href paints as the div it has always
+ *  been — never a div with a click handler, and never a link-shaped thing
+ *  that goes nowhere: a row that looks clickable and is not is worse than
+ *  one that plainly is not. The page's bare `:focus-visible` rule reaches
+ *  either element, so the focus ring needs nothing here. */
 function paintRow(row) {
-  const el = document.createElement("div");
+  const el = document.createElement(row.href ? "a" : "div");
   el.className = "teaser-row";
+  if (row.href) el.href = row.href;
   const name = document.createElement("span");
   name.className = "teaser-name";
   name.textContent = row.name;
@@ -494,9 +541,15 @@ async function footballTeaser(base, label) {
   const week = await getJSON(`${base}/api/current-week`);
   const games = await getJSON(`${base}/api/games?season=${week.season}&week=${week.week}`);
   const predictions = await getJSON(`${base}/api/predictions/${week.season}/${week.week}/batch`);
-  // base is "/nfl" or "/cfb" (see SPORTS), so this one line fetches
-  // "/nfl/api/snapshot-meta" or "/cfb/api/snapshot-meta" respectively.
-  return [{ ...selectFootball(games, predictions), label }, await metaSub(`${base}/api/snapshot-meta`)];
+  // base is "/nfl" or "/cfb" (see SPORTS), so base.slice(1) is the sport the
+  // Sports site reads from ?sport= — the same value the family switcher
+  // already puts in that parameter, and this one line fetches
+  // "/nfl/api/snapshot-meta" or "/cfb/api/snapshot-meta" below. A row whose
+  // game id cannot be resolved keeps no href (see linkRows) rather than
+  // guessing one.
+  const out = selectFootball(games, predictions);
+  const rows = linkRows(out.rows, games, `${SPORTS_SITE}/?sport=${base.slice(1)}&game=`);
+  return [{ ...out, label, rows }, await metaSub(`${base}/api/snapshot-meta`)];
 }
 
 // NBA is the one API with no /api prefix: its router is mounted at the app
@@ -509,7 +562,11 @@ const NBA = "/nba";
 
 async function nbaTeaser() {
   const games = await getJSON(`${NBA}/games/week?start=${new Date().toISOString().slice(0, 10)}`);
-  return [selectNBA(games), await metaSub(`${NBA}/snapshot-meta`)];
+  // The NBA site takes ?game= on its "/" route, so a resolvable row links
+  // there and an unresolvable one stays a plain row (see linkRows).
+  const out = selectNBA(games);
+  const rows = linkRows(out.rows, games, `${NBA_SITE}/?game=`);
+  return [{ ...out, rows }, await metaSub(`${NBA}/snapshot-meta`)];
 }
 
 function hydrate() {
