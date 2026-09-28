@@ -4,13 +4,28 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SPORTS = ("pl", "f1", "nfl", "cfb", "nba")
 
-#: The sports this service answers for. F1 and NBA are configured and reachable
-#: but not served: the v2 panel is specified for the three sports whose facts
-#: carry the markets it draws (§3), and an explanation for a sport we have no
-#: panel for would be a template rendering as an answer. Kept beside SPORTS so
-#: the "configured" set and the "answered" set are read together — a new sport
-#: has to be added to both deliberately rather than by omission.
-SERVED_SPORTS = ("pl", "nfl", "cfb")
+#: The sports this service answers for.
+#:
+#: **F1 is configured and reachable but not served, and that is a product
+#: decision.** A win probability *is* the explanation: a model that says
+#: "Norris 71%" has said the whole thing, and prose over a field of twenty drivers
+#: is the model restating its own input at greater length, which is the failure
+#: this product exists to avoid. F1 also has no line, so a model-vs-market tile
+#: would have nothing honest to show.
+#:
+#: **NBA serves, and it used to be on this list's other side for the wrong
+#: reason.** It was refused alongside F1 because "the v2 panel is specified for the
+#: three sports whose facts carry the markets it draws" — a claim checked for F1
+#: and assumed for NBA. NBA's `/facts` carries `moneyline`, `spread` and `total`,
+#: the same three keys in the same shape as NFL and CFB, so every component the
+#: panel draws is fed. `test_unserved_sport.py` asserts that against the facts
+#: builder, so if NBA's markets ever change the question is asked again rather
+#: than assumed either way.
+#:
+#: Kept beside SPORTS so the "configured" set and the "answered" set are read
+#: together — a new sport has to be added to both deliberately rather than by
+#: omission.
+SERVED_SPORTS = ("pl", "nfl", "cfb", "nba")
 
 
 class Settings(BaseSettings):
