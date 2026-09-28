@@ -14,3 +14,4 @@ export { RecordStrip } from "./components/RecordStrip";
 export { StatTable, type Column } from "./components/StatTable";
 export { StatusBadge, statusWords, type Moment, type Status } from "./components/StatusBadge";
 export { TeamChip } from "./components/TeamChip";
+export { BoxScore, type BoxScoreRow, type BoxScoreColumn, type BoxScoreGroup, type BoxScoreTotal, type BoxScoreProps } from "./components/BoxScore";
