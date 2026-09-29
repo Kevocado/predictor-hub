@@ -74,6 +74,7 @@ from explainer.prompts import SPORT_NOTES, SYSTEM
 RECORDED_PROMPT_DIGEST = {
     "v3": "6b4bb345ea4138429dbc1876a065f79502d4616a58862dd6d9d2b55376fb5268",
     "v4": "44057a9f0fafb366ce8f8a6b0de4e916ecc33e9971f199384572e068667a4f45",
+    "v5": "440422fd643f307ce3e568c118b444881b8499e4affd3081f575a9221cb3d568",
 }
 
 _HEX64 = re.compile(r"[0-9a-f]{64}")

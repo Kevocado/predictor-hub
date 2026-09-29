@@ -120,7 +120,7 @@ class Settings(BaseSettings):
     #: is `tests/test_prompt_version_moves_with_the_prompt.py`, which holds a
     #: digest of everything the writer sends, so the frame cannot move without
     #: this and leave a green suite behind.
-    prompt_version: str = "v4"
+    prompt_version: str = "v5"
     sport_api_pl: str | None = None
     sport_api_f1: str | None = None
     sport_api_nfl: str | None = None
