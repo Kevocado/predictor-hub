@@ -8,10 +8,9 @@
  *  All inputs provide `kind: "PL"` or `kind: "SP"` so the adapter can dispatch.
  */
 
-import { describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 
 import { barPick, panelFacts } from "./panelFacts";
-import type { MarketTile, Segment } from "../index";
 import type { PLFixture } from "./panelFacts";
 
 /** Test-local alias so the `as unknown as FixtureSummary` casts below compile
@@ -56,7 +55,7 @@ it("PL: legend has 2 entries when implied carries on two outcomes", () => {
       away_win: { prob: 0.26, implied: 0.3, edge: null as any },
     } as unknown as FixtureSummary,
   });
-  expect(legend).toHaveLength(2);
+  expect(legend ?? []).toHaveLength(2);
 });
 
 /** PL: legend has 3 entries when implied carries on all three outcomes. */
@@ -70,7 +69,7 @@ it("PL: legend has 3 entries when implied carries on all three outcomes", () => 
       away_win: { prob: 0.26, implied: 0.31, edge: null as any },
     } as unknown as FixtureSummary,
   });
-  expect(legend.map((s) => s.label)).toEqual(["Arsenal", "Draw", "Chelsea"]);
+  expect((legend ?? []).map((s) => s.label)).toEqual(["Arsenal", "Draw", "Chelsea"]);
 });
 
 /** PL: no fixture → empty tiles + segments. */
@@ -140,8 +139,8 @@ it("PL: draw implied only, legend has 1 entry", () => {
       away_win: { prob: 0.26, implied: null, edge: null as any },
     } as unknown as FixtureSummary,
   });
-  expect(legend).toHaveLength(1);
-  expect(legend[0].label).toBe("Draw");
+  expect(legend ?? []).toHaveLength(1);
+  expect(legend![0].label).toBe("Draw");
 });
 
 /** ---- SPORTS FIXTURES ---- */
@@ -197,7 +196,7 @@ it("Sports: no prediction returns empty", () => {
   const { tiles, segments } = panelFacts({
     kind: "SP" as const,
     game: spBase().game,
-    prediction: null as unknown,
+    prediction: null,
   });
   expect(tiles).toEqual([]);
   expect(segments).toEqual([]);
@@ -210,7 +209,7 @@ it("Sports: omit spread/total when data absent, no empty tile rendered", () => {
     game: { ...spBase().game, spread_line: null, total_line: null },
     prediction: { ...spBase().prediction, predicted_margin: null, predicted_total: null },
   });
-  expect(tiles).toHaveLength(0);
+  expect(tiles.map((t) => t.market)).toEqual(["moneyline"]);
   expect(panelFacts({ kind: "SP" as const, game: spBase().game, prediction: spBase().prediction }).segments).toHaveLength(2);
 });
 
@@ -293,7 +292,7 @@ it("Sports: null prediction, game data present → no tiles", () => {
   const { tiles } = panelFacts({
     kind: "SP" as const,
     game: spBase().game,
-    prediction: null as unknown,
+    prediction: null,
   });
   expect(tiles).toEqual([]);
 });
@@ -302,7 +301,7 @@ it("Sports: null prediction, game data present → no tiles", () => {
 it("Sports: spread tile when only spread_line present, no predicted_margin", () => {
   const { tiles } = panelFacts({
     kind: "SP" as const,
-    game: { ...spBase().game, predicted_margin: null },
+    game: spBase().game,
     prediction: { ...spBase().prediction, predicted_margin: null },
   });
   expect(tiles.some((t) => t.market === "spread")).toBe(false);
@@ -312,7 +311,7 @@ it("Sports: spread tile when only spread_line present, no predicted_margin", () 
 it("Sports: total tile when only total_line present, no predicted_total", () => {
   const { tiles } = panelFacts({
     kind: "SP" as const,
-    game: { ...spBase().game, predicted_total: null },
+    game: spBase().game,
     prediction: { ...spBase().prediction, predicted_total: null },
   });
   expect(tiles.some((t) => t.market === "total")).toBe(false);

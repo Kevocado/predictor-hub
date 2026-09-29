@@ -65,7 +65,8 @@ describe("FixtureExplainer", () => {
     renderExplainer(() => Promise.resolve(SUMMARY));
     await user.click(screen.getByRole("button"));
     expect(screen.getByTestId("fixture-summary")).toBeInTheDocument();
-    expect(screen.queryByRole("button")).toBeNull();
+    // The summary button is gone (factor rows are buttons too, so scope by name).
+    expect(screen.queryByRole("button", { name: /ai summary/i })).toBeNull();
   });
 
   it("keeps the flow mounted when the summary lands — no flicker", async () => {
@@ -147,11 +148,11 @@ describe("FixtureExplainer", () => {
     );
     await user.click(screen.getByRole("button"));
     const summaryView = screen.getByTestId("fixture-summary");
-    // The tile value and both bar segments render inside the summary state
-    // (scoped: the flow below carries the same figures in its own sentences).
+    // The tile and both bar segments render inside the summary state, scoped:
+    // bar labels carry their figures, so bare team names match nothing.
+    expect(within(summaryView).getByTestId("tile-moneyline")).toBeInTheDocument();
+    expect(within(summaryView).getAllByTestId("pbar-fill")).toHaveLength(2);
     expect(within(summaryView).getByText("62%")).toBeInTheDocument();
-    expect(within(summaryView).getByText("KC")).toBeInTheDocument();
-    expect(within(summaryView).getByText("BAL")).toBeInTheDocument();
   });
 
   it("joins the answer's pick against the extras' segments, translating '<team> win'", async () => {

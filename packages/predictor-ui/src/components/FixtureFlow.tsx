@@ -51,10 +51,13 @@ function pickProb(bundle: any): number | null {
   return typeof p === "number" && Number.isFinite(p) ? p : null;
 }
 
-/** When the pick was made, from the facts' own `pick_timing`. */
+/** When the pick was made, from the facts' own `pick_timing`. A rebuilt pick
+ *  was made after the event began; the moment is worded per sport because F1
+ *  has sessions, not kickoffs, and "after the game started" on a race page
+ *  names a moment that sport does not have. */
 function whenMade(sport: string, bundle: any): string {
   const timing = bundle?.pick_timing;
-  if (timing === "rebuilt") return "after the game started";
+  if (timing === "rebuilt") return sport === "f1" ? "after the session started" : "after the game started";
   const moment = MOMENT[sport] ?? "kickoff";
   return `before ${moment}`;
 }

@@ -12,8 +12,6 @@
 
 import { render, screen } from "@testing-library/react";
 import { FixtureFlow } from "./FixtureFlow";
-import { panelFacts } from "../lib/panelFacts";
-import type { MarketTile } from "../FactorList";
 
 /** Render FixtureFlow with the given sport, state, and bundle.
  *  The request function is stubbed to reject, so the flow is shown with the
@@ -24,7 +22,7 @@ const renderFixtureFlow = (
   bundle: any,
   requestFn = () => Promise.reject(new Error("unreachable"))
 ) => {
-  const { lastRenderedErrors } = render(
+  render(
     <FixtureFlow
       sport={sport}
       state={state}
@@ -32,7 +30,7 @@ const renderFixtureFlow = (
       request={requestFn}
     />
   );
-  return { screen, errors: lastRenderedErrors };
+  return { screen };
 };
 
 /** Pre-game bundle shapes (one per sport). */
@@ -240,10 +238,25 @@ describe("FixtureFlow: state-appropriate, honest flow description", () => {
     });
 
     it("NBA thin bundle: flow is legible even with no market_line", () => {
-      const { screen } = renderFixtureFlow("nba", "pre-game", preGameBundles.nba.minimal);
-      const flowText = screen.getByRole("main").innerHTML;
+      renderFixtureFlow("nba", "pre-game", preGameBundles.nba.minimal);
       // Flow should render without error; the "no line" case is handled.
       expect(screen.getByRole("main")).not.toBeNull();
+    });
+
+    it("F1 rebuilt: the moment is the session, not a kickoff", () => {
+      const { screen } = renderFixtureFlow("f1", "pre-game", {
+        ...preGameBundles.f1,
+        pick_timing: "rebuilt",
+      });
+      expect(screen.getByRole("main").innerHTML).toContain("after the session started");
+    });
+
+    it("NFL rebuilt: the moment stays the game", () => {
+      const { screen } = renderFixtureFlow("nfl", "pre-game", {
+        ...preGameBundles.sp,
+        pick_timing: "rebuilt",
+      });
+      expect(screen.getByRole("main").innerHTML).toContain("after the game started");
     });
   });
 

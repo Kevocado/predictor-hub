@@ -4,26 +4,25 @@ import userEvent from "@testing-library/user-event";
 import { ExplainerPanel, type Explanation } from "./ExplainerPanel";
 
 const llm: Explanation = {
-  headline: "Sunderland are the slight favourites, but this is the closest thing to a coin flip all week.",
-  sections: [
-    { market: "result", title: "Why Sunderland", text: "They have won three of five and the model has them at 57%." },
-    { market: "total_goals", title: "Expect a tight one", text: "The model puts 2.9 goals on the game, so under 2.5 is the safer side." },
-  ],
   source: "llm",
   model: "gpt-4o-mini",
   generated_at: new Date(Date.now() - 4 * 60_000).toISOString(),
   sport: "pl",
   pick_timing: "pre_kickoff",
+  verdict: "Sunderland are the slight favourites.",
+  band: "moderate",
+  factors: [],
 };
 
 const template: Explanation = {
-  headline: "Sunderland win, at 57%.",
-  sections: [{ market: "result", title: "The numbers", text: "Home 57%, draw 23%, away 20%." }],
   source: "template",
   model: "template",
   generated_at: new Date(Date.now() - 4 * 60_000).toISOString(),
   sport: "pl",
   pick_timing: "pre_kickoff",
+  verdict: "Sunderland win, at 57%.",
+  band: "moderate",
+  factors: [],
 };
 
 const noop = () => {};
@@ -102,12 +101,6 @@ describe("ExplainerPanel honesty footer", () => {
 });
 
 describe("ExplainerPanel content", () => {
-  it("leads with the headline under a heading that says what this is", () => {
-    render(<ExplainerPanel data={llm} loading={false} error={false} onRetry={noop} />);
-    expect(screen.getByRole("heading", { name: "In plain English" })).toBeInTheDocument();
-    expect(screen.getByText(llm.headline)).toBeInTheDocument();
-  });
-
   it("two panels on one page each label their own section", () => {
     // A hard-coded heading id would be shared, and aria-labelledby would point
     // both sections at whichever heading came first.
@@ -126,40 +119,10 @@ describe("ExplainerPanel content", () => {
     }
   });
 
-  it("renders every section as a titled block of prose", () => {
-    render(<ExplainerPanel data={llm} loading={false} error={false} onRetry={noop} />);
-    for (const section of llm.sections) {
-      const title = screen.getByRole("heading", { name: section.title, level: 4 });
-      expect(title).toBeInTheDocument();
-      expect(screen.getByText(section.text)).toBeInTheDocument();
-    }
-  });
-
-  it("two sections with the same market and title both render, without a React key warning", () => {
-    // validate.py bounds a title's length but not its uniqueness, so a model
-    // can return two "Trust" sections. Keying on market+title alone logged a
-    // duplicate-key error in the reader's console.
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    const doubled = {
-      ...llm,
-      sections: [
-        { market: "trust", title: "Trust", text: "First read of it." },
-        { market: "trust", title: "Trust", text: "Second read of it." },
-      ],
-    };
-    render(<ExplainerPanel data={doubled} loading={false} error={false} onRetry={noop} />);
-    expect(screen.getByText("First read of it.")).toBeInTheDocument();
-    expect(screen.getByText("Second read of it.")).toBeInTheDocument();
-    expect(error.mock.calls.flat().join(" ")).not.toMatch(/same key|unique "key"/i);
-  });
-
-  it("a section with no title still shows its text, with no empty heading", () => {
-    // _clean coerces a missing title to "", so an empty <h4> is reachable.
-    const untitled = { ...llm, sections: [{ market: "result", title: "", text: "Just the prose." }] };
-    render(<ExplainerPanel data={untitled} loading={false} error={false} onRetry={noop} />);
-    expect(screen.getByText("Just the prose.")).toBeInTheDocument();
-    expect(screen.queryAllByRole("heading", { level: 4 })).toHaveLength(0);
-  });
+  // The v1 `headline`/`sections` rendering these tests covered was removed
+  // with the LegacyExplanation union arm: the panel renders verdicts now, and
+  // a v1 body reaches no render branch. Deleted, not migrated; the factor
+  // rows that replaced sections carry their own suite in FactorList.
 });
 
 describe("ExplainerPanel rebuilt picks", () => {
@@ -219,21 +182,34 @@ describe("ExplainerPanel rebuilt picks", () => {
   });
 });
 
+/** A minimal v2 body for the collapse tests: the collapsed toggle withholds
+ *  the body, and the body is verdict + factors now, not headline + sections. */
+const v2body: Explanation = {
+  source: "template",
+  model: "",
+  generated_at: new Date(Date.now() - 4 * 60_000).toISOString(),
+  sport: "pl",
+  pick_timing: "pre_kickoff",
+  verdict: "Arsenal are the pick, and the market roughly agrees.",
+  band: "moderate",
+  factors: [{ key: "result", direction: "neutral", headline: "Why", text: "The model has them at 48%." }],
+};
+
 describe("ExplainerPanel collapsed", () => {
-  it("shows only the headline, and offers a way in", () => {
-    render(<ExplainerPanel data={llm} loading={false} error={false} onRetry={noop} collapsed />);
-    expect(screen.getByText(llm.headline)).toBeInTheDocument();
+  it("shows only the verdict, and offers a way in", () => {
+    render(<ExplainerPanel data={v2body} loading={false} error={false} onRetry={noop} collapsed />);
+    expect(screen.getByText(v2body.verdict)).toBeInTheDocument();
     // The body is withheld, not merely hidden behind a scroll.
-    expect(screen.queryByText(llm.sections[0].text)).not.toBeInTheDocument();
+    expect(screen.queryByText("The model has them at 48%.")).not.toBeInTheDocument();
     const toggle = screen.getByRole("button", { name: "Read the race story" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
   });
 
   it("expands on click and reports its state", async () => {
-    render(<ExplainerPanel data={llm} loading={false} error={false} onRetry={noop} collapsed />);
+    render(<ExplainerPanel data={v2body} loading={false} error={false} onRetry={noop} collapsed />);
     const toggle = screen.getByRole("button", { name: "Read the race story" });
     await userEvent.click(toggle);
-    expect(screen.getByText(llm.sections[0].text)).toBeInTheDocument();
+    expect(screen.getByText("The model has them at 48%.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Hide the race story" })).toHaveAttribute("aria-expanded", "true");
   });
 });
