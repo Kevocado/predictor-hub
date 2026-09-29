@@ -36,7 +36,7 @@ def test_status_reports_failure_kinds_with_zeros_rather_than_omitting_them(tmp_p
     with client(tmp_path) as c:
         failures = c.get("/status").json()["failures"]
     assert failures["rate_limited"] == 0 and failures["not_found"] == 0
-    for kind in ("unauthorized", "bad_response", "transport", "provider_error"):
+    for kind in ("unauthorized", "bad_response", "cut_off", "transport", "provider_error"):
         assert kind in failures, f"{kind} is missing from /status: {failures}"
     # Model names are fine to expose; the key never is.
     assert "supersecret" not in str(failures)

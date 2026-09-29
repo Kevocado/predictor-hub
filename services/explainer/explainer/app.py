@@ -50,8 +50,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 # Every kind is present with a zero rather than only the ones
                 # seen, so a dashboard can plot them without filling gaps, and
                 # so "no failures" and "not being read" cannot be confused.
+                # `cut_off` is here for the same reason as the rest: a token
+                # budget that is silently too small looks identical to a model
+                # that is not being used at all unless the count is published.
                 "failures": {kind: app.state.explainer.failures.get(kind, 0)
                              for kind in ("rate_limited", "not_found", "unauthorized",
-                                          "bad_response", "transport", "provider_error")}}
+                                          "bad_response", "cut_off", "transport",
+                                          "provider_error")}}
 
     return app
