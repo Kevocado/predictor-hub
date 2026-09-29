@@ -190,7 +190,7 @@ def test_a_bundle_with_no_markets_at_all_rejects_every_line_market():
     on it would reject the ordinary case to catch the extraordinary one.
     """
     empty = {"sport": "nfl", "markets": [], "pick": None}
-    for text in ("the spread is tight", "over the total", "the total goals figure"):
+    for text in ("the spread is tight", "the over/under", "the total goals figure"):
         assert _market_problems(empty, text), f"{text!r} should name a missing market"
     # The attribution form fires regardless, because nothing at all is quoted.
     assert _market_problems(empty, "the market line sits at two and a half")
@@ -258,7 +258,10 @@ def test_a_market_named_in_a_factor_key_is_not_prose_and_is_not_checked():
     ("the handicap looks fair", "spread"),
     ("the moneyline favourite", "moneyline"),
     ("the money line", "moneyline"),
-    ("over the total", "total"),
+    # "over the total" is deliberately NOT a trigger — ordinary English, and
+    # rejecting it would reject the product to catch one sentence. The
+    # unambiguous spellings of the same market are here; the ambiguous one is
+    # caught only when a book is actually named.
     ("the total goals figure", "total"),
     ("the implied probability", "implied"),
 ])

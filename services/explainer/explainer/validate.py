@@ -95,9 +95,30 @@ MAX_FACTORS = 4
 MARKET_WORDS: dict[str, tuple[tuple[str, ...], bool]] = {
     "moneyline": (("moneyline",), False),
     "spread": (("spread", "handicap"), True),
-    "total": (("total", "total_goals", "over_under"), True),
+    # `total_goals` and `over_under` are the CONTRACT keys; bare `total` is
+    # deliberately not among them. "Total commitment from midfield" and "a total
+    # of two chances" are ordinary English and were being reported as naming a
+    # market the facts do not carry. The contract's own vocabulary is what gets
+    # matched — a word the panel cannot resolve is not a market reference.
+    "total": (("total_goals", "over_under"), True),
     "implied": (("implied",), False),
 }
+#: The words PROSE uses for each concept, as opposed to the contract keys in
+#: `MARKET_WORDS` above. Kept apart because they are different vocabularies and
+#: conflating them is how bare `total` came to reject "Total commitment from
+#: midfield": the contract has no `total` key, so the word in prose could not be
+#: checked against it at all, and the only way to make it work was to add
+#: `total` to the keys — which is a word the panel cannot resolve.
+PROSE_WORDS: dict[str, tuple[str, ...]] = {
+    "moneyline": ("moneyline", "money line"),
+    "spread": ("spread", "handicap", "point spread"),
+    # Written as a regex, so the separator may be a slash, a hyphen or a space --
+    # all three are written in practice, and a guard that matched only one of
+    # them would be right by luck.
+    "total": (r"total\s+goals", r"over\s*[/-]?\s*under"),
+    "implied": ("implied",),
+}
+
 #: Phrases that assert a figure belongs to a book. These are what make the
 #: live sentence false; a bare "spread" or "total" is much weaker and is handled
 #: by the quoted-market rule instead.
@@ -125,10 +146,33 @@ ATTRIBUTION_PHRASES: tuple[str, ...] = (
     "the market has", "the market sits", "the market is", "point spread",
     "over/under", "over-under", "the implied probability", "quoted at",
     "covering", "covers", "against the spread", "against the total",
+    # BARE references to the book, with no "market" in front of them. These are
+    # the live NBA leak: "Very close to the line." passed while "The market is
+    # right there." was caught, which is an asymmetry with no principle behind
+    # it — a book quote is a book quote however the sentence names it, and NBA
+    # carries no quoted line at all.
+    #
+    # Every one is a two-or-more-word phrase, and that is what keeps this from
+    # becoming the "line" mistake this file has already made once. A bare "line"
+    # cannot be a trigger: "the line between favourite and also-ran" is ordinary
+    # English, and rejecting it would reject the product to catch one sentence.
+    # "close to the line", "the number", and "pick'em" cannot mean anything else.
+    "close to the line", "just off the line", "on the line", "above the line",
+    "below the line", "under the line", "over the line", "the line sits",
+    "the number is", "the number sits", "quick number", "the total sits",
+    "pick'em", "pick em", "picks'em",
 )
-#: Single words that name a market, for the exists-but-unquoted case.
+#: Words that name a market, for the exists-but-unquoted case.
+#:
+#: **`total` was a bare alternative and had to become a phrase.** Found by a test
+#: written for a different fix, which is the usual way these surface: "Total
+#: commitment from midfield" and "A total of two chances" were both reported as
+#: naming a market the facts do not carry, and a reader got the template instead
+#: of the summary. Same shape as the "line" mistake, one rule along — a single
+#: common English noun cannot be a market marker. "total goals" and "over/under"
+#: are unambiguous, so those are what it matches now.
 _MARKET_WORD_RE = re.compile(
-    r"\b(?:spread|handicap|money\s?line|total\s+goals|total|implied)\b", re.I
+    r"\b(?:spread|handicap|money\s?line|total\s+goals|over\s?/?\s?under|implied)\b", re.I
 )
 _ATTRIBUTION_RE = re.compile(
     r"\b(?:" + "|".join(re.escape(p) for p in ATTRIBUTION_PHRASES) + r")\b", re.I
@@ -186,11 +230,16 @@ def _named_markets(body: str) -> set[str]:
         low = sentence.lower()
         if _OWNED_BY_MODEL_RE.search(low) and not _ATTRIBUTION_RE.search(low):
             continue
-        for concept, (keys, _) in MARKET_WORDS.items():
-            # `money line` and `total goals` are two words; the contract key is
-            # `moneyline`, so the match has to tolerate the space.
-            if any(re.search(rf"\b{re.escape(k).replace('moneyline', money_line)}\b", low)
-                   for k in keys):
+        for concept, words in PROSE_WORDS.items():
+            # Matched on the PROSE vocabulary, and the concept is then checked
+            # against the CONTRACT keys. The two are separate on purpose: a word
+            # the panel cannot resolve is not a market reference, and a contract
+            # key that never appears in prose would make the rule unfireable.
+            # The patterns are regexes already (`total goals`, `over/under`),
+            # so they are used as written rather than escaped — escaping a
+            # pattern would make it a literal and it would never match.
+            if any(re.search(rf"\b(?:{w})\b" if "moneyline" not in w else rf"\b(?:{money_line})\b", low)
+                   for w in words):
                 found.add(concept)
     return found
 
