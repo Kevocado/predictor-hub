@@ -6,11 +6,14 @@ export { ProbabilityBar, type PickRef, type Segment } from "./components/Probabi
 export { RoundNavigator } from "./components/RoundNavigator";
 export { StatTile } from "./components/StatTile";
 export { EmptyState, ErrorState, Skeleton } from "./components/States";
-export { ExplainerPanel, type Explanation, type Verdict, type LegacyExplanation, type Common } from "./components/ExplainerPanel";
+export { ExplainerPanel, type Explanation, type Verdict, type Common } from "./components/ExplainerPanel";
 export { BandChip, PanelHeading, type Band } from "./components/ExplainerVerdict";
 export { KeyNumberTile, type MarketTile } from "./components/KeyNumberTile";
 export { FactorList, type Factor } from "./components/FactorList";
 export { RecordStrip } from "./components/RecordStrip";
+export { FixtureFlow, type FixtureFlowProps, type FlowState } from "./components/FixtureFlow";
+export { SummaryButton, type SummaryButtonProps } from "./components/SummaryButton";
+export { FixtureExplainer, type FixtureExplainerProps, type Summary } from "./components/FixtureExplainer";
 export { StatTable, type Column } from "./components/StatTable";
 export { StatusBadge, statusWords, type Moment, type Status } from "./components/StatusBadge";
 export { TeamChip } from "./components/TeamChip";

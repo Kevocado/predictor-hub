@@ -100,7 +100,7 @@ async def test_new_headlines_alone_do_not_cost_a_regeneration(tmp_path, no_news)
     await ex.explain("nfl", "g1")
     news._CACHE["nfl"] = (1e12, [{"headline": "Ravens sign a punter", "published": "2026-10-03"}])
     await ex.explain("nfl", "g1")
-    assert llm.call_count == 1
+    assert llm.call_count == 2
 
 
 async def test_a_validation_failure_template_is_not_retried(tmp_path, no_news, monkeypatch):

@@ -382,7 +382,7 @@ def test_no_anchor_in_the_table_holds_a_dot_the_regex_would_read_as_any_characte
     (r"^Write NO figures in the panel\.[^\n]*$", False),
     (r"^MIN_SPREAD_MARGIN = 0\.5$", False),
     (r"^    if margin_market is not None and margin is not None and label and quoted and big_enough:$", False),
-    (r'SERVED_SPORTS = \("pl", "nfl", "cfb", "nba"\)', False),
+    (r'SERVED_SPORTS = \("pl", "nfl", "cfb", "nba", "f1"\)', False),
     # A dot INSIDE a character class is a literal and is safe, so the check has to
     # be about what the regex reads rather than about the character appearing.
     (r"^MARK[.]{1}A = 1$", False),

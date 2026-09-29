@@ -472,7 +472,17 @@ def test_every_served_sport_names_the_moment_in_its_own_word():
     file started with: one sport's row tested, the rest assumed.
 
     The list is derived from `SERVED_SPORTS`, so a newly served sport is covered
-    the moment it is added rather than the moment someone remembers.
+    the moment it is added rather than the moment someone remembers -- which is
+    what this test did to itself when F1 was served: it failed on its own table
+    and the fix was the entry, not the check.
+
+    **F1 is in the table now, and its word is asserted twice over.** It was not
+    when this was written, because F1 was refused and `_START["f1"]` was
+    unreachable; the swap row the mutcheck harness carries would have been silent
+    then, and the table would have had nothing to compare. The separate
+    `test_f1s_moment_is_the_session_because_that_is_the_word_f1_uses` below reads
+    the constant directly, so one guard watches the rendered sentence for a sport
+    whose shape is F1's and the other watches the word in the table.
     """
     from explainer.config import SERVED_SPORTS
 
@@ -481,6 +491,7 @@ def test_every_served_sport_names_the_moment_in_its_own_word():
         "nfl": "kickoff",
         "cfb": "kickoff",
         "nba": "tip-off",     # not a kickoff, and the panel says so elsewhere too
+        "f1": "the session started",   # a race weekend has sessions, and "kickoff" is a lie
     }
     assert set(expected) == set(SERVED_SPORTS), (
         f"this test's table is out of step with SERVED_SPORTS: "
@@ -495,14 +506,24 @@ def test_every_served_sport_names_the_moment_in_its_own_word():
 
 
 def test_f1s_moment_is_the_session_because_that_is_the_word_f1_uses():
-    """`_START["f1"]` is **unreachable today** -- F1 is refused at the edge, so the
-    template never runs for it -- and it is pinned anyway.
+    """`_START["f1"]` was **unreachable** when this was written -- F1 was refused
+    at the edge, so the template never ran for it -- and it is now the live path,
+    because F1 serves.
 
-    Not an oversight. The default for an unlisted sport is "kickoff", which is the
-    wrong word for a Formula 1 session, so the entry is the only thing standing
-    between "F1 is un-refused" and "F1 says 'rebuilt after kickoff'". Asserting a
-    table's contents is legitimate when the row exists precisely for a future
-    caller; leaving it unpinned is how it becomes a wrong word nobody notices.
+    Not an oversight then, and not one now. The default for an unlisted sport is
+    "kickoff", which is the wrong word for a Formula 1 session, so the entry was
+    the only thing standing between "F1 is un-refused" and "F1 says 'rebuilt
+    after kickoff'". Asserting a table's contents is legitimate when the row
+    exists precisely for a future caller; leaving it unpinned is how it becomes a
+    wrong word nobody notices.
+
+    **It reads the constant rather than a rendered sentence, so it is the witness
+    that does not need F1 to be served.** The table above renders a sport's word
+    only for sports in `SERVED_SPORTS`, so un-serving F1 -- a reversal nobody has
+    promised will not happen twice -- would leave this row unpinned and
+    `tests/test_f1_served.py` would be the only thing saying the word matters.
+    A test whose subject is a config list is a test that goes away with the
+    config; this one reads `_START`, which is what actually renders.
     """
     from explainer.template import _START
 

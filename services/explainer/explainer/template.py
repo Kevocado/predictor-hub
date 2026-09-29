@@ -167,21 +167,59 @@ def _fact(key: str, direction: str, headline: str, text: str) -> dict:
     return {"key": key, "direction": direction, "headline": headline, "text": text}
 
 
-def _outcome_key(by_key: dict) -> str:
+def _outcome_key(by_key: dict, default: str) -> str:
     """The market a pick or an outcome belongs to, for use as a factor `key`.
 
     PL's three-way market is literally named `result`; NFL's and CFB's outcome is
-    a top-level `result` with the pick's market named `moneyline`. So a factor
-    about the pick or how it finished cannot just be keyed `result` — for NFL
-    that names a market the facts do not carry, and the panel would resolve it to
-    nothing and render an empty row. Same trap as `contract.market_shape`, and
-    for the same reason.
+    a top-level `result` with the pick's market named `moneyline`; F1's is named
+    `win`, because a race is won rather than matched. So a factor about the pick
+    or how it finished cannot just be keyed `result` — for NFL that names a
+    market the facts do not carry, and the panel would resolve it to nothing and
+    render an empty row. Same trap as `contract.market_shape`, and for the same
+    reason.
+
+    **`default` is an argument because the fall-through is REACHABLE, and the two
+    callers have to be told apart when it happens.** An earlier version of this
+    docstring claimed the fall-through was dead — that every sport in
+    `SERVED_SPORTS` names its pick market. That was false, and measurably so:
+    every served sport's builder can return without the market, and each by a
+    branch that is not a corner case. The measured table is in
+    `tests/test_factor_keys.py`; the shortest version is that each builder
+    *guards* the pick market rather than always emitting it — NBA at
+    `facts.py:209` (`if home_prob is not None`), NFL and CFB at `:258-260` and
+    `:264-266` (both probabilities, read off a *different* row from the spread
+    and total, which are not gated on them), F1 at `:313-314` (`if win:`), PL at
+    `:178` (`if probs is not None`) — and **all five** also have a
+    `markets: [] if (started and ...)` arm that returns an empty list outright
+    (F1 `:537`, NBA `:362`, NFL `:472`, CFB `:437`, PL `:400`).
+
+    So `default` is a **parameter, not a constant**, and it is `default` rather
+    than `"context"` for one reason: `context` is the padding and
+    rebuilt-disclosure rows' key, and the padding loop uses it as its own
+    "have I emitted one yet" sentinel. A pick row landing on it means two
+    factors share a key, so `FactorList` renders two `data-testid` elements and
+    lights both when either is selected. `default="pick"` and
+    `default="outcome"` make the two rows distinct, and both are honest names
+    for what is true — there IS a pick, and we cannot name its market — which
+    `"context"` was not.
+
+    They are pseudo-markets in `contract.PSEUDO_MARKETS`, which is what makes
+    them usable: `contract.resolve_factors` keeps a key only if the facts carry
+    it or it is a pseudo-market, and `tests/test_template_v2.py` requires every
+    factor this file emits to survive that.
+
+    **The fall-through must stay rare, and `test_a_full_bundle_still_names_the_
+    market_so_nothing_moves` is what holds it.** A default that quietly became
+    the common case would replace a live collision with a silent one: every row
+    on every game would be a pseudo-market that highlights nothing.
     """
     if "result" in by_key:
         return "result"
     if "moneyline" in by_key:
         return "moneyline"
-    return "context"
+    if "win" in by_key:
+        return "win"
+    return default
 
 
 def _toward(direction: str, has_pick: bool) -> str:
@@ -351,7 +389,7 @@ def explain_from_template(facts: dict) -> dict:
         # for a rebuilt pick precisely so nothing can grade it.
         if timing == "pre_kickoff" and isinstance(result.get("pick_won"), bool) and label:
             text += f" The pick was {'right' if result['pick_won'] else 'wrong'}: {label}."
-        factors.append(_fact(_outcome_key(by_key), _toward("up", has_pick), "How it finished", text))
+        factors.append(_fact(_outcome_key(by_key, "outcome"), _toward("up", has_pick), "How it finished", text))
 
     # A rebuilt pick is disclosed as a factor in its own right, so it cannot be
     # missed by a reader who only reads the first row.
@@ -362,7 +400,7 @@ def explain_from_template(facts: dict) -> dict:
             f"not counted, and it is not graded either way."))
 
     if label and prob is not None:
-        factors.append(_fact(_outcome_key(by_key), "up", "The pick",
+        factors.append(_fact(_outcome_key(by_key, "pick"), "up", "The pick",
                              f"The model makes {label} the pick at {_pct(prob)}."))
 
     margin_market = by_key.get("spread") or by_key.get("handicap")

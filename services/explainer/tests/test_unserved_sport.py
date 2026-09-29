@@ -1,9 +1,28 @@
-"""F1 is out of scope, and the service must refuse rather than answer.
+"""The refusal guard: a sport the service does not answer for is a 404, not a
+template.
 
 The refusal has to be a *refusal*: a 404 that looks like a missing fixture. A
 template here would render a panel, spend nothing, and read as success — so the
 tests below assert the request was never even attempted, not merely that the
 status code was right.
+
+**Every configured sport is served as of the F1 reversal, so this file has no
+sport to refuse — and that is the state in which a guard like this is easiest to
+lose.** `UNSERVED` is derived from `config`, so it is now empty; the test
+parametrised over it collected ZERO cases and pytest reported the file's last
+remaining guard as `1 skipped` with an empty parameter set. That is the failure
+this file exists to prevent, reached from the other direction: not a guard that
+was written to pass, but a guard that stopped being collected while the file went
+on looking covered.
+
+So the refusal guard is asked its question by *removing* a sport from the served
+tuple for the duration (`unserved_probe`), rather than by borrowing one. A test
+that faked the sport instead — a sport id outside `SPORTS`, which has no
+configurable API — would be worse than useless here: `_facts` raises
+`NotFound("no sport API configured")` before it ever makes a request, so
+"a refused sport must not touch its upstream" would hold whether the guard sat
+before the fetch or after it. The probe is a sport with a real upstream on
+purpose, so the "the refusal came first" claim stays an observation.
 
 **And NBA is in this file's history, because it was here by mistake.** This module
 once read `UNSERVED = ("f1", "nba")`, on the stated reasoning that "the v2 panel
@@ -28,14 +47,19 @@ market row exists. See `explainer/template.py` `MARKET_LINE_KEY`.
 Every component the v2 panel draws is fed by that. NBA was refused on a reason
 that was true of F1 and false of NBA, and it now serves.
 
-F1 stays out, and the reason is a product decision rather than a data gap: a
-win probability *is* the explanation. A model that says "Norris 71%" has said the
-whole thing, and prose over a field of twenty drivers is the model restating its
-own input in longer words — the failure this product exists to avoid. There is no
-line for F1 either, so a model-vs-market tile has nothing honest to show.
+**F1 left this list last, and the reason it was on it was half right.** "A win
+probability *is* the explanation" is true of the win probability and was never an
+argument against the race story around it, which is what F1's `drivers` and
+`podium` carry. F1 still has no line, so a model-vs-market tile has nothing
+honest to show and the spread and total factors must not fire — that half of the
+reason stands, and `tests/test_f1_served.py` holds it. A refusal is not a bug
+report, though: it is a decision somebody has to reverse in the open.
 """
 import asyncio
+import contextlib
+import io
 import os
+import pathlib
 import re
 import subprocess
 
@@ -44,6 +68,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from conftest import facts
+from explainer import service as explainer_service
 from explainer.app import create_app
 from explainer.cache import Cache
 from explainer.config import SERVED_SPORTS, SPORTS, Settings
@@ -52,12 +77,43 @@ from explainer.service import Explainer, NotFound
 
 #: Both lists are DERIVED from `config`, not written out here. The first version
 #: of this file declared its own `SERVED = ("pl", "nfl", "cfb", "nba")` alongside
-#: `assert len(SERVED_SPORTS) == 4`, which meant a fifth sport had to be added in
+#: `assert len(SERVED_SPORTS) == 4`, which meant another sport had to be added in
 #: two places and the tests that follow it were parametrised over the copy, not
 #: the thing that ships. Now a new sport joins `SERVED_SPORTS` and is covered by
 #: the 502 and refusal tests without anyone editing this file.
 SERVED = tuple(SERVED_SPORTS)
 UNSERVED = tuple(s for s in SPORTS if s not in SERVED_SPORTS)
+
+#: The sport the refusal tests ask about when the derived list has nobody in it.
+#:
+#: F1, because it is the one that was last on the list, so every message and every
+#: docstring below reads about the sport the decision is actually about. It has
+#: to be in `SPORTS` -- that is what makes `sport_api_f1` settable, and a sport
+#: with no API is a sport whose upstream cannot be reached at all, which would
+#: leave "a refused sport must not touch its upstream" true whatever the guard
+#: did with it.
+UNSERVED_PROBE = "f1"
+
+#: What the parametrised refusal test runs over: every sport `config` actually
+#: refuses, or the probe while that list is empty.
+#:
+#: **The `or` is the whole point and is not a convenience.** With the list empty
+#: and no fallback, `@pytest.mark.parametrize("sport", UNSERVED)` collects zero
+#: cases; pytest reports that as `1 skipped` with the reason "got empty parameter
+#: set", the file still holds a test, and the guard is gone with nothing failing.
+#: Deriving the subject list from `config` is right -- it is what made a newly
+#: added sport inherit these tests -- and on its own it is also how this file
+#: would have emptied itself.
+#:
+#: **It is not guarded by asserting itself, and that is a correction.**
+#: `assert REFUSAL_SUBJECTS` was the first attempt and it is the wrong question:
+#: it asks whether one constant is truthy, so it catches today's edit and nothing
+#: else. Re-parametrising the test over a *different* empty source -- `SPORTS`
+#: minus something else derived, a literal nobody filled in -- leaves the
+#: constant non-empty and the guard still collected zero cases. What holds is
+#: `test_the_refusal_guard_is_actually_collected` below, which runs this test's
+#: own collection and asks whether anything in it will RUN.
+REFUSAL_SUBJECTS = UNSERVED or (UNSERVED_PROBE,)
 
 #: The markets an NBA facts bundle must carry for the v2 panel to have something
 #: to draw. If NBA's `/facts` ever loses one of these, this is where the question
@@ -113,12 +169,43 @@ def _no_news(mock):
         return_value=httpx.Response(200, json={"articles": []}))
 
 
-@pytest.mark.parametrize("sport", UNSERVED)
-def test_an_unserved_sport_is_a_404_not_a_template(tmp_path, respx_mock, sport):
+@pytest.fixture
+def unserved_probe(monkeypatch):
+    """Take `UNSERVED_PROBE` out of the served tuple for the test, and name it back.
+
+    The guard is `if sport not in SERVED_SPORTS` on the first line of
+    `Explainer.explain`, and it reads the name bound in `explainer.service`'s own
+    namespace (`from .config import SERVED_SPORTS`). So this patches that name,
+    which is the branch's INPUT rather than the branch.
+
+    **Two things it deliberately does not do.** It does not touch `explain` or
+    the `raise`, so a guard that stopped refusing -- or that was moved below the
+    facts fetch -- still fails the tests below. And it does not use a sport id
+    outside `SPORTS`: such a sport has no configurable API, so `_facts` raises
+    `NotFound("no sport API configured")` before making any request, and
+    "a refused sport must not touch its upstream" would then hold whether or not
+    the guard is anywhere near the top of the method.
+
+    Applied to every refusal test here, not only the ones whose subject is the
+    probe: when `UNSERVED` is non-empty the subject is some other sport, and
+    un-serving a sport that was already served changes nothing about it. One code
+    path is easier to keep honest than two.
+    """
+    monkeypatch.setattr(
+        explainer_service, "SERVED_SPORTS",
+        tuple(s for s in SERVED_SPORTS if s != UNSERVED_PROBE),
+    )
+    return UNSERVED_PROBE
+
+
+@pytest.mark.parametrize("sport", REFUSAL_SUBJECTS)
+def test_an_unserved_sport_is_a_404_not_a_template(tmp_path, respx_mock, unserved_probe, sport):
     _no_news(respx_mock)
     # If the guard sat *after* the facts fetch, this route would be hit and the
     # response would be a 200 with a template body. Asserting the status code
-    # alone would pass in exactly that case.
+    # alone would pass in exactly that case -- and with a subject that has no
+    # configured API it would pass for a second reason as well, which is why the
+    # subject has to be a real sport with a real upstream.
     upstream = respx_mock.get(url__startswith=f"http://{sport}.test/api").mock(
         return_value=httpx.Response(200, json=facts(sport=sport)))
 
@@ -128,31 +215,184 @@ def test_an_unserved_sport_is_a_404_not_a_template(tmp_path, respx_mock, sport):
     assert not upstream.called, "a refused sport must not touch its upstream"
 
 
-def test_a_refusal_spends_nothing(tmp_path, respx_mock):
+def test_the_refusal_guard_is_actually_collected():
+    """The guard above must collect at least one case that will actually RUN.
+
+    **This is the defect this whole file is about, and it was reintroduced one
+    line away.** The commit that un-refused F1 left `UNSERVED` empty, so
+    `@pytest.mark.parametrize("sport", UNSERVED)` collected zero cases. pytest
+    reports an empty parameter set as a SKIP, so the file kept its name, its
+    docstring and its last remaining guard, and the suite read
+    `398 passed, 1 skipped` with exit 0:
+
+        $ python -m pytest -q
+        SKIPPED [1] tests/test_unserved_sport.py: got empty parameter set for (sport)
+        398 passed, 1 skipped
+
+    The harness cannot see it either, and that is by construction rather than by
+    luck: `mutcheck_template_line.run()` returns `count("failed"), count("passed"),
+    0` and a skip is in neither bucket, and its baseline is recomputed on every
+    run, so a suite that quietly lost a guard still produces a green baseline and
+    a clean table.
+
+    So the fallback in `REFUSAL_SUBJECTS` is load-bearing, and deleting it must
+    fail HERE. Which is why this asserts the COLLECTION and not the constant:
+
+    * `assert REFUSAL_SUBJECTS` asks whether one value is truthy. It catches the
+      edit above and nothing else.
+    * Asking what the test's collection contains catches every version of it --
+      re-parametrising over a different empty source, a literal nobody filled
+      in, a source that goes empty on a branch -- because they all produce the
+      same thing: no case that runs.
+
+    **It is a real collection, run by pytest, not a re-derivation of the
+    argument.** `@pytest.mark.parametrize` is applied by pytest's own
+    `pytest_generate_tests` hook while this module is collected, and the items
+    that come out are what the suite will report. Reading `REFUSAL_SUBJECTS`
+    again here would only re-ask the question the constant already answers.
+
+    **Counting items is not enough, so it counts items that will RUN.** With the
+    fallback gone pytest still collects exactly one item -- the test function
+    itself, with `params == {'sport': NOTSET}` and a `skip` mark reading "got
+    empty parameter set for (sport)". `--collect-only -q` on the mutated file
+    prints `test_an_unserved_sport_is_a_404_not_a_template[NOTSET]` and
+    `1 test collected`, which reads like coverage and is the absence of it. So
+    the assertion is on items with no `skip` mark, and the reason the skipped
+    ones carry is in the failure message.
+    """
+    collected = _collect(
+        f"{pathlib.Path(__file__).resolve()}"
+        f"::test_an_unserved_sport_is_a_404_not_a_template")
+
+    skipped = [i for i in collected if i.get_closest_marker("skip") is not None]
+    running = [i for i in collected if i.get_closest_marker("skip") is None]
+
+    reasons = "; ".join(
+        f"{i.name}: {i.get_closest_marker('skip').kwargs.get('reason')!r}"
+        for i in skipped)
+    assert running, (
+        f"the refusal guard collects {len(collected)} case(s) and NONE of them "
+        f"runs -- {reasons or 'no skip reason reported'}. The test still exists, "
+        f"so this file still looks covered, and a skip is invisible both to the "
+        f"summary line and to the mutation harness (which tallies only failed "
+        f"and passed). The refusal guard is not testing anything. Check "
+        f"`REFUSAL_SUBJECTS`: with every configured sport served, `UNSERVED` is "
+        f"empty, and it is the `or (UNSERVED_PROBE,)` that keeps this "
+        f"parametrisation non-empty."
+    )
+    # Not decorative, and it is not "assert the constant" again. An assertion of
+    # "at least one runs" would be satisfied by a single case whose parameters
+    # are still UNSET, so this asks that each case carries a real configured
+    # sport. `SPORTS` rather than `REFUSAL_SUBJECTS`: the question is whether the
+    # subject is a sport this service can be asked about, and comparing against
+    # the very list under test would make the check agree with the thing it is
+    # checking. It also catches a re-parametrisation over ids that are not
+    # sports, which this file's own docstring rules out for a different reason
+    # (`_facts` raises before it makes a request).
+    for item in running:
+        params = item.callspec.params if item.callspec is not None else {}
+        assert params, f"{item.name} would run with no parameters at all"
+        for name, value in params.items():
+            assert value in SPORTS, (
+                f"{item.name} would run with {name}={value!r}, which is not a "
+                f"configured sport (SPORTS={SPORTS}). A refusal subject has to be "
+                f"a sport with a real upstream: one with no configured API makes "
+                f"`_facts` raise before it requests anything, so 'a refused sport "
+                f"must not touch its upstream' would hold wherever the guard sat."
+            )
+
+
+def _collect(node_id: str) -> list:
+    """Collect `node_id` with a real pytest session and return its items.
+
+    In-process rather than a subprocess, so the collection is the same pytest
+    and the same `conftest.py` the suite uses and a reader can follow it without
+    a second interpreter. `--collect-only` means no test is executed: this asks
+    what would be run, which is the question, and running the guard it is
+    checking would be circular.
+
+    The `pytest_collection_modifyitems` hook is pytest's own collection API and
+    the items it hands over are the ordinary `Function` nodes the reporter
+    counts, so `get_closest_marker` and `callspec` below are the same
+    attributes pytest itself reads.
+    """
+    captured: list = []
+
+    class _Collect:
+        def pytest_collection_modifyitems(self, session, config, items):
+            captured.extend(items)
+
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+        # `-p no:asyncio` unregisters `pytest-asyncio` in the NESTED session
+        # only. It is here because this file drives its own event loop with
+        # `asyncio.run` and defines no async test, so the plugin contributes
+        # nothing to the collection being asked about -- and leaving it
+        # registered makes it warn, on every outer run, that
+        # `asyncio_default_fixture_loop_scope` is unset. The warning is raised
+        # while the nested session configures, inside the outer session's
+        # warning capture, so it lands against this test. `-W` does not help:
+        # the plugin registers before the command line's warning filters are
+        # applied. Pinning the ini value instead would freeze a setting the
+        # project is free to choose later.
+        code = pytest.main([node_id, "--collect-only", "-q",
+                            "-p", "no:asyncio", "-p", "no:cacheprovider"],
+                           plugins=[_Collect()])
+
+    assert code == pytest.ExitCode.OK, (
+        f"collecting {node_id} returned {code}, so this test cannot say whether "
+        f"the refusal guard is collected:\n{out.getvalue()}"
+    )
+    return captured
+
+
+def test_a_refusal_spends_nothing(tmp_path, respx_mock, unserved_probe):
     """The refusal is the first line of the route, before the facts fetch and
     before `try_spend()`. A refused request that cost budget would drain the cap
     for a sport the service will never answer for."""
     _no_news(respx_mock)
-    svc = build(tmp_path, sport_api_f1="http://f1.test/api")
+    svc = build(tmp_path, **{f"sport_api_{unserved_probe}": f"http://{unserved_probe}.test/api"})
     with pytest.raises(NotFound):
-        asyncio.run(svc.explain("f1", "g1"))
+        asyncio.run(svc.explain(unserved_probe, "g1"))
     assert svc.ledger.used_today() == 0
 
 
-def test_a_refusal_does_not_look_like_a_missing_fixture(tmp_path, respx_mock):
+def test_a_refusal_does_not_look_like_a_missing_fixture(tmp_path, respx_mock, unserved_probe):
     """404 is right and 200-with-a-template is wrong, but the *message* matters
     too: a reader (or a caller retrying) must be able to tell "this sport has no
     panel" from "that game does not exist"."""
     _no_news(respx_mock)
     with pytest.raises(NotFound) as excinfo:
-        asyncio.run(build(tmp_path, sport_api_f1="http://f1.test/api").explain("f1", "g1"))
+        asyncio.run(build(tmp_path, **{f"sport_api_{unserved_probe}": f"http://{unserved_probe}.test/api"})
+                     .explain(unserved_probe, "g1"))
 
     message = str(excinfo.value)
-    assert "f1" in message, message
+    assert unserved_probe in message, message
     # And it must not read as "no such game", which is the OTHER refusal on this
     # route: a reader (or a caller retrying) has to be able to tell "this sport has
     # no panel" from "that game does not exist".
-    assert "no such game" not in message.lower(), message
+    #
+    # **On the real wording.** This read `"no such game" not in message.lower()`,
+    # and that string appears nowhere in the codebase -- so the assertion could
+    # not fail, while having the shape of a check that distinguishes the two
+    # refusals. The missing-fixture refusal is `service.py:92`,
+    # `f"{sport} has no facts for {id!r}"`, and that is the wording to exclude.
+    # `service.py:86`'s `no sport API configured for ...` is a third refusal and
+    # is not what this is about: it is a misconfiguration, not a missing
+    # fixture, and a caller should be able to tell that apart too.
+    assert "has no facts" not in message.lower(), (
+        f"the refusal reads like a missing fixture rather than an un-served "
+        f"sport, so a caller retrying cannot tell the two apart: {message!r}. The "
+        f"missing-fixture refusal is `f\"{{sport}} has no facts for {{id!r}}\"` at "
+        f"service.py:92, and this branch must not produce it."
+    )
+    # Positive, so the negative above is not satisfied by a message that says
+    # nothing at all -- which is the other way this pair of assertions could pass
+    # while being useless.
+    assert "not served" in message.lower(), (
+        f"the refusal does not say the sport is not served, so it names neither "
+        f"state to the caller: {message!r}"
+    )
 
 
 # --- NBA now serves ------------------------------------------------------
@@ -256,25 +496,39 @@ def _nba_facts() -> dict:
     }
 
 
-def test_nba_is_in_the_served_list_and_f1_is_not():
-    """The list itself, so a future edit that re-adds F1 or drops NBA fails here
-    rather than in production.
+def test_every_configured_sport_is_served_and_nothing_is_refused():
+    """The list itself, so a future edit that drops a sport fails here rather
+    than in production.
 
     Asserted as a RELATIONSHIP, not as a count. `len(SERVED_SPORTS) == 4` was the
     previous form and it was wrong in a way that reads as strictness: it fails
     when a sport is correctly added, and it passes when the same number of wrong
     sports is in the list. What actually has to hold is that every configured
-    sport has been deliberately classified, that the two halves do not overlap,
-    and that F1 is the only refusal.
+    sport has been deliberately classified and that the two halves do not
+    overlap.
+
+    **The refusal list is now empty, and that is the intended end state rather
+    than a gap in the file.** It was `{"f1"}` and it was NBA before that, and
+    each of those was a product decision somebody reversed in the open. So the
+    assertion is not "F1 is absent" restated -- it is that nothing is refused at
+    all, which is a claim about every sport in `SPORTS` at once and would notice
+    one being dropped. That is why this test is stronger than the one it replaces
+    and not a weaker paraphrase of it: `"f1" not in SERVED_SPORTS` and
+    `"nba" in SERVED_SPORTS` are both entailed by the empty set below, and only
+    the empty set would notice a sixth sport being un-served.
     """
     assert set(SERVED) & set(UNSERVED) == set(), "a sport is both served and refused"
     assert set(SERVED) | set(UNSERVED) == set(SPORTS), (
         f"a sport was added to config without deciding to serve or refuse it: "
         f"served={sorted(SERVED)} unserved={sorted(UNSERVED)} configured={sorted(SPORTS)}"
     )
-    assert "nba" in SERVED_SPORTS
-    assert "f1" not in SERVED_SPORTS
-    assert set(UNSERVED) == {"f1"}, f"F1 is the only refusal; got {sorted(UNSERVED)}"
+    assert set(UNSERVED) == set(), (
+        f"a configured sport is refused again: {sorted(UNSERVED)}. Every sport in "
+        f"`SPORTS` serves as of the F1 reversal, so a non-empty refusal list means "
+        f"a sport was taken out of `SERVED_SPORTS` deliberately -- which is a "
+        f"product decision to be made in the open, in a commit that says why, and "
+        f"not something this test should be edited to accept."
+    )
 
 
 def test_nbas_facts_carry_the_markets_the_panel_draws():

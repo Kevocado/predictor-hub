@@ -6,12 +6,16 @@ SPORTS = ("pl", "f1", "nfl", "cfb", "nba")
 
 #: The sports this service answers for.
 #:
-#: **F1 is configured and reachable but not served, and that is a product
-#: decision.** A win probability *is* the explanation: a model that says
-#: "Norris 71%" has said the whole thing, and prose over a field of twenty drivers
-#: is the model restating its own input at greater length, which is the failure
-#: this product exists to avoid. F1 also has no line, so a model-vs-market tile
-#: would have nothing honest to show.
+#: **F1 was refused here on a product decision, and that refusal has been
+#: reversed.** The reasoning it was refused on, kept because it is the reasoning
+#: the reversal had to answer and not just overrule: a win probability *is* the
+#: explanation. A model that says "Norris 71%" has said the whole thing, and prose
+#: over a field of twenty drivers is the model restating its own input at greater
+#: length, which is the failure this product exists to avoid. F1 also has no line,
+#: so a model-vs-market tile would have nothing honest to show. Both halves of that
+#: are still true; what the reversal changed is that the first one is a claim about
+#: the win probability and was never an argument about the race story around it.
+#: The note on the tuple below says what is now served instead.
 #:
 #: **NBA serves, and it used to be on this list's other side for the wrong
 #: reason.** It was refused alongside F1 because "the v2 panel is specified for the
@@ -36,7 +40,25 @@ SPORTS = ("pl", "f1", "nfl", "cfb", "nba")
 #: Kept beside SPORTS so the "configured" set and the "answered" set are read
 #: together — a new sport has to be added to both deliberately rather than by
 #: omission.
-SERVED_SPORTS = ("pl", "nfl", "cfb", "nba")
+#:
+#: F1 was refused here and is now served. The original reason -- "a win
+#: probability IS the explanation" -- was true of the win probability and was
+#: never an argument against the race story around it, which is what F1's
+#: `drivers` and `podium` carry. F1 still gets a REDUCED panel: it has no line,
+#: so the spread and total factors must not fire, and that half of the original
+#: reason still stands. Reversed by
+#: docs/superpowers/specs/2026-09-28-explainer-panel-flow-trigger-and-news-design.md
+#: decision 4 and its `## F1` section; the ledger records the reversal alongside
+#: the ruling it replaces.
+#:
+#: **Every configured sport is served, so the refusal list is empty.** That is the
+#: end state rather than a gap, and it has a consequence for the tests: the guard
+#: in `service.explain` is still live and still decides whether a sport that is
+#: added later gets answered, so `tests/test_unserved_sport.py` has to keep asking
+#: it its question by taking a sport out of this tuple for the duration. A guard
+#: whose subject list is derived from a list that has gone empty is a guard that
+#: has stopped being collected, and pytest reports that as a skip.
+SERVED_SPORTS = ("pl", "nfl", "cfb", "nba", "f1")
 
 
 class Settings(BaseSettings):

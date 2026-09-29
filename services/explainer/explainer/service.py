@@ -49,6 +49,20 @@ def _news_terms(f: Facts) -> list[str]:
     return [t.strip() for t in re.split(r"\s+(?:at|v|vs\.?|@)\s+", f.title) if t.strip()]
 
 
+def news_fingerprint(news: list[dict]) -> str:
+    """The newest matched headline's date, or ``""`` when there is no news.
+
+    A DATE and not the headline text: the question this answers is "is the news I
+    was written from still the newest news?", and a headline rewritten for
+    clarity on the same day has not changed the answer.
+    """
+    for item in news:
+        published = str(item.get("published") or "")[:10]
+        if published:
+            return published
+    return ""
+
+
 def _clean(body: dict) -> dict:
     """Coerce a model body to the v2 shape, and refuse a body that is not one.
 
@@ -145,8 +159,21 @@ class Explainer:
             # refused request must cost nothing and must not touch the upstream.
             #
             # A refusal, not a template. A template here would render a panel
-            # and spend nothing, which reads as success — and F1 is still
-            # configured, so nothing else would ever say it had gone.
+            # and spend nothing, which reads as success.
+            #
+            # **This used to end "and F1 is still configured, so nothing else
+            # would ever say it had gone", which stopped being true when F1 was
+            # un-refused.** The sentence was about how a refusal would be
+            # noticed: F1 is a sport `config` still knew about, so a guard that
+            # stopped refusing it would have had no other signal. With every
+            # configured sport served there is no longer such a sport, so
+            # `UNSERVED` is empty and this branch is currently unreachable --
+            # which is the state `tests/test_unserved_sport.py` exists to hold,
+            # since the last time it was empty the file emptied itself. What is
+            # left worth saying is the part that does not depend on which sport
+            # is refused: `SPORTS` is the set of sports with a configurable API,
+            # and anything in it can be asked for, so a refusal here is the only
+            # place a "this sport has no panel" answer is produced.
             raise NotFound(f"{sport} is not served")
         facts = await self._facts(sport, id)
         news = await headlines(self.client, sport, _news_terms(facts))
@@ -155,7 +182,8 @@ class Explainer:
         s = self.settings
         # News feeds the first write-up but isn't in the key: a fresh
         # headline alone must not cost another generation.
-        key = Cache.key(sport, id, facts_json, "", s.prompt_version, f"{s.model}|{s.fallback_model}")
+        key = Cache.key(sport, id, facts_json, news_fingerprint(news),
+                        s.prompt_version, f"{s.model}|{s.fallback_model}")
 
         row = self.cache.get(key)
         if self._usable(row):
