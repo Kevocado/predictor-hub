@@ -120,7 +120,11 @@ class Settings(BaseSettings):
     #: is `tests/test_prompt_version_moves_with_the_prompt.py`, which holds a
     #: digest of everything the writer sends, so the frame cannot move without
     #: this and leave a green suite behind.
-    prompt_version: str = "v5"
+    # Bumped to `v6` for rule 8 (name only the markets FACTS carries), added
+    # with the validator guard that rejects a market named in words when the
+    # facts carry no quote for it. It is part of the cache key, so a cached `v5`
+    # row would otherwise be served under a frame that was never sent.
+    prompt_version: str = "v6"
     sport_api_pl: str | None = None
     sport_api_f1: str | None = None
     sport_api_nfl: str | None = None
