@@ -138,7 +138,11 @@ def _named_markets(body: str) -> set[str]:
     for concept, (keys, _) in MARKET_WORDS.items():
         # `money line` and `total goals` are two words; the contract key is
         # `moneyline`, so the match has to tolerate the space.
-        if any(re.search(rf"\b{re.escape(k).replace('moneyline', r'money\s?line')}\b", low)
+        # Built outside the f-string: Python 3.11 (the image's) rejects a
+        # backslash inside an f-string expression; 3.12+ allows it, which is how
+        # this shipped green locally and crash-looped the service.
+        money_line = r"money\s?line"
+        if any(re.search(rf"\b{re.escape(k).replace('moneyline', money_line)}\b", low)
                for k in keys):
             if _OWNED_BY_MODEL_RE.search(low) and not _ATTRIBUTION_RE.search(low):
                 continue
