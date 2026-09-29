@@ -8,7 +8,7 @@
  *  present and the element is omitted entirely when absent.
  */
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { FixtureExplainer } from "./FixtureExplainer";
@@ -126,5 +126,67 @@ describe("FixtureExplainer", () => {
     renderExplainer(() => Promise.resolve(SUMMARY));
     await user.click(screen.getByRole("button"));
     expect(screen.queryByTestId("news-date")).toBeNull();
+  });
+
+  it("draws the site's figures under the summary when extras are passed", async () => {
+    const user = userEvent.setup();
+    render(
+      <FixtureExplainer
+        sport="nfl"
+        state="pre-game"
+        bundle={BUNDLE}
+        request={() => Promise.resolve(SUMMARY)}
+        extras={{
+          tiles: [{ market: "moneyline", label: "moneyline", value: "62%", sub: "win · BAL" }],
+          segments: [
+            { label: "KC", prob: 0.38, market: "moneyline" },
+            { label: "BAL", prob: 0.62, market: "moneyline" },
+          ],
+        }}
+      />,
+    );
+    await user.click(screen.getByRole("button"));
+    const summaryView = screen.getByTestId("fixture-summary");
+    // The tile value and both bar segments render inside the summary state
+    // (scoped: the flow below carries the same figures in its own sentences).
+    expect(within(summaryView).getByText("62%")).toBeInTheDocument();
+    expect(within(summaryView).getByText("KC")).toBeInTheDocument();
+    expect(within(summaryView).getByText("BAL")).toBeInTheDocument();
+  });
+
+  it("joins the answer's pick against the extras' segments, translating '<team> win'", async () => {
+    const user = userEvent.setup();
+    render(
+      <FixtureExplainer
+        sport="nfl"
+        state="pre-game"
+        bundle={BUNDLE}
+        request={() =>
+          Promise.resolve({ ...SUMMARY, pick: { label: "BAL win" } })
+        }
+        extras={{
+          segments: [
+            { label: "KC", prob: 0.38, market: "moneyline" },
+            { label: "BAL", prob: 0.62, market: "moneyline" },
+          ],
+        }}
+      />,
+    );
+    await user.click(screen.getByRole("button"));
+    // Translated to the bare team name, the pick accents the BAL segment: the
+    // bar says the emphasis as well as colours it. Untranslated, the label
+    // would match no segment and the img would carry no pick clause.
+    expect(
+      screen.getByRole("img", { name: /the pick is BAL/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the summary bare when no extras are passed", async () => {
+    const user = userEvent.setup();
+    renderExplainer(() => Promise.resolve(SUMMARY));
+    await user.click(screen.getByRole("button"));
+    expect(screen.getByTestId("fixture-summary")).toBeInTheDocument();
+    // The verdict renders; no tile, bar or record follows it.
+    expect(screen.getByText(/BAL is the pick/)).toBeInTheDocument();
   });
 });
