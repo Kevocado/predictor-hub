@@ -32,14 +32,21 @@
 import { pct, signed, spread, stat } from "../fmt";
 import type { MarketTile, PickRef, Segment } from "../index";
 
+/** One side of PL's three-way market: the model's probability and the market's
+ *  implied figure side by side. Either may be absent; the adapter carries each
+ *  as far as the facts carry it and derives nothing. */
+export interface PLEdge {
+  prob: number | null;
+  implied?: number | null;
+}
+
 /** The fields of a PL fixture this adapter reads. */
 export interface PLFixture {
   team_home: string;
   team_away: string;
-  home_win: number | null;
-  draw: number | null;
-  away_win: number | null;
-  implied: number | null;
+  home_win: PLEdge | null;
+  draw: PLEdge | null;
+  away_win: PLEdge | null;
   predicted_total_goals: number | null;
   btts_yes_prob: number | null;
 }
@@ -113,15 +120,23 @@ export function panelFacts(
     const tiles: MarketTile[] = [];
     const segments: Segment[] = [];
     const legend: Segment[] = [];
+    if (!fixture) return { tiles, segments, legend };
 
-    // --- PL three-way result ------------------------------------------------
-    const known = [
-      { key: "home_win", prob: fixture.home_win },
-      { key: "draw", prob: fixture.draw },
-      { key: "away_win", prob: fixture.away_win },
-    ].filter((e): e is { key: string; prob: number } => e.prob !== null);
+    // The three outcomes, in the order a fixture is read. The draw is its own
+    // segment: a three-way market rendered as two ways is a lie by layout.
+    // Each side is an edge object carrying the model's probability and the
+    // market's implied figure side by side; either may be absent.
+    const sides = [
+      { key: "home_win", edge: fixture.home_win },
+      { key: "draw", edge: fixture.draw },
+      { key: "away_win", edge: fixture.away_win },
+    ] as const;
+    const known = sides
+      .map(({ key, edge }) => ({ key, prob: prob(edge?.prob), implied: num(edge?.implied) }))
+      .filter((e): e is { key: string; prob: number; implied: number | null } => e.prob !== null);
 
     if (known.length) {
+      // Labels are the teams where we have them, and the bare side otherwise.
       for (const e of known) {
         const label =
           e.key === "home_win"
@@ -130,17 +145,18 @@ export function panelFacts(
               ? fixture.team_away
               : "Draw";
         segments.push({ label, prob: e.prob, market: "result" });
-        // Only add to legend when implied is present and the outcome is not draw.
-        // The committed snapshot has implied === null for all 380 fixtures, so in
-        // practice the row is omitted; the branch that draws it is the one that
-        // needs a test, or it ships unexercised.
-        if (e.key !== "draw" && fixture.implied !== null) {
-          const implied: number = fixture.implied;
-          legend.push({ label, prob: implied, market: "result" });
+        // The legend is carried as far as the market's `implied` carries it
+        // and no further: per outcome, including the draw. Nothing is derived
+        // to complete the set, and whether the row draws is the bar's decision
+        // (`covers()`), not this mapping's.
+        if (e.implied !== null) {
+          legend.push({ label, prob: e.implied, market: "result" });
         }
       }
 
-      // lead outcome tile
+      // The tile carries the LEADING outcome, because a tile showing the
+      // draw's 26% answers a question nobody asked; the bar beneath carries
+      // all three.
       const lead = [...known].sort((a, b) => b.prob - a.prob)[0];
       const leadLabel =
         lead.key === "home_win"
@@ -151,30 +167,26 @@ export function panelFacts(
       tiles.push({
         market: "result",
         label: "result",
-        value: Math.round(lead.prob * 100) / 100,
+        value: pct(lead.prob),
         sub: `win · ${leadLabel}`,
       });
     }
 
-    // predicted_total_goals
-    const total = fixture.predicted_total_goals;
+    const total = num(fixture.predicted_total_goals);
     if (total !== null) {
       tiles.push({
         market: "total_goals",
         label: "total goals",
-        value: Math.round(total * 10) / 10,
-        sub: undefined,
+        value: stat(total),
       });
     }
 
-    // btts_yes_prob
-    const btts = fixture.btts_yes_prob;
+    const btts = prob(fixture.btts_yes_prob);
     if (btts !== null) {
       tiles.push({
         market: "btts",
         label: "both score",
-        value: Math.round(btts * 100) / 100,
-        sub: undefined,
+        value: pct(btts),
       });
     }
 
