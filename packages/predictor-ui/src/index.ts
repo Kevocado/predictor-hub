@@ -11,6 +11,7 @@ export { BandChip, PanelHeading, type Band } from "./components/ExplainerVerdict
 export { KeyNumberTile, type MarketTile } from "./components/KeyNumberTile";
 export { FactorList, type Factor } from "./components/FactorList";
 export { RecordStrip } from "./components/RecordStrip";
+export { FixtureFlow, type FixtureFlowProps, type FlowState } from "./components/FixtureFlow";
 export { StatTable, type Column } from "./components/StatTable";
 export { StatusBadge, statusWords, type Moment, type Status } from "./components/StatusBadge";
 export { TeamChip } from "./components/TeamChip";
