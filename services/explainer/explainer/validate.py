@@ -21,6 +21,14 @@ _BANNED_RE = re.compile(r"\b(" + "|".join(re.escape(w) for w in BANNED) + r")s?\
 _NUM_RE = re.compile(r"[-−+]?\d+(?:,\d{3})*(?:\.\d+)?%?")
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 REBUILT_WORDS = ("rebuilt", "after kickoff", "after the start", "after the session")
+#: What the text may say instead when the facts refuse to place a pick in time.
+#: Wider than REBUILT_WORDS on purpose: the claim is weaker, so the wording can
+#: be plainer — "not verified" and "timing unknown" are both honest, and either
+#: is better than a pick presented as made in time.
+UNVERIFIED_WORDS = (
+    "not verified", "unverified", "not established", "unknown",
+    "cannot be confirmed", "no session time", "timing is not",
+)
 
 #: Word caps for the v2 body. A verdict line inherits v1's 18-word headline cap;
 #: a factor headline and sentence are new, and are tighter because a factor is
@@ -485,6 +493,17 @@ def validate(output: dict, facts_json: str, news_json: str) -> list[str]:
 
     if facts.get("pick_timing") == "rebuilt" and not any(w in body.lower() for w in REBUILT_WORDS):
         problems.append("pick is rebuilt but the text doesn't say it was rebuilt after the start")
+    if facts.get("pick_timing") == "unknown" and not any(
+        w in body.lower() for w in UNVERIFIED_WORDS
+    ):
+        # The mirror of the rebuilt rule, and it exists because accepting
+        # `unknown` without saying anything would launder it: the facts
+        # deliberately refuse to place the pick in time, and a reader who is
+        # not told that reads a normal pick. Silence here is the dishonesty, not
+        # the safety.
+        problems.append(
+            "pick timing is not established but the text does not say so"
+        )
     problems.extend(_verdict_problems(facts, body))
     problems.extend(_market_problems(facts, body))
     return problems
