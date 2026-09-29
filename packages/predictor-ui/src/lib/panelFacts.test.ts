@@ -14,23 +14,20 @@ import { barPick, panelFacts } from "./panelFacts";
 import type { MarketTile, Segment } from "../index";
 import type { PLFixture } from "./panelFacts";
 
-/** Test-local stand-in for the PL site's richer fixture shape. The adapter
- *  only reads the PLFixture fields; the object-valued `home_win` fixtures in
- *  the PL tests below exercise a shape the PL branch does not implement (they
- *  fail at runtime today) — that mismatch is Task 1's (PL rollout) to resolve,
- *  not this file's, so the name exists here only so those casts compile. */
+/** Test-local alias so the `as unknown as FixtureSummary` casts below compile
+ *  without importing a site's types into the shared package's tests. */
 type FixtureSummary = PLFixture;
 
 /** ---- PL FIXTURES ---- */
 
-/** Base PL fixture with full data. */
+/** Base PL fixture with full data: edge objects, the shape the site carries. */
+const edgeObj = (prob: number | null, implied: number | null = null) => ({ prob, implied });
 const plBase = (): PLFixture => ({
   team_home: "Arsenal",
   team_away: "Chelsea",
-  home_win: 0.48,
-  draw: 0.26,
-  away_win: 0.26,
-  implied: null,
+  home_win: edgeObj(0.48),
+  draw: edgeObj(0.26),
+  away_win: edgeObj(0.26),
   predicted_total_goals: 2.7,
   btts_yes_prob: 0.61,
 });
@@ -123,7 +120,7 @@ it("PL: partial null probs — only home_win provided yields one segment", () =>
     kind: "PL" as const,
     fixture: {
       ...plBase(),
-      home_win: 0.48,
+      home_win: edgeObj(0.48),
       draw: null,
       away_win: null,
     } as unknown as FixtureSummary,
@@ -280,7 +277,7 @@ it("PL: one segment when only home_win prob provided", () => {
     kind: "PL" as const,
     fixture: {
       ...plBase(),
-      home_win: 0.48,
+      home_win: edgeObj(0.48),
       draw: null,
       away_win: null,
       predicted_total_goals: null,
