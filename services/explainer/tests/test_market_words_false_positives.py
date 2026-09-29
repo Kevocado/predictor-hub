@@ -121,7 +121,7 @@ def test_the_exemption_does_not_leak_across_a_list_of_factors():
     fields = [
         "The model has Boston at 65%.",
         "The spread favours Boston.",
-        "The total looks high.",
+        "The total goals figure looks high.",
     ]
     assert _named_markets(" ".join(fields)) == {"spread", "total"}
 
