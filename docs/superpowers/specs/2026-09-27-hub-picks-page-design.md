@@ -1,7 +1,11 @@
 # The hub picks page (design)
 
 **Date:** 2026-09-27
-**Status:** awaiting Kevin's review.
+**Status:** **not started**, and awaiting Kevin's review of the design. Checked
+2026-09-29, because the sibling specs on this page that also said "awaiting
+review" had in fact shipped: `git grep` finds no picks page, no landing page and
+no card grid on `origin/main` in any of the four site repos. Unlike those two,
+this one is genuinely a proposal.
 **Roadmap:** [../plans/2026-09-25-predictor-frontend-action-plan.md](../plans/2026-09-25-predictor-frontend-action-plan.md). This is Phase 4 step 13 — the "live hub ticker" that plan deferred — plus the comprehensive landing page.
 **Mode:** mixed. The card grid is **Operate** (scan and choose a sport). The page as a whole is the product's front door, so it also has to survive being the first thing a visitor and a recruiter ever see.
 **Sibling spec:** [2026-09-27-predicted-box-score-and-track-record-design.md](2026-09-27-predicted-box-score-and-track-record-design.md) (Phase 5). Shared: the honesty rules and the tokens. Not shared: this page has no build step, and `predictor-ui` is not consumed as a package — its tokens are hand-inlined and drift-tested.

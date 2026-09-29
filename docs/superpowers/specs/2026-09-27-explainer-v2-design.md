@@ -1,7 +1,16 @@
 # Explainer v2 — a visual, on-demand match explainer
 
-**Status:** design only. Nothing here is implemented. The reviewer approves this
-before a plan is written (`superpowers:writing-plans`) and before any code moves.
+**Status:** **implemented and live.** Corrected 2026-09-29 — this said "design only.
+Nothing here is implemented" while a v2 body was being served in production. Verified:
+`/api/explain/nfl/2026_01_NE_SEA` returns `verdict`, `band`, `factors` and `pick`,
+which is the v2 shape and not the v1 `headline`/`sections` this spec replaced. The
+reviewer's approval is still outstanding; what is not outstanding is whether it
+shipped.
+
+This spec is normally read before a plan is written
+(`superpowers:writing-plans`) and before any code moves. It has been through that
+and the code is deployed; the design is recorded here as the reason the shape is
+what it is.
 
 **Supersedes:** §3 and §4 of `2026-09-25-phase3-4-datahub-explainer-design.md`
 remain true where this document does not contradict them. The honesty rule,
