@@ -38,13 +38,43 @@ import { SRC, shippedFiles } from "../scripts/ui-package.mjs";
 const HUB = join(dirname(fileURLToPath(import.meta.url)), "..");
 /** Where the sibling repos live.
  *
- * Explicit, not inferred from the hub's own path. This file is usually run from
- * a worktree (`predictor-hub-worktrees/<branch>`), whose parent is not the
- * directory holding the other repos — inferring it from `..` sent the lookup to
- * `predictor-hub-worktrees/PL_Predictor` and every site reported unreadable.
- * `SITES_ROOT` overrides it; CI sets it because the layout there is its own.
+ * `SITES_ROOT`, required, and discovered from the hub's own path when unset.
+ *
+ * The first version hard-coded `/Users/sigey/Documents/Projects.nosync`, which
+ * is a workstation path in a test: it works on one machine, silently resolves
+ * to nothing on another, and fails there with a message about a missing
+ * checkout rather than about the missing setting.
+ *
+ * Discovery walks UP from the hub looking for a directory that actually
+ * contains the sites, because the hub is checked out in two shapes — the plain
+ * clone (`<root>/predictor-hub`) and a worktree
+ * (`<root>/predictor-hub-worktrees/<branch>`) — and `<root>` is the parent of the
+ * former but the GRANDparent of the latter. Inferring from `..` alone is what
+ * sent the first attempt to `predictor-hub-worktrees/PL_Predictor`.
+ *
+ * `SITES_ROOT` overrides both, which is what CI and any other layout uses.
  */
-const NEIGHBOURS = process.env.SITES_ROOT || "/Users/sigey/Documents/Projects.nosync";
+const SITE_NAMES = ["PL_Predictor", "Sports_Predictor", "NBA_Predictor", "F1_Predictor"];
+
+function discoverSitesRoot() {
+  const fromEnv = process.env.SITES_ROOT;
+  if (fromEnv) return fromEnv;
+  // Up to 5 levels: enough to clear a worktree, shallow enough not to wander
+  // into an unrelated ancestor that happens to hold a directory of that name.
+  let dir = HUB;
+  for (let i = 0; i < 5; i++) {
+    const parent = dirname(dir);
+    if (SITE_NAMES.every((n) => existsSync(join(parent, n, ".git"))
+                         || existsSync(join(parent, n)))) {
+      return parent;
+    }
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
+const DISCOVERED = discoverSitesRoot();
 
 /** Which ref of each site to judge. `main` is the answer for production —
  *  that is what every site builds from on the VPS. Overridable so this can be
@@ -66,11 +96,25 @@ const shipped = () =>
  * `ls-tree` has no such rewriting, needs no token, and cannot be rate-limited.
  */
 const listingFor = (site) => {
-  const repo = join(NEIGHBOURS, basename(site.repo));
-  if (!existsSync(join(repo, ".git"))) {
+  if (!DISCOVERED) {
     assert.fail(
-      `no local checkout for ${site.repo} at ${repo}, so its components were not ` +
-        `checked. This is a skip-shaped hole, not a pass.`,
+      `could not find the sibling site checkouts. Set SITES_ROOT to the directory ` +
+        `holding ${SITE_NAMES.join(", ")} — the first version of this test hard-coded ` +
+        `one machine's path, so it worked there and failed everywhere else with a ` +
+        `message about a missing checkout rather than about the missing setting.`,
+    );
+  }
+  const repo = join(DISCOVERED, basename(site.repo));
+  if (!existsSync(join(repo, ".git"))) {
+    // A SET-but-wrong SITES_ROOT is a different mistake from no setting, and it
+    // gets its own message: "the directory you named has no such checkout" reads
+    // as a typo in the path, while the generic text below reads as a broken repo.
+    assert.fail(
+      process.env.SITES_ROOT
+        ? `SITES_ROOT is set to ${DISCOVERED} but it has no checkout of ` +
+          `${basename(site.repo)} (looked for ${repo}). The setting is wrong, not the repo.`
+        : `no local checkout for ${site.repo} at ${repo}, so its components were not ` +
+          `checked. This is a skip-shaped hole, not a pass.`,
     );
   }
   const out = execFileSync("git", ["-C", repo, "ls-tree", "-r", "--name-only", `origin/${ref()}`], {
