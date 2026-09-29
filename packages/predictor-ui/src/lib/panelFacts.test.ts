@@ -10,35 +10,30 @@
 
 import { describe, expect, it } from "vitest";
 
-import { panelFacts } from "./panelFacts";
-import type { MarketTile, Segment } from "../predictor-ui";
-import type { FixtureSummary } from "../types";
+import { barPick, panelFacts } from "./panelFacts";
+import type { MarketTile, Segment } from "../index";
+import type { PLFixture } from "./panelFacts";
+
+/** Test-local stand-in for the PL site's richer fixture shape. The adapter
+ *  only reads the PLFixture fields; the object-valued `home_win` fixtures in
+ *  the PL tests below exercise a shape the PL branch does not implement (they
+ *  fail at runtime today) — that mismatch is Task 1's (PL rollout) to resolve,
+ *  not this file's, so the name exists here only so those casts compile. */
+type FixtureSummary = PLFixture;
 
 /** ---- PL FIXTURES ---- */
 
 /** Base PL fixture with full data. */
-const plBase = (): FixtureSummary => ({
-  event_id: "gw1",
-  commence_time: "2026-11-08T15:00:00Z",
+const plBase = (): PLFixture => ({
   team_home: "Arsenal",
   team_away: "Chelsea",
   home_win: 0.48,
   draw: 0.26,
   away_win: 0.26,
-  over_2_5: 0.56,
-  under_2_5: 0.44,
-  btts_yes_prob: 0.61,
-  top_scoreline: "2-1",
-  predicted_result: "home_win",
-  draw_signal: false,
-  is_fallback_prediction: false,
-  data_confidence: "established",
+  implied: null,
   predicted_total_goals: 2.7,
-  predicted_margin: 0.4,
-  home_2plus_prob: 0.58,
-  away_2plus_prob: 0.5,
-  value_bet_flags: [],
-} as FixtureSummary);
+  btts_yes_prob: 0.61,
+});
 
 /** PL: three segments + legend empty (implied null). */
 it("PL: three segments + legend empty when implied null", () => {
@@ -180,7 +175,13 @@ it("Sports: two moneyline segments + leading-tile + spread + total tile", () => 
   expect(segments.map((s) => `${s.label} ${s.prob}`)).toEqual(["KC 0.38", "BAL 0.62"]);
   expect(tiles.map((t) => `${t.market}:${t.value}`)).toEqual(["moneyline:62%", "spread:KC +2.5", "total:45.2"]);
   expect(tiles[0].sub).toBe("win · BAL");
-  expect(tiles[1].sub).toBe("model +0.9");
+  // The sub carries the MODEL's margin in the home frame (`signed(-margin)`),
+  // not the discrepancy: with both numbers flipped the reader's own subtraction
+  // still reads margin-minus-line in every sign combination, which the sign
+  // matrix below pins. An earlier draft of this file recorded "model +0.9"
+  // here (the absolute discrepancy); the site's reviewed home-frame convention
+  // is what ships, so the draft's expectation is the one that changed.
+  expect(tiles[1].sub).toBe("model +3.4");
   expect(tiles[2].sub).toBe("total pts · line 44.5");
 });
 
@@ -233,7 +234,8 @@ it("Sports: moneyline tile sub wins · away team when away prob > home", () => {
     game: spBase().game,
     prediction: { ...spBase().prediction, home_win_prob: 0.38, away_win_prob: 0.62 },
   });
-  expect(tiles[0].sub).toBe("win · KC");
+  expect(tiles[0].value).toBe("62%");
+  expect(tiles[0].sub).toBe("win · BAL");
 });
 
 /** Honour: no direction marker / market-disagrees / derived percentage in output. */
@@ -257,15 +259,17 @@ it("adapter omits market-line tile when sport has no line market", () => {
   expect(tiles.some((t) => t.market === "market_line")).toBe(false);
 });
 
-/** Honour: Sports spread tile names home team, sub carries discrepancy. */
-it("Sports: spread tile names home team, sub carries discrepancy", () => {
+/** Honour: Sports spread tile names home team, sub carries the home-frame margin. */
+it("Sports: spread tile names home team, sub carries the home-frame margin", () => {
   const { tiles } = panelFacts({
     kind: "SP" as const,
     game: spBase().game,
     prediction: spBase().prediction,
   });
-  // discrepancy = |predictedMargin - spreadLine| = |-3.4 - (-2.5)| = 0.9
-  expect(tiles[1].sub).toBe("model +0.9");
+  // margin -3.4, line -2.5, both flipped into the home frame: value "KC +2.5",
+  // sub "model +3.4", reader's gap -0.9 = margin - line. See the sign matrix.
+  expect(tiles[1].value).toBe("KC +2.5");
+  expect(tiles[1].sub).toBe("model +3.4");
 });
 
 /** Five additional tests to reach 21 total. */
@@ -307,14 +311,14 @@ it("Sports: spread tile when only spread_line present, no predicted_margin", () 
   expect(tiles.some((t) => t.market === "spread")).toBe(false);
 });
 
-/** Sports: total_goals tile when only total_line is present (no predicted_total). */
-it("Sports: total_goals tile when only total_line present, no predicted_total", () => {
+/** Sports: total tile when only total_line is present (no predicted_total). */
+it("Sports: total tile when only total_line present, no predicted_total", () => {
   const { tiles } = panelFacts({
     kind: "SP" as const,
     game: { ...spBase().game, predicted_total: null },
     prediction: { ...spBase().prediction, predicted_total: null },
   });
-  expect(tiles.some((t) => t.market === "total_goals")).toBe(false);
+  expect(tiles.some((t) => t.market === "total")).toBe(false);
 });
 
 /** Cross-cutting: output contains the expected key names for PL. */
@@ -336,4 +340,88 @@ it("cross-cutting: PL segments carry the result market key", () => {
     fixture: plBase(),
   });
   expect(segments.every((s) => s.market === "result")).toBe(true);
+});
+
+/** ---- Ported from Sports' panelFacts.test.ts (rollout acceptance) ----
+ *
+ *  The rollout rule: every assertion in the site's tests must hold in the
+ *  shared component. These are the site behaviours the draft above did not
+ *  have — the range guard, the opposite-signs spread case, and the pick
+ *  translation — ported with the site's fixtures (KC home, BAL away,
+ *  line -2.5, total line 44.5).
+ */
+
+/** A missing or nonsensical probability is absent, never 0. */
+it("Sports: out-of-range or non-finite probs yield no segments or tiles", () => {
+  for (const bad of [null, undefined, NaN, Infinity, -0.2, 1.5]) {
+    const { tiles, segments } = panelFacts({
+      kind: "SP" as const,
+      game: spBase().game,
+      prediction: {
+        ...spBase().prediction,
+        home_win_prob: bad as number,
+        away_win_prob: bad as number,
+        predicted_margin: null,
+        predicted_total: null,
+      },
+    });
+    expect(segments, `prob ${String(bad)}`).toEqual([]);
+    expect(tiles, `prob ${String(bad)}`).toEqual([]);
+  }
+});
+
+/** The double flip survives opposite signs: line and margin disagree about
+ *  who is favoured, and the tile still reads margin-minus-line. */
+it("Sports: spread tile keeps the real disagreement when the sides have opposite signs", () => {
+  const { tiles } = panelFacts({
+    kind: "SP" as const,
+    game: { ...spBase().game, spread_line: 2.5 },
+    prediction: { ...spBase().prediction, predicted_margin: -3.4 },
+  });
+  expect(tiles[1].value).toBe("KC −2.5");
+  expect(tiles[1].sub).toBe("model +3.4");
+});
+
+/** barPick passes the site's vocabulary straight through. */
+it("barPick: passes the NFL/CFB vocabulary straight through, unchanged in every field", () => {
+  const segments = [
+    { label: "KC", prob: 0.38, market: "moneyline" },
+    { label: "BAL", prob: 0.62, market: "moneyline" },
+  ];
+  const pick = { label: "BAL", side: "away" };
+  expect(barPick(pick, segments)).toEqual({ label: "BAL", side: "away" });
+});
+
+/** barPick drops a trailing " win" onto a segment this site can name. */
+it("barPick: translates the family's '<team> win' wording onto a segment", () => {
+  const segments = [
+    { label: "KC", prob: 0.38, market: "moneyline" },
+    { label: "BAL", prob: 0.62, market: "moneyline" },
+  ];
+  expect(barPick({ label: "BAL win" }, segments).label).toBe("BAL");
+  expect(barPick({ label: "KC win" }, segments).label).toBe("KC");
+});
+
+/** barPick carries the rest of the pick through untouched. */
+it("barPick: carries the rest of the pick through the translation untouched", () => {
+  const segments = [{ label: "BAL", prob: 0.62, market: "moneyline" }];
+  expect(barPick({ label: "BAL win", side: "away_ml" }, segments)).toEqual({
+    label: "BAL",
+    side: "away_ml",
+  });
+});
+
+/** barPick fails closed on an unplaceable label. */
+it("barPick: fails CLOSED on a label it cannot place, returning it unchanged", () => {
+  const segments = [{ label: "BAL", prob: 0.62, market: "moneyline" }];
+  expect(barPick({ label: "BUF win" }, segments).label).toBe("BUF win");
+  expect(barPick({ label: "BUF win" }, []).label).toBe("BUF win");
+});
+
+/** barPick does not translate a segment label that merely ends in " win". */
+it("barPick: an exact 'Draw win' segment passes through; bare 'Draw' translates", () => {
+  const verbatim = [{ label: "Draw win", prob: 0.3, market: "result" }];
+  const bare = [{ label: "Draw", prob: 0.3, market: "result" }];
+  expect(barPick({ label: "Draw win" }, verbatim).label).toBe("Draw win");
+  expect(barPick({ label: "Draw win" }, bare).label).toBe("Draw");
 });
