@@ -1,15 +1,56 @@
 # The explainer panel: an instant flow, a triggered AI summary, and team news
 
 **Date:** 2026-09-28
-**Status:** awaiting Kevin's review
+**Status:** **implemented and live** on all four sites; awaiting Kevin's review of the
+*design* only. Corrected 2026-09-29, when this said "awaiting Kevin's review" with no
+hint that the work had shipped — a reader could not tell an unimplemented proposal from
+one that is running in production. See "Status, measured" below for what shipped and
+what has not.
 **Supersedes:** nothing. **Reverses:** the F1 refusal in
 `docs/superpowers/specs/2026-09-25-phase3-4-datahub-explainer-design.md` §3 and the
 ruling at ledger Task 37, on the reasoning given in §7 below.
 
+## Status, measured 2026-09-29
+
+The table further down records the state on 2026-09-28 and is left as written,
+because it is the evidence for why the spec exists. This section is the current
+state, and every row was checked rather than recalled.
+
+| site | panel mounted on `main` | route to the service | served by the service |
+|---|---|---|---|
+| PL | `FixtureModal.tsx` | own FastAPI proxy | yes |
+| F1 | `SessionTimelinePanel.tsx` | own FastAPI proxy (`F1_Predictor#16` pending) | yes |
+| NBA | `GameDetailModal.tsx` (`NBA_Predictor#14`, merged) | own FastAPI proxy (`NBA_Predictor#9`, merged) | yes |
+| NFL + CFB | via Sports' `GameDetailModal.tsx` | Caddy `handle_path /api/explain/*` | yes |
+
+Checked by: `git grep FixtureExplainer origin/main` in each repo, excluding the
+vendored `predictor-ui/` tree — the file that matters is the one a SITE mounts,
+not the one the package ships. And by calling `/api/explain/<sport>/<id>` on each
+of the four hosts: all four answer `502 The summary service is not available.`
+for an unknown id, which is the fixed message the proxies return. A 502 proves
+the route exists and reached the service; a 404 would have meant no route.
+
+**F1's proxy is the one still open** — `F1_Predictor#16` is unmerged, so the F1
+row above describes `main` plus that PR. The service already serves `f1`
+(`SERVED_SPORTS`); the route from F1's site was the missing half.
+
+**What this spec did not deliver, and still has not:**
+
+- **Reasoning is now explicitly off** on every request, and a truncated answer is
+  counted as its own `cut_off` failure kind rather than as a bad response
+  (`predictor-hub#36`, deployed). Neither was in this spec; both came from the
+  first live summaries.
+- **Prose naming a market the facts do not quote is now rejected**
+  (`predictor-hub#37`, open). The first live NBA summary claimed "the market
+  line of BOS by 1.9" for a game with no book quote at all, and every
+  number-level rule passed it because the number was real.
+- F1 remains a **reduced** panel by design — no line, so no spread or total
+  factors. That half of the original refusal still stands.
+
 ## The problem, measured
 
 **An empty panel is a dependency failure, not a missing feature.** On `origin/main`
-today:
+on 2026-09-28:
 
 | site | fetches `/api/explain` | route to the service | panel mounted |
 |---|---|---|---|
