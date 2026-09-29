@@ -44,20 +44,20 @@ export interface PLFixture {
   btts_yes_prob: number | null;
 }
 
-/** The fields of a Sports game this adapter reads. Nullable AND undefined-
- *  tolerant: callers pass their own `GameSummary`, whose lines are optional
- *  (`spread_line?`), and an absent line must read as absent, not as zero. */
+/** The fields of a Sports game this adapter reads. All lines optional: callers
+ *  pass their own `GameSummary`, whose lines are optional (`spread_line?`),
+ *  and an absent line must read as absent, not as zero. */
 export interface SPGame {
   home_team: string;
   away_team: string;
-  spread_line: number | null | undefined;
-  total_line: number | null | undefined;
+  spread_line?: number | null;
+  total_line?: number | null;
 }
 
 /** The fields of a Sports prediction this adapter reads. */
 export interface SPPrediction {
-  home_win_prob: number | null | undefined;
-  away_win_prob: number | null | undefined;
+  home_win_prob?: number | null;
+  away_win_prob?: number | null;
   predicted_margin?: number | null;
   predicted_total?: number | null;
 }
