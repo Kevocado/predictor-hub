@@ -14,19 +14,6 @@ import { ProbabilityBar, type PickRef, type Segment } from "./ProbabilityBar";
  *  honour twice: no bar segment is accented, and nothing says "for the pick". */
 export type Verdict = { verdict: string; band: Band; factors: Factor[]; pick?: PickRef };
 
-/** The shape v1 returned. Still accepted, and removed in v2 phase 4.
- *
- *  It is here because `main` has to stay green between phases: Sports and PL are
- *  wired to v2 in phase 4, and until then their sites pass a v1 body. Rendering
- *  it is the same "do not fail a reader over a shape we did not expect" instinct
- *  the footer already follows — and it is bounded, because the branch is keyed on
- *  the field actually being present rather than on a version string a site might
- *  not send. */
-export type LegacyExplanation = {
-  headline: string;
-  sections: { market: string; title: string; text: string }[];
-};
-
 /** Everything both shapes of answer carry. Exported so a caller that *builds* an
  *  answer can name the v2 arm (`Common & Verdict`) rather than the union: on
  *  the union, `.factors` does not exist, which is a type error at every call
@@ -46,7 +33,7 @@ export type Common = {
   pick_timing: "pre_kickoff" | "rebuilt" | "none";
 };
 
-export type Explanation = Common & (Verdict | LegacyExplanation);
+export type Explanation = Common & Verdict;
 
 /** The moment an F1 pick has to beat is the session, not a kick-off. */
 const MOMENT_OF: Record<string, Moment> = { f1: "the session", nba: "tip-off" };
