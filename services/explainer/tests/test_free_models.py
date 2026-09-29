@@ -38,7 +38,7 @@ WITHDRAWN = {
 # than a removal: a model can 429 today and be fine tomorrow, so 429 is not
 # evidence of absence and is deliberately not recorded here.
 VERIFIED = {
-    "nvidia/nemotron-3.5-lightning:free",
+    "dots-studio/dots-3-note-preview:free",
     "poolside/laguna-s-2.1:free",
 }
 
