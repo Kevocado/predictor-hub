@@ -13,7 +13,8 @@ from __future__ import annotations
 import json
 import re
 
-from .contract import DIRECTIONS, PSEUDO_MARKETS, market_keys
+from .contract import DIRECTIONS, PSEUDO_MARKETS, as_dict, market_keys
+from .template import DEFAULT_MARKET_LINE_KEY, MARKET_LINE_KEY
 
 BANNED = ["lock", "bet", "betting advice", "hammer", "guaranteed", "sure thing", "value play"]
 _BANNED_RE = re.compile(r"\b(" + "|".join(re.escape(w) for w in BANNED) + r")s?\b", re.I)
@@ -32,6 +33,192 @@ MAX_HEADLINE_WORDS = 10
 MAX_FACTOR_WORDS = 35
 MIN_FACTORS = 2
 MAX_FACTORS = 4
+
+
+#: Words that name a MARKET rather than a figure, and the market key each one
+#: implies. The guard is about the market being *named*, not about a number:
+#: every number rule above already passed, because the number was real.
+#:
+#: The failure this exists for is live output, not a hypothetical. Against NBA
+#: game 401909903, whose facts carry a `spread` market holding the MODEL's own
+#: margin (`line: "BOS by 1.9"`, and no `market_line` at all), the deployed model
+#: wrote:
+#:
+#:     "The market line of BOS by 1.9 sits very close to the model's
+#:      calculated margin of about 1.9 points."
+#:
+#: `1.9` is in the facts, so every existing rule passed. The sentence was still
+#: false: it attributed the model's own number to the market, and told a reader
+#: two independent sources agreed when there was one. A number check cannot see
+#: this, because nothing about the number was wrong.
+#:
+#: Keys are the contract's own vocabulary (`contract.market_keys`), so a market
+#: named here is one the panel can actually resolve.
+#:
+#: "line" alone is deliberately NOT a trigger. It is far too common in ordinary
+#: English — "the line between favourite and also-ran" — and a rule that fired on
+#: it would reject honest prose to catch one sentence. It fires only in the
+#: specific compounds below, which cannot mean anything else.
+#: Words that name a MARKET rather than a figure, and the market keys each can
+#: mean. The guard is about the market being *named as the market's*, not about
+#: a number: every number rule above already passed, because the number was real.
+#:
+#: The failure this exists for is live output, not a hypothetical. Against NBA
+#: game 401909903 the deployed model wrote:
+#:
+#:     "The market line of BOS by 1.9 sits very close to the model's
+#:      calculated margin of about 1.9 points."
+#:
+#: and a verdict reading "The model leans slightly toward Miami covering the
+#: spread". That game's facts DO carry a `spread` entry — and it is the trap.
+#: For NBA, `line` holds the MODEL's own margin and the book's is `market_line`
+#: (`template.MARKET_LINE_KEY` says so, and `tests/test_template_quoted_line.py`
+#: pins it); this game has no `market_line`. So the entry describes the model
+#: only, there was no quote, and the sentence told a reader the book agreed
+#: with the model. `1.9` is in the facts, so every number rule passed.
+#:
+#: "Does this market exist" is therefore the wrong question — the key was right
+#: there. The question is whether the market is **quoted**: a `spread` the facts
+#: carry but never sourced to a book is the model's own projection wearing a
+#: market's name, and prose may not call it the market's.
+#:
+#: Keys are the contract's own vocabulary, so a market named here is one the
+#: panel can resolve.
+#:
+#: "line" alone is deliberately NOT a trigger. It is far too common in ordinary
+#: English — "the line between favourite and also-ran" — and a rule that fired on
+#: it would reject honest prose to catch one sentence. It fires only inside the
+#: attribution phrases below, which cannot mean anything else.
+#: Each entry is (market keys it can mean, is-a-line-market).
+#: A line market needs a quote to be nameable; a probability market does not,
+#: because "the moneyline" names the thing the panel already draws.
+MARKET_WORDS: dict[str, tuple[tuple[str, ...], bool]] = {
+    "moneyline": (("moneyline",), False),
+    "spread": (("spread", "handicap"), True),
+    "total": (("total", "total_goals", "over_under"), True),
+    "implied": (("implied",), False),
+}
+#: Phrases that assert a figure belongs to a book. These are what make the
+#: live sentence false; a bare "spread" or "total" is much weaker and is handled
+#: by the quoted-market rule instead.
+#:
+#: "covering"/"covers" are here rather than in MARKET_WORDS for a reason worth
+#: stating: covering a spread is only a meaningful claim if a book quoted one,
+#: so it is an assertion about the book, not a way of naming a market. Treating
+#: it as a bare market word would let "Miami covering the spread" through on a
+#: sport with no spread at all.
+ATTRIBUTION_PHRASES: tuple[str, ...] = (
+    "market line", "market's line", "market margin", "market total",
+    "market price", "market odds", "money line", "the book", "the books",
+    "the market has", "the market sits", "the market is", "point spread",
+    "over/under", "over-under", "the implied probability", "quoted at",
+    "covering", "covers", "against the spread", "against the total",
+)
+#: Single words that name a market, for the exists-but-unquoted case.
+_MARKET_WORD_RE = re.compile(
+    r"\b(?:spread|handicap|money\s?line|total\s+goals|total|implied)\b", re.I
+)
+_ATTRIBUTION_RE = re.compile(
+    "|".join(re.escape(p) for p in ATTRIBUTION_PHRASES), re.I
+)
+
+
+def _named_markets(body: str) -> set[str]:
+    """Concepts this prose names, in either spelling.
+
+    A concept the prose explicitly attributes to the MODEL is not a market
+    claim. "The total projects near 220" and "the model's spread" are the model
+    talking about itself, which is the honest case and the common one — and the
+    prompt already tells the model to say "the model" or "the projection" rather
+    than "the line" for exactly this. Exempting it is what stops the guard from
+    rejecting the sentence it is trying to produce.
+    """
+    low = body.lower()
+    found: set[str] = set()
+    for concept, (keys, _) in MARKET_WORDS.items():
+        # `money line` and `total goals` are two words; the contract key is
+        # `moneyline`, so the match has to tolerate the space.
+        if any(re.search(rf"\b{re.escape(k).replace('moneyline', r'money\s?line')}\b", low)
+               for k in keys):
+            if _OWNED_BY_MODEL_RE.search(low) and not _ATTRIBUTION_RE.search(low):
+                continue
+            found.add(concept)
+    return found
+
+
+#: "the model's own figure", said out loud. Only exempts a market word when the
+#: sentence is not ALSO making a market claim — "the model's total is 2.7, which
+#: is what the market line says" is still a claim about the book.
+_OWNED_BY_MODEL_RE = re.compile(
+    r"\b(?:model'?s?|model|projection|projected|projects|projects? near|forecast|"
+    r"our|algorithm|it expects|we expect)\b",
+    re.I,
+)
+
+
+def _quoted_markets(facts: dict) -> set[str]:
+    """Market keys the facts source to a book, as opposed to describing the model.
+
+    A `spread`/`total` entry with a `line` is a quote for every sport except the
+    ones that put their model's own wording in `line` — NBA. So the key list
+    comes from `template.MARKET_LINE_KEY` rather than being re-derived here,
+    which is what keeps the two files from disagreeing about the same fact.
+    """
+    sport = as_dict(facts).get("sport") or ""
+    quote_keys = MARKET_LINE_KEY.get(sport, DEFAULT_MARKET_LINE_KEY)
+    out: set[str] = set()
+    for m in as_dict(facts).get("markets") or []:
+        if not isinstance(m, dict):
+            continue
+        key = str(m.get("market") or "")
+        if any(m.get(k) not in (None, "") for k in quote_keys):
+            out.add(key)
+    return out
+
+
+def _market_problems(facts: dict, body: str) -> list[str]:
+    """Prose may not attribute a figure to a market the facts do not quote.
+
+    Note what this is NOT: it does not check that a number matches (the
+    existing rules do that) and it does not check that a named market agrees
+    with anything. It is one step earlier — whether there is a book to agree —
+    and it is the step that let a real number be reported as the market's.
+    """
+    present = market_keys(facts)
+    quoted = _quoted_markets(facts)
+    low = body.lower()
+    sport = as_dict(facts).get("sport") or "this sport"
+    problems: list[str] = []
+
+    # 1. An outright attribution to a book with nothing quoted anywhere.
+    if _ATTRIBUTION_RE.search(low) and not quoted:
+        problems.append(
+            f"the text attributes a figure to the market, but no {sport} market in the "
+            f"facts is sourced to a book (markets present: "
+            f"{', '.join(sorted(present)) or 'none'})"
+        )
+        return problems
+
+    # 2. A line market named while the facts only carry the model's own figure
+    #    for it. This is the live case, and it is not caught by (1) when some
+    #    other market IS quoted.
+    for concept in _named_markets(body):
+        keys, is_line = MARKET_WORDS[concept]
+        if concept in PSEUDO_MARKETS or not is_line:
+            continue
+        if not (set(keys) & present):
+            problems.append(
+                f"the text names a market the {sport} facts do not carry: {concept} "
+                f"(present: {', '.join(sorted(present)) or 'none'})"
+            )
+        elif not (set(keys) & quoted):
+            problems.append(
+                f"the text calls the {concept} the market's, but the {sport} facts carry "
+                f"only the model's own figure for it and no book quote "
+                f"({', '.join(sorted(set(keys) & present))} present, quoted: "
+                f"{', '.join(sorted(quoted)) or 'none'})"
+            )
+    return problems
 
 
 def _candidates(token: str) -> list[tuple[float, float]]:
@@ -295,4 +482,5 @@ def validate(output: dict, facts_json: str, news_json: str) -> list[str]:
     if facts.get("pick_timing") == "rebuilt" and not any(w in body.lower() for w in REBUILT_WORDS):
         problems.append("pick is rebuilt but the text doesn't say it was rebuilt after the start")
     problems.extend(_verdict_problems(facts, body))
+    problems.extend(_market_problems(facts, body))
     return problems

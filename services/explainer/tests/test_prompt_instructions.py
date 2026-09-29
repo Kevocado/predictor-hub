@@ -176,6 +176,14 @@ FRAME_QUOTES = [
     "none",
     # rule 4 -- a worked illustration of expressing uncertainty
     "62% still loses about four times in ten",
+    # rule 8 -- the market words it forbids, and the two it offers instead.
+    # Listed because they are quoted in the frame, and this inventory exists to
+    # notice a quote appearing or disappearing. "the line" is in the banned set
+    # here for a reason worth keeping: it is the exact substitution rule 8 is
+    # steering away from, and `validate` will not catch the model reaching for
+    # it, so the frame is the only place it is pinned.
+    "the spread", "the total", "the moneyline", "covering", "the price",
+    "the market line", "the model", "the projection", "the line",
 ]
 
 
@@ -379,12 +387,12 @@ def test_the_frame_quotes_only_what_it_quotes_today():
     failure message is what makes that locatable.
     """
     rules = _rules()
-    assert len(rules) == 7, (
-        f"expected the frame's seven numbered rules, found {len(rules)}: {rules}"
+    assert len(rules) == 8, (
+        f"expected the frame's eight numbered rules, found {len(rules)}: {rules}"
     )
     per_rule = {rule.split(".")[0]: _quotes(rule) for rule in rules}
-    assert list(per_rule) == [str(n) for n in range(1, 8)], (
-        f"the rules are not numbered 1..7 in order: {list(per_rule)}"
+    assert list(per_rule) == [str(n) for n in range(1, 9)], (
+        f"the rules are not numbered 1..8 in order: {list(per_rule)}"
     )
     found = [chunk for rule in rules for chunk in _quotes(rule)]
     assert found == FRAME_QUOTES, (
