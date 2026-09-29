@@ -271,12 +271,15 @@ const MARKET: Segment[] = [
 
 const RESTING = { loading: false, error: false, onRetry: () => {} };
 
-/** A v1 body, typed through `Explanation` so the union arm is named rather than
- *  guessed at: on the union `.factors` does not exist, so a hand-built legacy
- *  answer has to carry `Common` too or it will not compile. */
+/** A factor-less v2 body, typed through `Explanation`. It stands in for the old
+ *  legacy-answer row: a body with no factors draws no factor controls, which is
+ *  what that row pinned. The v1 `headline`/`sections` shape it used to carry no
+ *  longer exists, so the row keeps its intent (zero controls) with a body the
+ *  panel still renders. */
 const LEGACY: Explanation = {
-  headline: "h",
-  sections: [{ market: "m", title: "t", text: "x" }],
+  verdict: "No pick here.",
+  band: "leaning",
+  factors: [],
   source: "template",
   model: "",
   generated_at: new Date().toISOString(),
@@ -367,7 +370,7 @@ const CASES: { name: string; element: ReactElement; controls: number }[] = [
   { name: "ExplainerPanel, v2, resting", element: <ExplainerPanel {...RESTING} data={NFL} tiles={TILES} segments={NFL_BAR} record={{ label: "Picks", hits: 41, settled: 68 }} />, controls: 4 },
   { name: "ExplainerPanel, collapsed", element: <ExplainerPanel {...RESTING} data={NFL} collapsed tiles={TILES} segments={NFL_BAR} />, controls: 1 },
   { name: "ExplainerPanel, expandable market row", element: <ExplainerPanel {...RESTING} data={NFL} segments={PL_BAR} legend={MARKET} expandable />, controls: 6 },
-  { name: "ExplainerPanel, a legacy answer", element: <ExplainerPanel {...RESTING} data={LEGACY} />, controls: 0 },
+  { name: "ExplainerPanel, a factor-less answer", element: <ExplainerPanel {...RESTING} data={LEGACY} />, controls: 0 },
   { name: "ExplainerPanel, error", element: <ExplainerPanel {...RESTING} error data={null} />, controls: 1 },
 
   { name: "FactorList, rows and a clamped sentence", element: <FactorList factors={NFL.factors} onSelect={() => {}} expandable />, controls: 4 },
