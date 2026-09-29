@@ -168,8 +168,6 @@ export function ExplainerPanel({
   const now = Date.now();
   const when = moment ?? MOMENT_OF[data.sport] ?? "kickoff";
   const rebuilt = data.pick_timing === "rebuilt";
-  const keyFor = (section: { market: string; title: string }, index: number) =>
-    `${section.market}-${section.title}-${index}`;
 
   /* §13c's linkage is a LOOKUP, and this is the half of it that was missing: a
    * factor's `key` is only a reference to a figure if some figure carries it.
@@ -203,7 +201,7 @@ export function ExplainerPanel({
 
       <div className="flex items-start justify-between gap-3">
         <p className="min-w-0 max-w-[70ch] text-lg font-medium leading-snug text-pr-text">
-          {v2 ? data.verdict : data.headline}
+          {data.verdict}
         </p>
         {/* A rebuilt pick shows NO band (spec §13e), and the decision is this one
             line. The band is still computed by `band_for` and still in the
@@ -284,30 +282,11 @@ export function ExplainerPanel({
         </div>
       )}
 
-      {showBody && !v2 && data.sections.length > 0 && (
-        <div className="flex max-w-[70ch] flex-col gap-4 border-t border-pr-rule pt-4">
-          {data.sections.map((section, index) => (
-            <div key={keyFor(section, index)} className="flex flex-col gap-1">
-              {/* _clean coerces a missing title to "", and validate.py bounds a
-                  title's length without requiring one, so an empty heading is
-                  reachable. A heading with no words is not a heading. */}
-              {section.title && (
-                <h4 className="font-pr-display text-sm font-semibold uppercase tracking-wide text-pr-text-dim">
-                  {section.title}
-                </h4>
-              )}
-              <p className="text-sm leading-relaxed text-pr-text-dim">{section.text}</p>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* The record strip and the player list are panel EXTRAS (§6), not
-          factors, so they are not the v2 body's business — but they are not the
-          v1 body's exclusive property either. This was gated on `!v2` and the
-          only thing that noticed was a screenshot: every v2 panel silently
-          dropped its record, and no test asserted it, because the component test
-          rendered RecordStrip directly and never through the panel. */}
+          factors, so they are not the v2 body's business. They render for any
+          answer that carries them: every v2 panel once silently dropped its
+          record, and no test asserted it, because the component test rendered
+          RecordStrip directly and never through the panel. */}
       {showBody && (record || players) && (
         <div className="flex flex-wrap items-start gap-x-8 gap-y-3 border-t border-pr-rule pt-3">
           {players && players.length > 0 && (

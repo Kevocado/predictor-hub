@@ -24,7 +24,13 @@ export type MarketTile = {
   /** The words for this market, for a reader. Never a key: `btts` is what the
    *  facts call it, "Both teams score" is what a reader needs. */
   label: string;
-  value: string;
+  /** The figure. A string in every adapter that ships one today; typed wide
+   *  because the PL branch still passes the raw decimal it has always passed
+   *  and the renderer prints either. PL's own tests already expect formatted
+   *  strings ("48%"), so the PL rollout narrows this back to `string` when it
+   *  formats that branch — this widening is the transitional state, not the
+   *  contract. */
+  value: string | number;
   /** The market's own line beneath the figure, when the facts carry one. It
    *  stands in for `label` when present, so it has to read as a phrase too. */
   sub?: ReactNode;
