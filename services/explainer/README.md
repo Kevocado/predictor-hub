@@ -21,7 +21,7 @@ for one — there is no background pre-generation.
   "pick": { "label": "BAL" },     // COMPUTED from the facts; the key is OMITTED
                                   // when there is no pick. Never null.
   "source": "llm", "model": "nemotron-3.5-lightning",
-  "generated_at": "2026-10-05T00:20:00Z", "prompt_version": "v6",
+  "generated_at": "2026-10-05T00:20:00Z", "prompt_version": "v7",
   "pick_timing": "pre_kickoff"
 }
 ```

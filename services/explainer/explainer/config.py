@@ -135,7 +135,7 @@ class Settings(BaseSettings):
     # with the validator guard that rejects a market named in words when the
     # facts carry no quote for it. It is part of the cache key, so a cached `v5`
     # row would otherwise be served under a frame that was never sent.
-    prompt_version: str = "v6"
+    prompt_version: str = "v7"
     sport_api_pl: str | None = None
     sport_api_f1: str | None = None
     sport_api_nfl: str | None = None
