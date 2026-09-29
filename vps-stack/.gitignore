@@ -1,0 +1,5 @@
+.env
+sites/hub/
+volumes/
+azure-volumes/
+state/
