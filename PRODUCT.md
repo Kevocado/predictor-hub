@@ -28,7 +28,7 @@ Each pick shows its confidence, its reasoning and a public record of how often t
 
 ## Positioning
 
-- **An honest track record.** Every counted pick is locked in before kickoff and scored in public. Picks rebuilt after kickoff stay visible and labelled "Rebuilt after kickoff", but they never count toward any hit rate.
+- **An honest track record.** The headline is the pre-kickoff record: every counted pick is locked in before kickoff and scored in public, and picks rebuilt after kickoff never count toward it. They are still counted and shown separately — a second figure over every resolved pick, and a per-pick list with hits and misses in the same table — because a hit rate is only meaningful if the pick existed before the result, and hiding the rest would lose sight of the picks that have already passed.
 - **It shows its reasoning.** The model explains why it likes a side (drivers, form, head-to-head, ratings), not just the number.
 - **Five sports in one place.** One maker and one way of reading a pick across all five sports. Each sport keeps its **full functionality**: a Games view and a Data Hub (teams, players, standings or rankings, track record, model details). The family shares a product frame; the sites are not collapsed into a single summary page.
 
@@ -68,7 +68,7 @@ Each pick shows its confidence, its reasoning and a public record of how often t
 ## Brand Commitments
 
 - The name "Predictor".
-- The honesty rule above: rebuilt picks are never counted.
+- The honesty rule above: rebuilt picks never count toward the headline. They are counted and shown separately, and every resolved pick is listed.
 - Plain-language copy. No developer terms on public pages.
 
 ## Evidence on Hand
