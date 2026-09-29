@@ -104,9 +104,21 @@ MARKET_WORDS: dict[str, tuple[tuple[str, ...], bool]] = {
 #:
 #: "covering"/"covers" are here rather than in MARKET_WORDS for a reason worth
 #: stating: covering a spread is only a meaningful claim if a book quoted one,
-#: so it is an assertion about the book, not a way of naming a market. Treating
-#: it as a bare market word would let "Miami covering the spread" through on a
-#: sport with no spread at all.
+#: so it is an assertion about the book, not a way of naming a market.
+#:
+#: **Word boundaries, and they are load-bearing.** The first version of this had
+#: no `\b` anchors and a plain alternation, so it matched inside longer words:
+#:
+#:     "recovering"    contains "covering"
+#:     "discovers"     contains "covers"
+#:     "uncovers"      contains "covers"
+#:     "the bookings"  contains "the book"
+#:
+#: "Boston is still recovering from the road trip" was therefore reported as a
+#: market attribution and the reader got the template instead of the summary —
+#: a guard that fires on ordinary English is one the model learns to avoid by
+#: writing less, which is the same failure as the one this rule was added to fix.
+#: Every alternative is anchored on both sides.
 ATTRIBUTION_PHRASES: tuple[str, ...] = (
     "market line", "market's line", "market margin", "market total",
     "market price", "market odds", "money line", "the book", "the books",
@@ -119,8 +131,35 @@ _MARKET_WORD_RE = re.compile(
     r"\b(?:spread|handicap|money\s?line|total\s+goals|total|implied)\b", re.I
 )
 _ATTRIBUTION_RE = re.compile(
-    "|".join(re.escape(p) for p in ATTRIBUTION_PHRASES), re.I
+    r"\b(?:" + "|".join(re.escape(p) for p in ATTRIBUTION_PHRASES) + r")\b", re.I
 )
+
+#: "the model's own figure", said out loud.
+#:
+#: **Scoped per sentence, deliberately.** The first version searched the whole
+#: joined body, so ONE factor saying "the model" exempted every bare market word
+#: in every other factor — the guard silently switched itself off for the rest
+#: of the answer. It is applied below per sentence and per field, so a factor
+#: that says "the model's total is 2.7" is exempt and a factor beside it that
+#: says "The spread favours Boston" is still checked.
+_OWNED_BY_MODEL_RE = re.compile(
+    r"\b(?:model'?s?|model|projection|projected|projects|forecast|"
+    r"our|algorithm|it expects|we expect)\b",
+    re.I,
+)
+#: Sentence splitter for the same reason. Deliberately simple and deliberately
+#: NOT a dependency: a prose guard that silently fails to split leaves the
+#: false positive in place, which is the bug being fixed.
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _sentences(text: str) -> list[str]:
+    """Split prose into sentences, keeping the pieces non-empty.
+
+    A field is also its own unit even if it holds several sentences, so the
+    caller checks each field separately and this handles the within-field case.
+    """
+    return [s for s in (p.strip() for p in _SENTENCE_SPLIT_RE.split(text)) if s]
 
 
 def _named_markets(body: str) -> set[str]:
@@ -130,34 +169,30 @@ def _named_markets(body: str) -> set[str]:
     claim. "The total projects near 220" and "the model's spread" are the model
     talking about itself, which is the honest case and the common one — and the
     prompt already tells the model to say "the model" or "the projection" rather
-    than "the line" for exactly this. Exempting it is what stops the guard from
-    rejecting the sentence it is trying to produce.
+    than "the line" for exactly this.
+
+    **Per sentence.** The exemption used to be a single search over the whole
+    body, so one factor saying "the model" disabled the guard for every other
+    factor: `["The model has Boston at 65%.", "The spread favours Boston."]`
+    named no market at all. A guard that can be switched off by an unrelated
+    clause elsewhere in the same answer is not a guard.
     """
-    low = body.lower()
     found: set[str] = set()
-    for concept, (keys, _) in MARKET_WORDS.items():
-        # `money line` and `total goals` are two words; the contract key is
-        # `moneyline`, so the match has to tolerate the space.
-        # Built outside the f-string: Python 3.11 (the image's) rejects a
-        # backslash inside an f-string expression; 3.12+ allows it, which is how
-        # this shipped green locally and crash-looped the service.
-        money_line = r"money\s?line"
-        if any(re.search(rf"\b{re.escape(k).replace('moneyline', money_line)}\b", low)
-               for k in keys):
-            if _OWNED_BY_MODEL_RE.search(low) and not _ATTRIBUTION_RE.search(low):
-                continue
-            found.add(concept)
+    # Built outside the f-string: Python 3.11 (the image's) rejects a
+    # backslash inside an f-string expression; 3.12+ allows it, which is how
+    # this shipped green locally and crash-looped the service.
+    money_line = r"money\s?line"
+    for sentence in _sentences(body):
+        low = sentence.lower()
+        if _OWNED_BY_MODEL_RE.search(low) and not _ATTRIBUTION_RE.search(low):
+            continue
+        for concept, (keys, _) in MARKET_WORDS.items():
+            # `money line` and `total goals` are two words; the contract key is
+            # `moneyline`, so the match has to tolerate the space.
+            if any(re.search(rf"\b{re.escape(k).replace('moneyline', money_line)}\b", low)
+                   for k in keys):
+                found.add(concept)
     return found
-
-
-#: "the model's own figure", said out loud. Only exempts a market word when the
-#: sentence is not ALSO making a market claim — "the model's total is 2.7, which
-#: is what the market line says" is still a claim about the book.
-_OWNED_BY_MODEL_RE = re.compile(
-    r"\b(?:model'?s?|model|projection|projected|projects|projects? near|forecast|"
-    r"our|algorithm|it expects|we expect)\b",
-    re.I,
-)
 
 
 def _quoted_markets(facts: dict) -> set[str]:

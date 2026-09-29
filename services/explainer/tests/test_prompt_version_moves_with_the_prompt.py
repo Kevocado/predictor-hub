@@ -78,6 +78,11 @@ RECORDED_PROMPT_DIGEST = {
     # Rule 8, added with the market-word guard: name only the markets FACTS
     # carries. Recorded rather than folded into v5, per the append-only rule.
     "v6": "1bd30ef273e87f439f248b1ea634ecf420fbd3a0a06e4f9766f6f4abe721d86e",
+    # Rule 8 corrected: it said "unless that market is in FACTS" while the
+    # validator needs a QUOTE, so it invited prose the validator discards, and
+    # did not say the answer would be discarded. Recorded rather than re-recorded
+    # over v6, same reason as v5->v6.
+    "v7": "52e0f6004577c6f7011ccaacd34848628bc78057a3240f4f662f1ca118c770e1",
 }
 
 _HEX64 = re.compile(r"[0-9a-f]{64}")
