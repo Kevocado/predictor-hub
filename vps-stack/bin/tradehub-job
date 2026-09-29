@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Runs one Algo Trade Hub batch job in a throwaway container from the same
+# image as the tradehub service, e.g.  tradehub-job scan  |  tradehub-job settle
+# Called hourly by systemd/tradehub-{scan,settle}.timer.
+set -euo pipefail
+STACK_DIR=${STACK_DIR:-/opt/stack}
+
+case "${1:-}" in
+  scan)   module=tradehub.scripts.scan ;;
+  settle) module=tradehub.scripts.settle_predictions ;;
+  *) echo "usage: tradehub-job scan|settle" >&2; exit 2 ;;
+esac
+
+exec docker compose --project-directory "$STACK_DIR" --profile tradehub \
+  run --rm --no-deps -T tradehub python -m "$module"

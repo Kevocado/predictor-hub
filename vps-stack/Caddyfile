@@ -1,0 +1,122 @@
+# Every site is a subdomain of $DOMAIN (set in .env). Caddy fetches and
+# renews the HTTPS certificates itself; each hostname below only needs a DNS
+# A record pointing at the VPS (a single wildcard *.$DOMAIN record covers
+# them all). No account email: Let's Encrypt stopped sending expiry mail in
+# 2025, and Caddy renews on its own.
+
+(common) {
+	encode zstd gzip
+	header -Server
+}
+
+# Landing page: the predictor-hub repo, checked out to sites/hub by bin/deploy.
+{$DOMAIN}, www.{$DOMAIN} {
+	import common
+
+	# The picks teasers on the landing page read every sport API. The hub is
+	# static and lives on the bare domain while the APIs live on subdomains,
+	# so without these the browser is cross-origin and every fetch is blocked.
+	# Same pattern as sports.{$DOMAIN} below, and same reason: handle_path
+	# strips the prefix and the upstream serves from its own root.
+	handle_path /pl/* {
+		reverse_proxy pl:8000
+	}
+	handle_path /f1/* {
+		reverse_proxy f1:8000
+	}
+	handle_path /nba/* {
+		reverse_proxy nba:8000
+	}
+	handle_path /nfl/* {
+		reverse_proxy nfl:8001
+	}
+	handle_path /cfb/* {
+		reverse_proxy cfb:8003
+	}
+
+	handle {
+		root * /srv/hub
+		file_server
+	}
+}
+
+pl.{$DOMAIN} {
+	import common
+	reverse_proxy pl:8000
+}
+
+f1.{$DOMAIN} {
+	import common
+	reverse_proxy f1:8000
+}
+
+nba.{$DOMAIN} {
+	import common
+	reverse_proxy nba:8000
+}
+
+# NFL + CFB share one frontend. The APIs are mounted under it so the browser
+# calls them same-origin: /nfl/api/games -> nfl:8001/api/games.
+sports.{$DOMAIN} {
+	import common
+	handle_path /nfl/* {
+		reverse_proxy nfl:8001
+	}
+	handle_path /cfb/* {
+		reverse_proxy cfb:8003
+	}
+	# The plain-English summary. The sports bundle calls
+	# /api/explain/{sport}/{id}; handle_path drops that prefix and the rewrite
+	# puts back the /explain the service actually serves. The same translation
+	# the site's own Caddyfile does, for when it is run standalone.
+	#
+	# The one proxy here that does NOT pass the upstream body through. A bare
+	# reverse_proxy forwards a response verbatim, error body included, and the
+	# explainer is a separate service whose error vocabulary nobody on these sites
+	# has audited. Every FastAPI proxy in the family deliberately does the
+	# opposite, and PL's says why: "an explainer error can carry key material or
+	# an internal path". Matched in Sports_Predictor's own Caddyfile, which is
+	# the standalone copy of this block.
+	#
+	# Two ranges because Caddy takes exactly one status pattern per matcher and
+	# rejects both "4xx5xx" and ">= 400" (checked against v2.11.4). 5xx is the
+	# range that matters most: it came from inside the explainer, so it is the
+	# likeliest to carry an internal path. Handling only 4xx would look like this
+	# guard and still publish every 500.
+	handle_path /api/explain/* {
+		rewrite * /explain{uri}
+		reverse_proxy predictor-explainer:8090 {
+			@explainer_client_error status 4xx
+			handle_response @explainer_client_error {
+				respond "The summary service is not available." 502
+			}
+			@explainer_server_error status 5xx
+			handle_response @explainer_server_error {
+				respond "The summary service is not available." 502
+			}
+		}
+	}
+	handle {
+		reverse_proxy sports:80
+	}
+}
+
+# Direct API hostnames, for scripts and the trade hub's sports adapters
+# (rollout step 7), which used the *.azurecontainerapps.io API URLs before.
+nfl.{$DOMAIN} {
+	import common
+	reverse_proxy nfl:8001
+}
+
+cfb.{$DOMAIN} {
+	import common
+	reverse_proxy cfb:8003
+}
+
+# Uncomment once the tradehub service is running (see compose.yml). Leaving it
+# on before then only makes Caddy request a certificate for a 502 page.
+# Algo Trade Hub: API + War Room (algo. is the friendly name, trade. kept for existing links).
+algo.{$DOMAIN}, trade.{$DOMAIN} {
+	import common
+	reverse_proxy tradehub:8000
+}
