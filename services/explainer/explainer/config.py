@@ -72,7 +72,18 @@ class Settings(BaseSettings):
     # carries on, so the panel degrades to the template for every fixture and
     # nothing alerts. tests/test_free_models.py pins this, and
     # tests/test_unknown_model_falls_back.py covers the unknown-id case.
-    model: str = Field(default="nvidia/nemotron-3.5-lightning:free", validation_alias="EXPLAINER_MODEL")
+    #
+    # The primary was changed to the model the VPS was already running
+    # (EXPLAINER_MODEL on the deployed container), so the code default and the
+    # deployed default are the same id rather than two that can drift. It was
+    # confirmed live, not assumed: /status on the VPS reports this model with
+    # 38 requests used and every failure counter at zero.
+    #
+    # "dots-3-note-preview" is a *note* model — a reasoning model — which is why
+    # `llm.complete` now asks for no thinking explicitly. Reasoning on spends
+    # `max_tokens` before the first token of the answer, so it does not merely
+    # cost quality at 700, it returns nothing. See the `cut_off` kind.
+    model: str = Field(default="dots-studio/dots-3-note-preview:free", validation_alias="EXPLAINER_MODEL")
     fallback_model: str = Field(default="poolside/laguna-s-2.1:free",
                                 validation_alias="EXPLAINER_FALLBACK_MODEL")
     daily_cap: int = Field(default=900, validation_alias="EXPLAINER_DAILY_CAP")
