@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+# Deploy entrypoint for the VPS. GitHub Actions reaches it over SSH as the
+# `deploy` user, whose CI key is locked to this script by a forced command in
+# ~deploy/.ssh/authorized_keys, so a leaked CI key can only ask for one of:
+#
+#   deploy <service> <git-sha|latest>   pull that image tag, restart, health-check,
+#                                       roll back to the previous tag on failure
+#   hub <git-sha>                       release the predictor-hub repo and repoint sites/hub
+#   status                              docker compose ps
+#
+# It also works by hand on the box:  /opt/stack/bin/deploy deploy pl latest
+set -euo pipefail
+
+STACK_DIR=${STACK_DIR:-/opt/stack}
+ENV_FILE="$STACK_DIR/.env"
+HUB_REPO=https://github.com/Kevocado/predictor-hub.git
+
+# service -> "<TAG variable> <port> <health path>"
+declare -A SERVICES=(
+  [pl]="PL_TAG 8000 /api/health"
+  [f1]="F1_TAG 8000 /"
+  [nba]="NBA_TAG 8000 /health"
+  [nfl]="NFL_TAG 8001 /"
+  [cfb]="CFB_TAG 8003 /"
+  [sports]="SPORTS_TAG 80 /"
+  [tradehub]="TRADEHUB_TAG 8000 /api/health"
+)
+
+die() { echo "deploy: $*" >&2; exit 1; }
+
+# Forced-command mode passes the client's command in SSH_ORIGINAL_COMMAND.
+if [[ -n "${SSH_ORIGINAL_COMMAND:-}" ]]; then
+  read -r -a ARGS <<<"$SSH_ORIGINAL_COMMAND"
+else
+  ARGS=("$@")
+fi
+action=${ARGS[0]:-}
+target=${ARGS[1]:-}
+ref=${ARGS[2]:-}
+
+cd "$STACK_DIR"
+compose() { docker compose --project-directory "$STACK_DIR" "$@"; }
+
+# One deploy at a time: two repos pushing at once would race on .env.
+exec 9>"$STACK_DIR/.deploy.lock"
+flock -w 600 9 || die "timed out waiting for another deploy"
+
+set_tag() { # <VAR> <value>
+  if grep -q "^$1=" "$ENV_FILE"; then
+    sed -i "s|^$1=.*|$1=$2|" "$ENV_FILE"
+  else
+    echo "$1=$2" >>"$ENV_FILE"
+  fi
+}
+
+healthy() { # <service> <port> <path>: poll through the caddy container for up to 120s
+  local _
+  for _ in $(seq 1 24); do
+    if compose exec -T caddy wget -q -T 5 -O /dev/null "http://$1:$2$3" 2>/dev/null; then
+      return 0
+    fi
+    sleep 5
+  done
+  return 1
+}
+
+case "$action" in
+  deploy)
+    [[ -n "${SERVICES[$target]+x}" ]] || die "unknown service '$target' (known: ${!SERVICES[*]})"
+    [[ "$ref" =~ ^([0-9a-f]{40}|latest)$ ]] || die "ref must be a full git sha or 'latest'"
+    read -r var port path <<<"${SERVICES[$target]}"
+    profile=()
+    [[ "$target" == tradehub ]] && profile=(--profile tradehub)
+
+    prev=$(grep "^$var=" "$ENV_FILE" | cut -d= -f2- || true)
+    prev=${prev:-latest}
+    echo "deploy: $target $prev -> $ref"
+
+    set_tag "$var" "$ref"
+    if ! compose "${profile[@]}" pull -q "$target"; then
+      set_tag "$var" "$prev"
+      die "pull failed for $target:$ref, kept $prev"
+    fi
+    compose "${profile[@]}" up -d --no-deps "$target"
+
+    if healthy "$target" "$port" "$path"; then
+      echo "deploy: $target healthy on $ref"
+      docker image prune -f >/dev/null
+    else
+      echo "deploy: $target failed its health check, rolling back to $prev" >&2
+      compose "${profile[@]}" logs --tail 50 "$target" >&2 || true
+      set_tag "$var" "$prev"
+      compose "${profile[@]}" up -d --no-deps "$target"
+      exit 1
+    fi
+    ;;
+
+  hub)
+    [[ "$target" =~ ^[0-9a-f]{40}$ ]] || die "hub needs a full git sha"
+    # Deploy to a fresh checkout path, then flip the symlink Caddy serves.
+    #
+    # Why not checkout in place: an earlier deploy ran as root and left
+    # root-owned files inside sites/hub. The deploy user has no sudo, so `git
+    # checkout --force` cannot unlink them AND `rm -rf` cannot remove them
+    # either -- the checkout was permanently wedged, and the deploy silently
+    # served the old index.html while reporting success. That is what the
+    # sha assertion below now catches.
+    #
+    # A versioned directory sidesteps the ownership problem entirely: the
+    # checkout is always a fresh directory this user created, and switching is a
+    # symlink the deploy user does own. Old versions are pruned afterwards.
+    release="sites/hub-${target:0:12}"
+    if [[ ! -d "$release/.git" ]]; then
+      rm -rf "$release" 2>/dev/null || true
+      git clone --quiet "$HUB_REPO" "$release"
+    fi
+    git -C "$release" fetch --quiet origin "$target"
+    git -C "$release" checkout --quiet --force --detach "$target" \
+      || die "hub checkout failed for $target in a freshly cloned $release"
+    # Never report a deploy that did not land. `git rev-parse HEAD` is the only
+    # thing served, so that is what gets checked -- not the exit status of the
+    # command we just ran. (Plain variable, not `local`: this case branch is at
+    # the top level of the script, and `local` outside a function is a runtime
+    # error in bash.)
+    landed=$(git -C "$release" rev-parse HEAD)
+    [[ "$landed" == "$target" ]] || die "hub deploy FAILED: wanted $target, $release is at $landed"
+
+    # Point the served path at this release. Caddy's mount is
+    # /opt/stack/sites -> /srv, and it serves `root * /srv/hub`, so sites/hub
+    # has to resolve to the release directory. A symlink is used rather than
+    # writing a new Caddyfile because a bad root would take every site on the
+    # box down, not just the hub.
+    #
+    # If sites/hub is still a real directory, `ln -sfn` nests the link INSIDE it
+    # instead of replacing it, and the served content silently stays stale --
+    # which is the exact failure this rewrite exists to end. So: the link goes
+    # to a temporary name and is then moved over the top, which is atomic and
+    # replaces a directory with a symlink. A real directory here can only be
+    # the one left by an earlier root-owned deploy, so if it cannot be removed,
+    # that is reported loudly rather than worked around.
+    if [[ -d sites/hub && ! -L sites/hub ]]; then
+      rm -rf sites/hub \
+        || die "hub deploy FAILED: sites/hub is a real directory with root-owned files in it and cannot be removed. Run: sudo rm -rf /opt/stack/sites/hub  (the release at $release is ready to serve)"
+    fi
+    ln -sfn "$(basename "$release")" "sites/.hub-link.$$"
+    mv -Tf "sites/.hub-link.$$" sites/hub
+    # Prove the flip actually resolves, before reporting success -- a symlink
+    # that points at a directory Caddy cannot read is the same class of lie
+    # this whole function exists to stop.
+    [[ -f sites/hub/index.html ]] || die "hub deploy FAILED: sites/hub does not resolve to $release/index.html"
+
+    # Keep the previous release as a rollback target, and drop anything older.
+    # Same retention as bin/prune-images: one step back, no more.
+    for old in sites/hub-*; do
+      [[ -d "$old" && "$old" != "$release" ]] || continue
+      rm -rf "$old" 2>/dev/null || echo "deploy: could not remove old release $old (owned by another user?)" >&2
+    done
+
+    echo "deploy: hub at $landed (served via sites/hub -> $(basename "$release"))"
+    ;;
+
+  status)
+    compose ps
+    ;;
+
+  *)
+    die "usage: deploy <service> <sha|latest> | hub <sha> | status"
+    ;;
+esac

@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Keep a small, deliberate set of images on the box, and make everything else
+# recoverable without holding it on disk.
+#
+# The disk is 38 GB and each of these images is ~2 GB, because every service
+# bundles its own Python plus an ML stack (xgboost, pandas, scipy). Seven
+# services plus tradehub is ~16 GB before a single old version is kept. On
+# 2026-09-27 tradehub alone had 13 retained images and filled the disk to 99%,
+# which is what stopped the NBA image from being pulled.
+#
+# So: images are a CACHE, not the system of record. Every one of them is in
+# ghcr.io, tagged by commit sha, and any of them can be re-pulled on demand.
+# That is what makes it safe to keep only one local rollback target.
+#
+#   bin/prune-images            # apply the policy
+#   bin/prune-images --dry-run  # print what would go, touch nothing
+#
+# Recovering anything we removed:
+#
+#   bin/rollback <service> <sha>
+#
+# which is just `deploy <service> <sha>` -- the image comes back from ghcr on
+# the pull. Slower than a local image, and it needs network, but nothing is
+# lost. The shas we would have removed are printed by --dry-run, and every one
+# of them is a commit in the service's repo, so they are also findable from
+# git history rather than only from this list.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+DRY_RUN=0
+[ "${1:-}" = "--dry-run" ] && DRY_RUN=1
+
+# service directory -> ghcr repository name
+declare -A REPOS=(
+  [pl]=pl-predictor
+  [f1]=f1-predictor
+  [nfl]=nfl-predictor
+  [cfb]=cfb-predictor
+  [nba]=nba-predictor-deploy
+  [sports]=sports-predictor
+  [tradehub]=tradehub
+)
+
+# How many NON-RUNNING images to keep per service. One is enough: it is the
+# thing you roll back to in the ninety seconds after a bad deploy, and
+# anything older is a re-pull away. Raise it only if you have the disk.
+KEEP=1
+
+running_tags() {
+  docker ps --format '{{.Image}}' | sed -n "s|.*kevocado/$1:||p" | sort -u
+}
+
+removed_any=0
+for svc in "${!REPOS[@]}"; do
+  repo="${REPOS[$svc]}"
+  running="$(running_tags "$repo")"
+
+  # Newest first, excluding anything currently running: those are the rollback
+  # candidates, and the running ones are never candidates for removal.
+  # `|| true` is load-bearing: grep exits 1 when every line is filtered out
+  # (i.e. nothing but the running image is present), and under `set -o
+  # pipefail` that non-zero status would abort the whole script.
+  candidates=$(docker images "ghcr.io/kevocado/$repo" --format '{{.CreatedAt}}|{{.Tag}}' \
+    | grep -vE "\|(${running//$/|})$" \
+    | sort -r \
+    | cut -d'|' -f2 || true)
+
+  keep_head=$(printf '%s\n' "$candidates" | head -n "$KEEP" | tr '\n' ' ')
+  drop=$(printf '%s\n' "$candidates" | tail -n +$((KEEP + 1)))
+
+  [ -z "$drop" ] && continue
+
+  echo "$svc ($repo): keeping ${keep_head:-<none besides running>}"
+  for tag in $drop; do
+    removed_any=1
+    if [ "$DRY_RUN" = 1 ]; then
+      echo "    would remove $tag   -> recoverable: bin/rollback $svc $tag"
+    else
+      docker rmi -f "ghcr.io/kevocado/$repo:$tag" >/dev/null 2>&1 \
+        && echo "    removed $tag   -> recoverable: bin/rollback $svc $tag" \
+        || echo "    FAILED to remove $tag"
+    fi
+  done
+done
+
+if [ "$removed_any" = 0 ]; then
+  echo "Nothing to prune."
+fi
+df -h / | tail -1

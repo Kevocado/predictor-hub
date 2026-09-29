@@ -1,0 +1,190 @@
+# One VPS, every public site. Caddy is the only container with published
+# ports; everything else is reachable only on the internal compose network.
+#
+# Image tags come from .env (PL_TAG, NFL_TAG, ...). bin/deploy rewrites the
+# one tag it is deploying, so a reboot or a manual `docker compose up -d`
+# always brings back exactly what was last deployed, never a surprise :latest.
+#
+# Memory limits are ceilings, not reservations. The five predictors idle at
+# roughly 150-300 MB each; the limits exist so one runaway process gets
+# OOM-killed and restarted instead of taking the whole box down.
+
+name: stack
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-app: &app
+  restart: unless-stopped
+  logging: *logging
+  mem_limit: 900m
+  networks: [web]
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 256m
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./sites:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [web]
+
+  pl:
+    <<: *app
+    image: ghcr.io/kevocado/pl-predictor:${PL_TAG:-latest}
+    environment:
+      PUBLIC_MODE: "true"
+      GITHUB_ACTIONS_TOKEN: ${PL_GITHUB_ACTIONS_TOKEN:-}
+
+  f1:
+    <<: *app
+    image: ghcr.io/kevocado/f1-predictor:${F1_TAG:-latest}
+    environment:
+      PUBLIC_MODE: "true"
+
+  nba:
+    <<: *app
+    image: ghcr.io/kevocado/nba-predictor-deploy:${NBA_TAG:-latest}
+    environment:
+      TRACKING_DB_PATH: /app/data/tracking/tracking.db
+      ODDS_API_KEY: ${ODDS_API_KEY:-}
+      SPORTSBOOK_API_KEY: ${SPORTSBOOK_API_KEY:-}
+    volumes:
+      # Was the nba-tracking Azure Files share (see bin/pull-azure-volumes.sh).
+      - ./volumes/nba-tracking:/app/data/tracking
+
+  nfl:
+    <<: *app
+    image: ghcr.io/kevocado/nfl-predictor:${NFL_TAG:-latest}
+    environment:
+      PUBLIC_MODE: "true"
+      ODDS_API_KEY: ${ODDS_API_KEY:-}
+    volumes:
+      # Was the nfl-cache Azure Files share.
+      - ./volumes/nfl-cache:/app/data/cache
+
+  cfb:
+    <<: *app
+    image: ghcr.io/kevocado/cfb-predictor:${CFB_TAG:-latest}
+    environment:
+      PUBLIC_MODE: "true"
+      CFBD_API_KEY: ${CFBD_API_KEY:-}
+      ODDS_API_KEY: ${ODDS_API_KEY:-}
+      SPORTSBOOK_API_KEY: ${SPORTSBOOK_API_KEY:-}
+      # Lets the boot-time cache seeder (src/cfb_predictor/startup_seed.py) fill a
+      # PARTIALLY populated team-stats cache. Default false: a boot task never
+      # re-bills metered CFBD calls unattended. Set true deliberately to finish a
+      # backfill, then remove it so a restart cannot re-bill.
+      # NOTE: this must be injected per-process (docker compose exec -e ...) or set
+      # here; putting it in .env does nothing, because only vars listed under
+      # `environment:` are forwarded to the container.
+      CFB_SEED_RESUME_PARTIAL: ${CFB_SEED_RESUME_PARTIAL:-false}
+    volumes:
+      # Was the cfb-cache Azure Files share.
+      - ./volumes/cfb-cache:/app/data/cache
+
+  # NFL + CFB frontend (static files served by its own tiny Caddy). The VPS
+  # Caddy routes sports.$DOMAIN/nfl/* and /cfb/* to the two APIs, so the
+  # frontend calls them same-origin.
+  sports:
+    <<: *app
+    image: ghcr.io/kevocado/sports-predictor:${SPORTS_TAG:-latest}
+    mem_limit: 128m
+    environment:
+      # The image's own Caddy proxies /api/nfl, /api/cfb and /api/explain; its
+      # defaults (nfl-predictor, cfb-predictor) are not this stack's names.
+      NFL_API_UPSTREAM: nfl:8001
+      CFB_API_UPSTREAM: cfb:8003
+      EXPLAINER_UPSTREAM: predictor-explainer:8090
+
+  # The plain-English match explainer. One service for all five sports: it calls
+  # each sport API's /facts/{id} and writes the summary, so no site needs the
+  # OpenRouter key -- it lives here and nowhere else.
+  #
+  # The key is optional. With EXPLAINER_ENABLED unset or no key, the service
+  # answers from its own template and the panel's footer says the summary was
+  # "written from the model's numbers" rather than claiming a model wrote it.
+  # That is the right way to bring this up: the panel is useful before it is
+  # clever, and the kill switch is EXPLAINER_ENABLED=false.
+  #
+  # SPORT_API_* point at the internal compose network, so the service reads the
+  # same public-mode snapshots the sites do.
+  #
+  # NOT STARTED FROM HERE. The live explainer is the standalone container that
+  # predictor-hub/scripts/deploy-explainer.sh runs (same name, same network)
+  # with its own root-only /etc/predictor/explainer.env, so the key it uses is
+  # the one Kevin typed at `golive`, never this file's shared OPENROUTER_API_KEY.
+  # The profile keeps a plain `docker compose up -d` from starting a second
+  # copy that would silently go live on the trade hub's key.
+  predictor-explainer:
+    <<: *app
+    profiles: [explainer-compose]
+    build:
+      context: ../predictor-hub/services/explainer
+    image: predictor-explainer:${EXPLAINER_TAG:-local}
+    mem_limit: 384m
+    environment:
+      EXPLAINER_ENABLED: ${EXPLAINER_ENABLED:-false}
+      # The service's own setting name. This is the only place the key exists:
+      # it is not in any site bundle, GitHub secret for a site, or log line.
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      EXPLAINER_DAILY_CAP: ${EXPLAINER_DAILY_CAP:-900}
+      SPORT_API_PL: http://pl:8000
+      SPORT_API_F1: http://f1:8000
+      SPORT_API_NFL: http://nfl:8001
+      SPORT_API_CFB: http://cfb:8003
+      SPORT_API_NBA: http://nba:8000
+    volumes:
+      # The SQLite cache and the daily request ledger. Losing it costs a day of
+      # pre-generation and a day's budget, nothing more.
+      - ./volumes/explainer:/data
+
+  # Algo Trade Hub API + War Room. Off until rollout step 5 (VPS variant)
+  # lands and the image exists: start it with
+  #   docker compose --profile tradehub up -d tradehub
+  # The hourly scan/settle jobs run this same image via systemd timers
+  # (systemd/tradehub-*.timer -> bin/tradehub-job).
+  tradehub:
+    <<: *app
+    profiles: [tradehub]
+    image: ghcr.io/kevocado/tradehub:${TRADEHUB_TAG:-latest}
+    mem_limit: 700m
+    environment:
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      # Sports edges (rollout step 7b). Empty = the code's built-in default.
+      # BASE_URL: the predictor API, reached over the internal compose network.
+      # SITE_URL: the public page the War Room links to.
+      SPORTS_NFL_BASE_URL: ${SPORTS_NFL_BASE_URL:-}
+      SPORTS_CFB_BASE_URL: ${SPORTS_CFB_BASE_URL:-}
+      SPORTS_NFL_SITE_URL: ${SPORTS_NFL_SITE_URL:-}
+      SPORTS_CFB_SITE_URL: ${SPORTS_CFB_SITE_URL:-}
+      # LLM reviewer; unset = no reviews, edges are still written (unreviewed).
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      # Keyed FRED API for ALFRED vintages (labor nowcast / Jobs Scorecard): the keyless
+      # alfred/fred web hosts drop connections from this server; api.stlouisfed.org works.
+      FRED_API_KEY: ${FRED_API_KEY:-}
+      # Past ALFRED/FRED vintages never change: keep them across the throwaway job containers.
+      TRADEHUB_ALFRED_CACHE: /cache/alfred
+    volumes:
+      - ./volumes/tradehub-cache:/cache
+
+networks:
+  web:
+
+volumes:
+  caddy_data:
+  caddy_config:
