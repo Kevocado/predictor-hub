@@ -7,7 +7,7 @@
 # from the VPS: `/opt/stack/sites/hub` is a symlink to a versioned checkout, and
 # Caddy serves `root * /srv/hub`. So `.superpowers/sdd/...` was reachable at
 # https://<hub>/.superpowers/... with HTTP 200 — internal review notes, naming
-# absolute local paths such as /Users/sigey/Documents/Projects.nosync/..., in a
+# absolute paths from a developer workstation, in a
 # public web root.
 #
 # The general rule, which the deploy script's own comments already state: never
