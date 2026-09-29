@@ -198,7 +198,7 @@ function buildRows(sport: string, state: FlowState, bundle: any): Row[] {
 export function FixtureFlow({ sport, state, bundle }: FixtureFlowProps) {
   const rows = buildRows(sport, state, bundle);
   return (
-    <main className="flex flex-col gap-2" data-testid="fixture-flow">
+    <div className="flex flex-col gap-2" data-testid="fixture-flow">
       {rows.map((row, i) =>
         row.heading ? (
           <h4 key={i} className="font-pr-display text-lg font-semibold text-pr-text">
@@ -210,6 +210,6 @@ export function FixtureFlow({ sport, state, bundle }: FixtureFlowProps) {
           </p>
         ),
       )}
-    </main>
+    </div>
   );
 }

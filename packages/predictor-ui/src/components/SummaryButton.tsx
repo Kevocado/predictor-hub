@@ -57,9 +57,18 @@ export function SummaryButton({
   // Held in a ref so an unmount mid-request clears the timer rather than
   // rejecting into a component that is gone.
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Whether this button is still on the page. The timer was cleared on unmount
+  // and the comment above said that was enough; it is not. A cleared timer
+  // stops the BUDGET rejecting, but `request()`'s own promise is still pending
+  // and still resolves — calling `onSummary`/`onUnavailable`/`setLoading` on a
+  // component that no longer exists, which in React 19 is a warning at best and
+  // a state update on an unmounted tree at worst. The reader's race is real:
+  // they press the button and close the dialog.
+  const mounted = useRef(true);
 
   useEffect(
     () => () => {
+      mounted.current = false;
       if (timer.current) clearTimeout(timer.current);
     },
     [],
@@ -71,20 +80,27 @@ export function SummaryButton({
     const budget = new Promise<never>((_, reject) => {
       timer.current = setTimeout(() => reject(new Error("The summary took too long.")), budgetMs);
     });
-    Promise.race([request(), budget])
+    // `Promise.resolve().then(request)` rather than `request()` bare: a request
+    // that throws SYNCHRONOUSLY (a bad URL, a missing token read at call time)
+    // used to escape before the race was ever built, so no `.catch` saw it, the
+    // button stayed disabled forever, and the page showed a dead control. One
+    // tick of deferral moves the throw inside the chain.
+    Promise.race([Promise.resolve().then(request), budget])
       .then((value) => {
+        if (!mounted.current) return;
         if (isSummary(value)) onSummary(value);
         else onUnavailable();
       })
       .catch(() => {
         // A proxy 502, a dead container, a timeout — all unavailable. The fixed
         // upstream message is never shown to a reader.
+        if (!mounted.current) return;
         onUnavailable();
       })
       .finally(() => {
         if (timer.current) clearTimeout(timer.current);
         timer.current = null;
-        setLoading(false);
+        if (mounted.current) setLoading(false);
       });
   };
 
