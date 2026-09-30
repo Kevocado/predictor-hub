@@ -7,6 +7,8 @@
 #
 # Optional overrides: VPS=user@host  NET=<docker network>  NFL= CFB= PL= NBA= F1=  (host:port of each sport API)
 # The OpenRouter key travels over ssh stdin only: never argv, a repo, a log, or shell history.
+# setup and golive wait up to 30s for the explainer to answer /status and exit non-zero with
+# its container log if it never does. A deploy that prints "healthy:" is a deploy that booted.
 set -euo pipefail
 VPS=${VPS:-ubuntu@40.160.91.131}
 MODE=${1:-setup}
@@ -28,6 +30,40 @@ NET=${NET:-$(docker inspect -f "{{range \$k, \$v := .NetworkSettings.Networks}}{
 [ -n "$NET" ] || { echo "Could not detect the docker network; rerun with NET=<name> (see: docker network ls)"; exit 1; }
 echo "network=$NET  NFL=$NFL CFB=$CFB PL=$PL NBA=$NBA F1=$F1"
 incurl() { docker run --rm --network "$NET" curlimages/curl -s --max-time 30 "$@"; }
+# incurl with a short per-attempt timeout, for the poll below. -f is the point:
+# a 5xx must not read as healthy. The golive block carries its own copy of
+# probe/explainer_health, because that block is a separate script; change both.
+#
+# Two traps in this block, both paid for. A heredoc interpolates a variable
+# verbatim, so what is written here is what the remote shell reads: escaping a $
+# to make it expand over there leaves the backslash in place, and \$( is a syntax
+# error on arrival. (The \$p in port_of is the exception, and only because the
+# double quotes on the far side consume it.) And the block is inside single
+# quotes, so one apostrophe in a comment ends the string and the rest runs as code.
+probe() { docker run --rm --network "$NET" curlimages/curl -sfS --max-time 5 "$@"; }
+# Is the explainer actually serving? The app defines exactly two routes
+# (explainer/app.py): /explain/{sport}/{id} and /status. There is no /health and
+# no /ready -- both return 404 -- so /status is the health endpoint, and it can
+# only answer after the lifespan has run: a 200 there means the app booted, not
+# merely that the container exists.
+#
+# This replaces "sleep 6; print whatever came back", which printed an empty
+# "status: " for a container still booting or crash-looping and then reported
+# success. 30 seconds of patience, then it fails loudly with the log.
+explainer_health() {
+  local deadline=$((SECONDS + 30)) body
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if body=$(probe http://predictor-explainer:8090/status 2>/dev/null) && [ -n "$body" ]; then
+      echo "healthy: $body"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "DEPLOY FAILED: http://predictor-explainer:8090/status did not answer 200 within 30s of the container starting." >&2
+  echo "--- last 30 lines of predictor-explainer ---" >&2
+  docker logs --tail 30 predictor-explainer >&2 || true
+  return 1
+}
 '
 
 case "$MODE" in
@@ -59,7 +95,7 @@ ENV
 docker rm -f predictor-explainer >/dev/null 2>&1 || true
 docker run -d --name predictor-explainer --restart unless-stopped --network "\$NET" \\
   -v explainer-data:/data --env-file /etc/predictor/explainer.env predictor-explainer >/dev/null
-sleep 6
+explainer_health || exit 1
 echo "status: \$(incurl http://predictor-explainer:8090/status)"
 for pair in "nfl \$NFL" "cfb \$CFB" "pl \$PL" "nba \$NBA" "f1 \$F1"; do
   set -- \$pair
@@ -100,9 +136,26 @@ $S sed -i '/^OPENROUTER_API_KEY=/d;s/^EXPLAINER_ENABLED=.*/EXPLAINER_ENABLED=tru
 { echo "OPENROUTER_API_KEY=$KEY"; [ -n "$M1" ] && echo "EXPLAINER_MODEL=$M1"; [ -n "$M2" ] && echo "EXPLAINER_FALLBACK_MODEL=$M2"; true; } | $S tee -a "$F" >/dev/null
 $S chmod 600 "$F"
 docker rm -f predictor-explainer >/dev/null
+probe() { docker run --rm --network "$NET" curlimages/curl -sfS --max-time 5 "$@"; }
+# Copy of the explainer_health in remote_common; see the note there. /status is
+# the only health-shaped route the app defines (explainer/app.py).
+explainer_health() {
+  local deadline=$((SECONDS + 30)) body
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if body=$(probe http://predictor-explainer:8090/status 2>/dev/null) && [ -n "$body" ]; then
+      echo "healthy: $body"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "DEPLOY FAILED: http://predictor-explainer:8090/status did not answer 200 within 30s of the container starting." >&2
+  echo "--- last 30 lines of predictor-explainer ---" >&2
+  docker logs --tail 30 predictor-explainer >&2 || true
+  return 1
+}
 docker run -d --name predictor-explainer --restart unless-stopped --network "${NET:?network not found}" \
   -v explainer-data:/data --env-file "$F" predictor-explainer >/dev/null
-sleep 6
+explainer_health || exit 1
 docker run --rm --network "$NET" curlimages/curl -s http://predictor-explainer:8090/status; echo
 echo "Live: the model writes summaries; pre-generation runs every 3 h. Watch used_today with: status"
 EOF
