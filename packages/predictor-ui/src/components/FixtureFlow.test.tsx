@@ -3,6 +3,12 @@
  *  Pure function of its props.  No useEffect, no fetch, no timer.
  *  Renders the game flow for the given sport and state.
  *
+ *  The pre-game tests below assert ABSENCE: the pick sentence, the win
+ *  probabilities, the pick's timing and the market line are the instant block's,
+ *  as figures, one of them — so a sentence repeating any of them here is the
+ *  same number twice on a page, and the test that would have let it back in is
+ *  gone with it.
+ *
  *  Honour assertions (must bite):
  *  - No line named that is not there (test on rendered strings, not keys).
  *  - No direction marker, no "the market disagrees", no derived percentage.
@@ -210,12 +216,16 @@ describe("FixtureFlow: state-appropriate, honest flow description", () => {
   // ---- Pre-game ----
 
   describe("pre-game", () => {
-    it("PL: says the pick and stops — no line named when no market_line", () => {
+    it("PL: says no pick sentence before the button", () => {
       const { screen } = renderFixtureFlow("pl", "pre-game", preGameBundles.pl);
-      // The flow should name the pick and must not contain a line sentence.
+      // The flow must name the fixture and must not contain a line sentence.
       const flowText = screen.getByTestId("fixture-flow").innerHTML;
       expect(flowText).not.toContain("market line");
       expect(flowText).toContain("Arsenal");
+      // The pick, as a sentence, is the block's. Here it would be the same
+      // figure in two places, which is the defect this phase removes.
+      expect(screen.queryByText(/The model picks/)).toBeNull();
+      expect(screen.queryByText(/Win probabilities/)).toBeNull();
     });
 
     it("Sports: two moneyline segments, no line tile", () => {
@@ -225,6 +235,12 @@ describe("FixtureFlow: state-appropriate, honest flow description", () => {
       expect(flowText).not.toContain("total");
       expect(flowText).toContain("KC");
       expect(flowText).toContain("BAL");
+      // Neither the pick nor the two win probabilities — the block's tiles and
+      // bar carry them, once.
+      expect(screen.queryByText(/The model picks/)).toBeNull();
+      expect(screen.queryByText(/Win probabilities/)).toBeNull();
+      // The market's line, too: it is a tile the site passes, or nothing.
+      expect(screen.queryByText(/The market's line is/)).toBeNull();
     });
 
     it("F1: draws no market-line tile and no split-bar market row", () => {
@@ -233,8 +249,11 @@ describe("FixtureFlow: state-appropriate, honest flow description", () => {
       // F1 has no market_line, so no line tile should appear.
       expect(flowText).not.toContain("market-line");
       expect(flowText).not.toContain("split-bar");
-      // But F1's podium and win probability should be present.
-      expect(flowText).toContain("win probability");
+      // The pick and its win probability are the block's now — as a verdict and
+      // as a figure. F1 has no home/away name either, so the pre-game flow is
+      // empty, which is the point: nothing here repeats the block.
+      expect(screen.queryByText(/The model picks/)).toBeNull();
+      expect(flowText).not.toContain("win probability");
     });
 
     it("NBA thin bundle: flow is legible even with no market_line", () => {
@@ -243,20 +262,24 @@ describe("FixtureFlow: state-appropriate, honest flow description", () => {
       expect(screen.getByTestId("fixture-flow")).not.toBeNull();
     });
 
-    it("F1 rebuilt: the moment is the session, not a kickoff", () => {
+    it("F1 rebuilt: the moment sentence is the block's, not a sentence here", () => {
       const { screen } = renderFixtureFlow("f1", "pre-game", {
         ...preGameBundles.f1,
         pick_timing: "rebuilt",
       });
-      expect(screen.getByTestId("fixture-flow").innerHTML).toContain("after the session started");
+      // The rebuilt disclosure moved to `InstantBlock`, which words it per sport
+      // ("after the session started" for F1) — see InstantBlock.test.tsx.
+      expect(screen.getByTestId("fixture-flow").innerHTML).not.toContain("after the session started");
+      expect(screen.queryByText(/The pick was made/)).toBeNull();
     });
 
-    it("NFL rebuilt: the moment stays the game", () => {
+    it("NFL rebuilt: the moment sentence is the block's, not a sentence here", () => {
       const { screen } = renderFixtureFlow("nfl", "pre-game", {
         ...preGameBundles.sp,
         pick_timing: "rebuilt",
       });
-      expect(screen.getByTestId("fixture-flow").innerHTML).toContain("after the game started");
+      expect(screen.getByTestId("fixture-flow").innerHTML).not.toContain("after the game started");
+      expect(screen.queryByText(/The pick was made/)).toBeNull();
     });
   });
 
