@@ -11,6 +11,31 @@ name: Vendored UI is current
 # the suites run locally; wiring them up is a separate change, and folding it in
 # here would make a red run ambiguous between "the sites are stale" and
 # "something unrelated broke".
+#
+# One decision is computed per run, in the step below, from the event and the
+# PR's own diff. Three cases, and the third is the one that matters:
+#
+#   push to main, or a manual run          ENFORCED. The sites are compared and
+#                                         drift fails, exactly as since #21.
+#   pull_request, no change to             ENFORCED. Same.
+#     packages/predictor-ui
+#   pull_request, changes                  PENDING. The sites are still compared
+#     packages/predictor-ui                   and the drift is still printed and
+#                                            annotated; the run reports them as
+#                                            awaiting the re-sync and exits 0.
+#
+# The third case is a deadlock, not a preference. The sites vendor
+# packages/predictor-ui by copying it from the hub's main, so a PR that changes
+# the package cannot have its sites re-vendor until it merges — while that same
+# PR cannot go green until they do. #52 sat on exactly that: its one job red
+# with `site-sync: FAIL — 4 of 4 sites are behind the hub`, and no way forward
+# except merging, which required the green.
+#
+# Note what is *not* relaxed. Every site is still read on every run, an unreadable
+# one is still a hard failure in every mode, main still enforces the moment the
+# bump lands (that red is correct — it clears when the four site PRs merge), and
+# the step fails closed if it cannot compute the diff at all.
+# tests/site-sync.test.mjs runs the step below for each of the three cases.
 
 on:
   pull_request: {}
@@ -33,9 +58,57 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          # A pull_request event checks out the merge commit at depth 1, so
+          # `origin/<base>` is not there to diff against. The decision below
+          # needs both sides of the diff, so the history has to come with it.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: "24" # fetch and node:test, no build step
+      - name: Decide whether this run enforces
+        id: enforce
+        env:
+          # The event is the whole distinction. `base_ref` is empty on push and
+          # on workflow_dispatch, which is exactly right: neither is a PR whose
+          # sites are queued behind it.
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            # Push to main enforces, always, and it is meant to. The moment a
+            # package bump merges, main IS behind until the four site PRs land,
+            # and that red is the correct signal: the fix is
+            # `node scripts/sync-ui.mjs` on the stale site. It clears itself when
+            # they do. Nothing about this step is allowed to soften that.
+            enforce=1
+            expect_resync=0
+          elif changed="$(git diff --name-only "origin/$BASE_REF...HEAD" -- packages/predictor-ui/ 2>&1)"; then
+            if [ -n "$changed" ]; then
+              # The deadlock, and the only case in which it applies: this PR
+              # changes the package, and the sites vendor it from main, so they
+              # cannot re-vendor it until this merges — while this PR cannot go
+              # green until they do. Reported as pending rather than failed;
+              # enforced the moment it lands on main.
+              echo "This PR changes packages/predictor-ui, which the sites vendor from main:"
+              echo "$changed"
+              echo "They cannot re-vendor it until this merges, so this run reports them as pending."
+              enforce=0
+              expect_resync=1
+            else
+              enforce=1
+              expect_resync=0
+            fi
+          else
+            # Fails closed. If the diff cannot be computed there is no evidence
+            # the package is unchanged, and a check that cannot tell must not
+            # choose leniency.
+            echo "::warning::could not diff origin/$BASE_REF...HEAD ($changed); enforcing rather than assuming the package is unchanged"
+            enforce=1
+            expect_resync=0
+          fi
+          echo "enforce=$enforce" >>"$GITHUB_OUTPUT"
+          echo "expect_resync=$expect_resync" >>"$GITHUB_OUTPUT"
       - name: Compare each site's SYNC.json against the hub's contentVersion
         env:
           # Unset today, and the check does not need it: all six site repos are
@@ -48,8 +121,9 @@ jobs:
           # and re-run — nothing else changes.
           SITE_REPOS_TOKEN: ${{ secrets.SITE_REPOS_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # ENFORCED as of 2026-09-28. It shipped as "0" on purpose: adoption is a
-          # migration, and a check that lands red on main is a check nobody reads.
+          # ENFORCED as of 2026-09-28, and still enforced on main. It shipped as
+          # "0" on purpose: adoption is a migration, and a check that lands red
+          # on main is a check nobody reads.
           #
           # The precondition is met. All four registered sites now read the version
           # the hub is at:
@@ -61,7 +135,15 @@ jobs:
           # nothing a person had written by hand was destroyed to get here.
           #
           # Until this flip it could not catch a site falling behind *after* today.
-          # It can now. If it goes red, the fix is `node scripts/sync-ui.mjs` on the
-          # stale site, not loosening this.
-          ENFORCE_SITE_SYNC: "1"
+          # It can now. If main goes red, the fix is `node scripts/sync-ui.mjs` on
+          # the stale site, not loosening this.
+          #
+          # The value is the step above's decision and nothing else. A PR that
+          # does not change packages/predictor-ui gets "1", and so does every
+          # push to main. Only a package-bumping PR gets "0", and only because
+          # its sites cannot sync a version that is not on main yet — which is
+          # why it also gets SITE_SYNC_EXPECT_RESYNC, so the run reports those
+          # sites as PENDING instead of printing the unrelated migration advice.
+          ENFORCE_SITE_SYNC: ${{ steps.enforce.outputs.enforce }}
+          SITE_SYNC_EXPECT_RESYNC: ${{ steps.enforce.outputs.expect_resync }}
         run: node scripts/check-site-sync.mjs
