@@ -33,47 +33,14 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { DEFAULT_REF, SITES } from "../scripts/check-site-sync.mjs";
+import { SITE_NAMES, discoverSitesRoot, inspectSites, sitesRootReport } from "../scripts/sites-root.mjs";
 import { SRC, shippedFiles } from "../scripts/ui-package.mjs";
 
 const HUB = join(dirname(fileURLToPath(import.meta.url)), "..");
-/** Where the sibling repos live.
- *
- * `SITES_ROOT`, required, and discovered from the hub's own path when unset.
- *
- * The first version hard-coded `/Users/sigey/Documents/Projects.nosync`, which
- * is a workstation path in a test: it works on one machine, silently resolves
- * to nothing on another, and fails there with a message about a missing
- * checkout rather than about the missing setting.
- *
- * Discovery walks UP from the hub looking for a directory that actually
- * contains the sites, because the hub is checked out in two shapes — the plain
- * clone (`<root>/predictor-hub`) and a worktree
- * (`<root>/predictor-hub-worktrees/<branch>`) — and `<root>` is the parent of the
- * former but the GRANDparent of the latter. Inferring from `..` alone is what
- * sent the first attempt to `predictor-hub-worktrees/PL_Predictor`.
- *
- * `SITES_ROOT` overrides both, which is what CI and any other layout uses.
- */
-const SITE_NAMES = ["PL_Predictor", "Sports_Predictor", "NBA_Predictor", "F1_Predictor"];
-
-function discoverSitesRoot() {
-  const fromEnv = process.env.SITES_ROOT;
-  if (fromEnv) return fromEnv;
-  // Up to 5 levels: enough to clear a worktree, shallow enough not to wander
-  // into an unrelated ancestor that happens to hold a directory of that name.
-  let dir = HUB;
-  for (let i = 0; i < 5; i++) {
-    const parent = dirname(dir);
-    if (SITE_NAMES.every((n) => existsSync(join(parent, n, ".git"))
-                         || existsSync(join(parent, n)))) {
-      return parent;
-    }
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return null;
-}
-
+/** Where the sibling repos live: `SITES_ROOT`, else discovered by walking up
+ *  from the hub. Both the rule and the reasons are in scripts/sites-root.mjs —
+ *  which also reports what it found, so a failure here says which checkout is
+ *  missing and where it looked rather than naming the repo and stopping. */
 const DISCOVERED = discoverSitesRoot();
 
 /** Which ref of each site to judge. `main` is the answer for production —
@@ -95,26 +62,28 @@ const shipped = () =>
  * mangled — the call returns a branch-name string where a tree was expected.
  * `ls-tree` has no such rewriting, needs no token, and cannot be rate-limited.
  */
+/** The report, built once. Every failure below carries it.
+ *
+ * It answers, in one place, the three questions that were being answered
+ * wrongly: which checkout is missing, where it looked for it, and where the
+ * working tree sits against the `origin/main` the checks actually read. */
+const report = sitesRootReport({ root: DISCOVERED, hub: HUB });
+
 const listingFor = (site) => {
+  // Absence stays fatal: a check that could not run must not look like one that
+  // ran. What is fixed is the message.
   if (!DISCOVERED) {
     assert.fail(
-      `could not find the sibling site checkouts. Set SITES_ROOT to the directory ` +
-        `holding ${SITE_NAMES.join(", ")} — the first version of this test hard-coded ` +
-        `one machine's path, so it worked there and failed everywhere else with a ` +
-        `message about a missing checkout rather than about the missing setting.`,
+      `could not find the sibling site checkouts, and SITES_ROOT is unset. ${report}. ` +
+        `Set SITES_ROOT to the directory holding them — this test used to hard-code one ` +
+        `machine's path, so it worked there and failed everywhere else with a message ` +
+        `about a missing checkout rather than about the missing setting.`,
     );
   }
   const repo = join(DISCOVERED, basename(site.repo));
   if (!existsSync(join(repo, ".git"))) {
-    // A SET-but-wrong SITES_ROOT is a different mistake from no setting, and it
-    // gets its own message: "the directory you named has no such checkout" reads
-    // as a typo in the path, while the generic text below reads as a broken repo.
     assert.fail(
-      process.env.SITES_ROOT
-        ? `SITES_ROOT is set to ${DISCOVERED} but it has no checkout of ` +
-          `${basename(site.repo)} (looked for ${repo}). The setting is wrong, not the repo.`
-        : `no local checkout for ${site.repo} at ${repo}, so its components were not ` +
-          `checked. This is a skip-shaped hole, not a pass.`,
+      `${site.repo} could not be checked. This is a skip-shaped hole, not a pass.\n\n${report}`,
     );
   }
   const out = execFileSync("git", ["-C", repo, "ls-tree", "-r", "--name-only", `origin/${ref()}`], {
@@ -123,6 +92,47 @@ const listingFor = (site) => {
   });
   return new Set(out.split("\n").filter(Boolean));
 };
+
+test("every site checkout is present, and says where it was looked for", () => {
+  // Ahead of the component check, and separate from it, because "can this run at
+  // all" and "do the sites have the components" are different questions.
+  //
+  // Folded into the loop below, an absent checkout was only discovered when the
+  // loop happened to reach that site — so a site that failed the component
+  // comparison first masked every absence behind it, and the report naming the
+  // missing checkouts never appeared at all. Checked first, it always appears.
+  const { rows, missing } = inspectSites(DISCOVERED ?? "", SITES.map((s) => basename(s.repo)));
+
+  assert.deepEqual(
+    missing.map((r) => `${r.name} at ${r.path}`),
+    [],
+    `these site checkouts are not usable, so no site's components were checked — this is a ` +
+      `skip-shaped hole, not a pass:\n\n${report}`,
+  );
+  // Present, but say it. A checkout the reviewer reads may not be the ref the
+  // check reads, and that difference is the trap this whole file exists for.
+  for (const r of rows) {
+    assert.ok(r.isRepo, `${r.name} at ${r.path} is not a git checkout:\n\n${report}`);
+  }
+});
+
+test("a checkout behind origin/main is reported, so a stale tree is never read as a code defect", () => {
+  // Does NOT fail on staleness — the check reads `origin/main`, which is
+  // correct whatever the working tree holds, and failing here would make every
+  // developer with a feature branch unable to run the suite. It reports, because
+  // the trap this replaces is reading the working tree, believing it describes
+  // what the check saw, and concluding the code is wrong when it is not.
+  for (const r of inspectSites(DISCOVERED ?? "", SITE_NAMES).rows) {
+    if (r.diverged === true) {
+      console.error(
+        `note: ${r.name} at ${r.path} is at HEAD ${r.head}, not origin/main ${r.originMain}. ` +
+          `This check reads origin/main, so its verdict is unaffected — but "the code says X" ` +
+          `from the working tree does not describe what was checked.`,
+      );
+    }
+  }
+  assert.ok(true, "this reports; it does not fail on a stale checkout");
+});
 
 test("every registered site vendors every shipped component", () => {
   const want = shipped();
