@@ -21,6 +21,20 @@ _BANNED_RE = re.compile(r"\b(" + "|".join(re.escape(w) for w in BANNED) + r")s?\
 _NUM_RE = re.compile(r"[-−+]?\d+(?:,\d{3})*(?:\.\d+)?%?")
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 REBUILT_WORDS = ("rebuilt", "after kickoff", "after the start", "after the session")
+#: What the text may say instead when the facts refuse to place a pick in time.
+#: The rule is TIMING-SPECIFIC: the phrase must appear in a clause about the pick's
+#: timing (pick, timing, made before, session, kickoff, tip-off), not as a
+#: standalone word like "unknown" which could refer to weather, lineup, etc.
+#: This prevents "The weather is unknown" from satisfying the disclosure rule.
+UNVERIFIED_PHRASES = (
+    "not verified", "unverified", "not established",
+    "cannot be confirmed", "could not be confirmed",
+    "no session time", "no kickoff time", "no tip-off time",
+    "timing is not", "timing not", "timing could not",
+    "cannot be shown as made before",
+    "could not be shown as made before",
+    "schedule did not provide",
+)
 
 #: Word caps for the v2 body. A verdict line inherits v1's 18-word headline cap;
 #: a factor headline and sentence are new, and are tighter because a factor is
@@ -569,6 +583,22 @@ def validate(output: dict, facts_json: str, news_json: str) -> list[str]:
 
     if facts.get("pick_timing") == "rebuilt" and not any(w in body.lower() for w in REBUILT_WORDS):
         problems.append("pick is rebuilt but the text doesn't say it was rebuilt after the start")
+    if facts.get("pick_timing") == "unknown":
+        # Timing-specific check: the disclosure must appear in a clause about the
+        # pick's timing. A bare "unknown" anywhere in the text is not enough.
+        body_lower = body.lower()
+        timing_context_re = re.compile(
+            r"(?:pick|timing|made before|session|kickoff|tip[- ]?off|start|schedule).*("
+            + "|".join(re.escape(p) for p in UNVERIFIED_PHRASES)
+            + r")|("
+            + "|".join(re.escape(p) for p in UNVERIFIED_PHRASES)
+            + r").*(?:pick|timing|made before|session|kickoff|tip[- ]?off|start|schedule)",
+            re.I
+        )
+        if not timing_context_re.search(body_lower):
+            problems.append(
+                "pick timing is not established but the text does not say so"
+            )
     problems.extend(_verdict_problems(facts, body))
     problems.extend(_market_problems(facts, body))
     return problems
