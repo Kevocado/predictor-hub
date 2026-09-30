@@ -25,15 +25,27 @@ no redesign of anything that is not listed in §4.
 
 ## 2. Measured starting point (corrected)
 
+Measured at (origin/main SHAs, fetched 2026-09-30): predictor-hub
+9054c6a, PL_Predictor 03040e3, F1_Predictor 07305b0, NBA_Predictor
+22b6857, Sports_Predictor 8bdb307, NFL_Predictor 6beeb98,
+CFB_Predictor c6bb22a. Every claim below names the file it was read
+from; the first draft of this section cited stale checkouts for NBA
+and was corrected on review — that is why the SHAs are recorded.
+
 The reviewer's live findings stand, with three corrections from code:
 
-1. NBA has **no explainer at all** — no button, no panel, no `/facts`
-   second source. Its tiles are instant because there is nothing else.
-   "Like NBA does now" is true of the tiles; NBA still needs the verdict
-   line, the timing machinery, and the whole AI side, which is new work.
-2. NBA's player list is a **single mixed list**, not a team split. The
-   claim "NBA and PL split by team" is half wrong: PL splits (two-column),
-   NBA does not. §5 corrects this.
+1. NBA **has an explainer**: NBA#14 (ec338c0, merged 09-29) mounts
+   `FixtureExplainer` with the AI button in `GameDetailModal.tsx:304`,
+   passing `extras={{ tiles, segments }}` only. What NBA truly lacks is
+   the verdict line, the timing badge (it already computes
+   `pick_timing: rebuilt` for its flow bundle at `GameDetailModal:177`
+   and words it in `PregamePick`, but renders no StatusBadge), and the
+   record/players extras. "Like NBA does now" holds for instant tiles
+   only.
+2. NBA's player box score **is team-split** (`PlayerBoxScore.tsx:89:
+   "split down the middle by team", via `splitByTeam`). Its gap is the
+   Away/Both/Home filter, which does not exist there either. §5
+   corrects this: phase 0 is Sports only.
 3. The 68-vs-72 shape is structural: site tiles come from today's model
    response (`GameSummary`/`FixtureDetail`), AI prose numbers come from
    the explainer's `/facts` (frozen pre-kickoff card on started fixtures).
@@ -51,13 +63,14 @@ split bar → record strip. All from the site bundle via `panelFacts`
 | NFL/CFB | rebuilt/pre-kickoff/nopick badge + verdict + 3 tiles + 2-way bar + record | everything currently behind the button moves out of it |
 | PL | same + 3-way bar + market row when implied covers | same move; record/players extras get passed for the first time |
 | F1 | session/unverified badge + pick + win prob + record; no tiles, no market bar (unchanged reduced rule) | badge + record become instant; table and ExplainRibbon untouched |
-| NBA | verdict + tiles + bar + record; no badge until NBA tracks pre-tip picks | verdict line + record are new; tiles stay where they are |
+| NBA | verdict + record added to the existing instant tiles; timing badge once NBA promotes its flow `pick_timing` to the panel | tiles stay; PregamePick prose is replaced by the badge, not repeated beside it |
 
-One source of truth per number: every rendered figure comes from the
-site bundle. The AI insight (part B) is **forbidden from stating any
-figure the block already renders** — enforced by the validator (§B).
-The 68-vs-72 contradiction is fixed at its root: there is no second
-number on the page to contradict the first.
+The instant block must look complete before the AI button is pressed:
+badge → verdict → tiles → bar → record, then the button with a promise
+line beneath it naming what the AI adds — "AI read: model vs line,
+trends, who's out" — so the block reads as the finished facts, not as
+a panel waiting to load. The promise line is static site copy, not a
+model output, and it never mentions a figure.
 
 De-duplication (what is deleted, per surface):
 
@@ -97,14 +110,18 @@ Interpretation menu per sport (only where the facts carry it):
 
 Name: "Model's top calls". Never "lock", "guaranteed", "best bet"
 (validator banned-word list grows accordingly). Ranked by the model's
-own number. Every row carries provenance:
+own number within top-3 lists per category (PL goals | shots; NFL/CFB
+TD | passing | rushing | receiving yards; NBA points | rebounds |
+assists | threes). Every row carries a visual, built from the real
+components: probability rows get a share bar, projection rows get a key
+number with its ± margin. Every row carries provenance:
 
 | sport | row = market + model number | record shown |
 |---|---|---|
 | PL | anytime goal/assist/G+A prob (Platt-calibrated direct arm); shots/SOT expectations | scorer hit-rate + Brier where ledger exists; shots rows say "no graded record yet" |
 | NFL | anytime-TD prob (uncalibrated) + yardage projections | TD bucket hit-rate (50–60/60–70/70%+) as calibration context; yardage MAE as ± context |
 | CFB | same as NFL minus targets (structurally absent) | same ledgers; every row flagged "no availability check" (no injury/depth feed) |
-| NBA | points/rebounds/assists/threes projections | "no graded record yet" until the aggregate endpoint lands (phase 3 prerequisite); no probabilities shown because the model outputs none |
+| NBA | points/rebounds/assists/threes projections, labelled "projection, not a probability" with ± in-sample MAE | shipped in phase 2 as projections (decision 6 reversed); the aggregate endpoint + probability layer is a later upgrade, not a gate |
 | F1 | p_win/podium/points/DNF + quali markets per driver | per-market Brier/hit-rate/avgProb; no H2H or fastest-lap (the model cannot price them); no driver-news column (session state only) |
 
 What "confident" means is stated per row: a probability for PL
@@ -132,13 +149,13 @@ says nothing at all (no "no news" row).
 
 ### E. Box-score team split (preceding small PR)
 
-Reviewer's preference stands: ship this first, as its own PR. Scope:
+Reviewer's preference stands: ship this first, as its own PR
+(Sports PR #20, in review). Scope:
 
 - Sports: the planned Away/Both/Home filter (default Both), grouped by
   team then position, team totals once — exactly plan-a A4, reaffirmed,
   not rewritten.
-- NBA: adopt team grouping (it has none today) reusing BoxScore groups;
-  no filter until the grouping proves out.
+- NBA: already team-split; no work here.
 - PL: already split; no change. F1: N/A.
 
 ### F. Honesty (unchanged, binding on all phases)
@@ -162,11 +179,15 @@ news adds a second freshness trigger bounded exactly like team news
 
 ### H. Phases (in this order)
 
-0. Box-score split small PR (§E).
+0. Box-score split small PR (§E) — Sports only (PR #20, in review).
 1. Instant block + de-duplication (§A) — biggest win, no model cost.
+   The block must look complete before the AI button is pressed, and
+   the button carries a static promise line naming what the AI adds
+   ("AI read: model vs line, trends, who's out") so the facts never
+   read as a panel waiting to load.
    One PR per repo per phase; a parity test per sport asserting the
    block renders from the bundle with the network blocked.
-2. Player picks (§C; NBA aggregation endpoint first).
+2. Player picks (§C, including NBA as projections ± MAE).
 3. Player news (§D).
 4. Insight rewrite (§B + validator rule).
 
@@ -185,7 +206,7 @@ behavior; callout non-overlap against the real template.
 | explainer-v2 | §5c `players[]` shape | EXTEND (ranking layer on the same shape) |
 | Sep-28 flow/trigger/news | flow-sentence rules, button-gated summary, F1 "triggered only" | AMEND (richer instant flow; callouts replace prose-swap) |
 | Sep-28 flow/trigger/news | alias→key-date→prompt news mechanism, bounded cost | EXTEND (player entries + pick-relevance) |
-| plan-a box-score/track-record | A4 team filter + dedup rule | REAFFIRM for Sports (phase 0); EXTEND grouping to NBA |
+| plan-a box-score/track-record | A4 team filter + dedup rule | REAFFIRM for Sports (phase 0, PR #20 in review); NBA already split, filter not required |
 | plan-a box-score/track-record | B8 two-record honesty, weekly rows | untouched, still binding |
 | player-model-accuracy | §5.1–5.2 prohibitions, Layer 3b counting | untouched, binding constraints on §C/§F |
 
@@ -198,8 +219,8 @@ behavior; callout non-overlap against the real template.
 | 3 | NBA markets table stays whole (odds+edge+grading are additive) | strip it as duplication | remove in phase 1 |
 | 4 | Uncalibrated arms show bucket hit-rate / ±MAE instead of hiding | hide everything uncalibrated | drop the context column |
 | 5 | CFB ships picks flagged "no availability check" rather than waiting for a feed | hold CFB picks until a feed exists | remove CFB rows |
-| 6 | NBA player picks wait for the aggregate endpoint + a prob layer | show raw projections as "picks" now | ship projections-only rows |
-| 7 | Box-score split ships as preceding small PR, NBA grouping included | fold into phase 1 | merge into phase 1 PRs |
+| 6 | NBA player picks ship in phase 2 as projections ± MAE, labelled "projection, not a probability" (reversed on review — Kevin wants them now) | wait for the aggregate endpoint + prob layer | hold NBA rows until the prob layer lands |
+| 7 | Box-score split ships as a preceding Sports-only small PR (PR #20); NBA needs no grouping work | fold into phase 1, or add an NBA filter too | merge into phase 1 PRs |
 | 8 | F1 insight stays per-race (table + ribbon unchanged), no fixture panel | build F1 a fixture-style panel | extend phase 1 to F1 panel |
 | 9 | Finished flow keeps score/result sentences; pre-game flow prose is deleted | keep flow as the no-AI fallback | restore sentences in phase 1 |
 | 10 | Player-news freshness reuses the one-write-per-day bound | separate cap for player news | new cap rule in phase 3 |
@@ -211,13 +232,19 @@ for 390px), rendered from the real components for the instant block and
 explicitly-marked proposal markup for the new pieces. Shots in
 `harness/shots/insight/` (desktop + `-390`):
 
-1. `nfl-rebuilt` — rebuilt instant block. 2. `nfl-pre` — pre-kickoff +
-   quiet chip. 3. `pl-pre` — three-way + market row. 4. `f1-unknown` —
+1. `nfl-rebuilt` — rebuilt instant block. 2. `prebutton` — complete
+   pre-button state: instant block + the real SummaryButton + the static
+   promise line ("AI read: model vs line, trends, who's out").
+3. `pl-pre` — three-way + market row. 4. `f1-unknown` —
    reduced block + session badge. 5. `nba-now` — tiles + verdict +
    record. 6. `no-pick` — numbers without a claim. 7. `news` —
    present (attributed flag, pick moved) vs absent (nothing renders).
-8. `callouts` — two proposal rows with delta visuals.
-9. `picks` — proposal table with provenance per row.
+8. `callouts` — two proposal rows with delta visuals, every figure
+   derived from the one `FIX` object in `insight.tsx` (model −6.1 vs
+   line −4.5, gap 1.6).
+9. `picks` — proposal top-3 per category with visuals from the real
+   components (share bars for probabilities, key numbers with ±
+   margins for projections), provenance per row.
 10. `boxfilter` — proposal Away/Both/Home over the real BoxScore.
 
 Reproduce: `cd packages/predictor-ui/harness && npm install &&

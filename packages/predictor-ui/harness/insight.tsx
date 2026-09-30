@@ -3,10 +3,16 @@
  *
  * Review instrument only: the instant block is composed from the REAL
  * predictor-ui components (StatusBadge, KeyNumberTile, ProbabilityBar,
- * RecordStrip, BoxScore) with fixture-shaped data, so layout, tokens and
- * type carry over to implementation. The callout / player-pick / filter
- * pieces are static proposal markup (marked PROPOSAL): they show intent for
- * the spec's screenshots, not a component to import.
+ * RecordStrip, BoxScore, SummaryButton) with fixture-shaped data, so
+ * layout, tokens and type carry over to implementation. The callout /
+ * player-pick / filter pieces are static proposal markup (marked
+ * PROPOSAL): they show intent for the spec's screenshots, not a
+ * component to import.
+ *
+ * ONE FIXTURE feeds every NFL mock below (spec §2 correction round):
+ * GB at ATL, week 6. Change a number here and every mock follows, so two
+ * mocks can never disagree about the same game the way the first draft's
+ * callouts ("model −6.1") and tiles did.
  */
 import { createRoot } from "react-dom/client";
 import {
@@ -15,24 +21,39 @@ import {
   ProbabilityBar,
   RecordStrip,
   BoxScore,
+  SummaryButton,
   type MarketTile,
   type Segment,
   type BoxScoreGroup,
 } from "../src/index";
 
-const RESTING = { loading: false, error: false, onRetry: () => {} };
-void RESTING;
+/** The one game. All figures below are restated here and derived nowhere else. */
+const FIX = {
+  home: "GB",
+  away: "ATL",
+  homeWinProb: 0.72,
+  awayWinProb: 0.28,
+  spreadLine: -4.5, // GB −4.5, home frame
+  modelMargin: -6.1, // home minus away: the model wants 1.6 more than the market
+  predictedTotal: 42.1,
+  totalLine: 43.5,
+  recordHits: 11,
+  recordSettled: 15,
+  pick: "Green Bay",
+  outPlayer: "J. Jacobs",
+  outTeam: "GB",
+} as const;
 
-// --- shared mock data -------------------------------------------------------
+const pct = (p: number) => `${Math.round(p * 100)}%`;
 
 const NFL_TILES: MarketTile[] = [
-  { market: "moneyline", label: "moneyline", value: "72%", sub: "win · GB" },
-  { market: "spread", label: "spread", value: "GB -4.5", sub: "model GB -6.1" },
-  { market: "total", label: "total", value: "42.1", sub: "total pts · line 43.5" },
+  { market: "moneyline", label: "moneyline", value: pct(FIX.homeWinProb), sub: `win · ${FIX.home}` },
+  { market: "spread", label: "spread", value: `${FIX.home} ${FIX.spreadLine}`, sub: `model ${FIX.home} ${FIX.modelMargin}` },
+  { market: "total", label: "total", value: String(FIX.predictedTotal), sub: `total pts · line ${FIX.totalLine}` },
 ];
 const NFL_SEGMENTS: Segment[] = [
-  { label: "GB", prob: 0.72, market: "moneyline" },
-  { label: "ATL", prob: 0.28, market: "moneyline" },
+  { label: FIX.home, prob: FIX.homeWinProb, market: "moneyline" },
+  { label: FIX.away, prob: FIX.awayWinProb, market: "moneyline" },
 ];
 
 const PL_TILES: MarketTile[] = [
@@ -111,6 +132,33 @@ function Callout({ delta, deltaTone, text, evidence }: { delta: string; deltaTon
   );
 }
 
+/** A probability row: share bar from the real ProbabilityBar + graded record. */
+function ProbRow({ name, detail, p, record }: { name: string; detail: string; p: number; record: string }) {
+  return (
+    <div className="flex flex-col gap-1 border-t border-pr-rule py-2 first:border-t-0 first:pt-0 last:pb-0">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-sm font-medium text-pr-text">{name} <span className="font-normal text-pr-text-dim">· {detail}</span></p>
+        <p className="shrink-0 text-sm font-semibold tabular-nums text-pr-text">{pct(p)}</p>
+      </div>
+      <ProbabilityBar segments={[{ label: detail, prob: p, market: "pick" }, { label: "rest", prob: 1 - p, market: "pick" }]} minSegmentPx={2} />
+      <p className="text-xs text-pr-text-faint">{record}</p>
+    </div>
+  );
+}
+
+/** A projection row: key number from the real KeyNumberTile + margin. */
+function ProjRow({ name, detail, value, sub, record }: { name: string; detail: string; value: string; sub: string; record: string }) {
+  return (
+    <div className="flex items-center gap-3 border-t border-pr-rule py-2 first:border-t-0 first:pt-0 last:pb-0">
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-pr-text">{name} <span className="font-normal text-pr-text-dim">· {detail}</span></p>
+        <p className="text-xs text-pr-text-faint">{record}</p>
+      </div>
+      <div className="w-36 shrink-0"><KeyNumberTile tile={{ market: "pick", label: detail, value, sub }} /></div>
+    </div>
+  );
+}
+
 const BOX_COLUMNS = [
   { key: "yds", label: "Yds" },
   { key: "td", label: "TD%" },
@@ -133,6 +181,9 @@ const BOX_GROUPS_BOTH: BoxScoreGroup[] = [
   },
 ];
 
+const never = () => new Promise<unknown>(() => {});
+const noop = () => {};
+
 function App() {
   return (
     <main data-sport="nfl" className="min-h-screen bg-pr-stage font-pr-body text-pr-text">
@@ -143,34 +194,38 @@ function App() {
             <StatusBadge status="rebuilt" moment="kickoff" />
             <span>This pick was made after the game started, so it is shown for reference and not counted.</span>
           </p>
-          <Verdict>Green Bay is the pick, for reference.</Verdict>
+          <Verdict>{FIX.pick} is the pick, for reference.</Verdict>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {NFL_TILES.map((t) => <KeyNumberTile key={t.market} tile={t} />)}
           </div>
-          <ProbabilityBar segments={NFL_SEGMENTS} minSegmentPx={2} pick={{ label: "GB" }} />
-          <RecordStrip label="Picks made before kickoff" hits={11} settled={15} />
+          <ProbabilityBar segments={NFL_SEGMENTS} minSegmentPx={2} pick={{ label: FIX.home }} />
+          <RecordStrip label="Picks made before kickoff" hits={FIX.recordHits} settled={FIX.recordSettled} />
         </div>
       </Case>
 
-      <Case id="nfl-pre" title="2 · NFL pre-kickoff — the instant block"
-        note="The normal state needs no fanfare: a quiet timing chip, the verdict, tiles, bar, record. No button — there is nothing to wait for.">
+      <Case id="prebutton" title="2 · pre-button state — complete facts, honest button"
+        note="The block must look finished before any AI is fetched. The button promises what it adds (static site copy, no figures): model vs line, trends, who's out.">
         <div className="flex flex-col gap-3">
           <p className="flex max-w-[70ch] flex-wrap items-center gap-2 text-sm text-pr-text-dim">
             <span className="inline-flex items-center whitespace-nowrap rounded-pr border border-pr-rule px-1.5 py-0.5 font-pr-display text-xs font-semibold uppercase tracking-wide text-pr-text-dim">
               Made before kickoff
             </span>
           </p>
-          <Verdict>Green Bay is the pick.</Verdict>
+          <Verdict>{FIX.pick} is the pick.</Verdict>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {NFL_TILES.map((t) => <KeyNumberTile key={t.market} tile={t} />)}
           </div>
-          <ProbabilityBar segments={NFL_SEGMENTS} minSegmentPx={2} pick={{ label: "GB" }} />
-          <RecordStrip label="Picks made before kickoff" hits={11} settled={15} />
+          <ProbabilityBar segments={NFL_SEGMENTS} minSegmentPx={2} pick={{ label: FIX.home }} />
+          <RecordStrip label="Picks made before kickoff" hits={FIX.recordHits} settled={FIX.recordSettled} />
+          <div className="flex flex-col gap-1">
+            <SummaryButton request={never} onSummary={noop} onUnavailable={noop} />
+            <p className="max-w-[70ch] text-xs text-pr-text-faint">AI read: model vs line, trends, who&apos;s out.</p>
+          </div>
         </div>
       </Case>
 
       <Case id="pl-pre" title="3 · PL pre-kickoff — three-way bar plus market row"
-        note="The market's own row draws only because implied covers every outcome. Same instant block, three-way market.">
+        note="The market's own row draws only because implied covers every outcome. Same instant block, three-way market. (Different game from the NFL mocks by nature: Arsenal v Chelsea.)">
         <div data-sport="pl" className="flex flex-col gap-3">
           <p className="flex max-w-[70ch] flex-wrap items-center gap-2 text-sm text-pr-text-dim">
             <span className="inline-flex items-center whitespace-nowrap rounded-pr border border-pr-rule px-1.5 py-0.5 font-pr-display text-xs font-semibold uppercase tracking-wide text-pr-text-dim">
@@ -198,8 +253,8 @@ function App() {
         </div>
       </Case>
 
-      <Case id="nba-now" title="5 · NBA — instant today, badge and verdict added"
-        note="NBA already shows its numbers with no gate. The spec adds the verdict line and (once NBA tracks pre-tip picks) the timing badge — and nothing else changes.">
+      <Case id="nba-now" title="5 · NBA — verdict and record join the instant tiles"
+        note="Tiles stay where they are. New: the verdict line and the record strip. PregamePick prose is replaced by the timing badge once NBA promotes its flow pick_timing to the panel — not repeated beside it.">
         <div data-sport="nba" className="flex flex-col gap-3">
           <Verdict>Boston is the pick.</Verdict>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -225,7 +280,7 @@ function App() {
       </Case>
 
       <Case id="news" title="7 · player news present vs absent"
-        note="Present: an attributed, dated flag that demotes the affected pick — never a recommendation of a player who is out. Absent: the block says nothing at all.">
+        note="Present: an attributed, dated flag that moves the affected pick — never a recommendation of a player who is out. Absent: the block says nothing at all.">
         <div className="flex flex-col gap-3">
           <InstantHead>With news</InstantHead>
           <div className="flex items-start gap-3 rounded-pr border border-pr-rule bg-pr-panel px-3 py-2">
@@ -233,8 +288,8 @@ function App() {
               Out
             </span>
             <div className="flex min-w-0 flex-col gap-0.5">
-              <p className="text-sm font-medium leading-snug text-pr-text">J. Jacobs is out — the RB pick moves to E. Wilson.</p>
-              <p className="text-xs text-pr-text-faint">Official injury report · GB · week 6 · via nfl_data_py</p>
+              <p className="text-sm font-medium leading-snug text-pr-text">{FIX.outPlayer} is out — the RB pick moves to E. Wilson.</p>
+              <p className="text-xs text-pr-text-faint">Official injury report · {FIX.outTeam} · week 6 · via nfl_data_py</p>
             </div>
           </div>
           <InstantHead>Without news</InstantHead>
@@ -243,63 +298,37 @@ function App() {
       </Case>
 
       <Case id="callouts" title="8 · AI insight — callouts, not paragraphs (proposal)"
-        note="Two scannable rows. Neither restates a tile: the first compares model against line (both figures are in the facts, the disagreement is the interpretation); the second is a trend with n. Anything without a fact behind it is rejected by the validator.">
+        note="Two scannable rows, both derived from the one fixture above: the disagreement is model −6.1 against line −4.5 (gap 1.6, the tile's own figures — the interpretation is new, the numbers are not). Anything without a fact behind it is rejected by the validator.">
         <Proposal label="insight callouts">
           <Callout delta="▲ 1.6 pts" deltaTone="text-pr-win"
-            text="The model wants more than the market on Green Bay."
-            evidence="Model GB −6.1 vs line GB −4.5 · last 10 GB covers: 7" />
+            text={`The model wants more than the market on ${FIX.pick}.`}
+            evidence={`Model ${FIX.home} ${FIX.modelMargin} vs line ${FIX.home} ${FIX.spreadLine} · last 10 GB covers: 7`} />
           <Callout delta="7–3" deltaTone="text-pr-text-dim"
-            text="Green Bay covers after rest: 7 of the last 10."
+            text={`${FIX.pick} covers after rest: 7 of the last 10.`}
             evidence="Trend over the stored pre-kickoff record · n=10" />
         </Proposal>
       </Case>
 
-      <Case id="picks" title="9 · best player picks — model output with its record (proposal)"
-        note="Ranked by the model's own number. Every row carries provenance: a graded hit rate where a ledger exists, an explicit ungraded note where none does. Never wagering advice.">
+      <Case id="picks" title="9 · best player picks — top 3 per category, visual (proposal)"
+        note="Probability rows get a share bar (real ProbabilityBar); projection rows get a key number with its margin (real KeyNumberTile). Every row carries provenance: a graded record where a ledger exists, an explicit note where none does. Never wagering advice.">
         <Proposal label="player picks">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[30rem] border-collapse text-sm">
-              <thead>
-                <tr className="text-left font-pr-display text-xs uppercase tracking-wide text-pr-text-dim">
-                  <th className="py-1 pr-3 font-semibold">Player</th>
-                  <th className="py-1 pr-3 font-semibold">Market</th>
-                  <th className="py-1 pr-3 font-semibold">Model</th>
-                  <th className="py-1 font-semibold">Record</th>
-                </tr>
-              </thead>
-              <tbody className="text-pr-text">
-                <tr className="border-t border-pr-rule">
-                  <td className="py-1.5 pr-3">B. Saka (ARS)</td>
-                  <td className="py-1.5 pr-3">Anytime goal</td>
-                  <td className="py-1.5 pr-3 tabular-nums">34%</td>
-                  <td className="py-1.5 text-pr-text-dim">hits 31% when called · n=58</td>
-                </tr>
-                <tr className="border-t border-pr-rule">
-                  <td className="py-1.5 pr-3">J. Jacobs (GB)</td>
-                  <td className="py-1.5 pr-3">Anytime TD</td>
-                  <td className="py-1.5 pr-3 tabular-nums">41%</td>
-                  <td className="py-1.5 text-pr-text-dim">bucket 40–50%: hits 44% · n=112</td>
-                </tr>
-                <tr className="border-t border-pr-rule">
-                  <td className="py-1.5 pr-3">J. Tatum (BOS)</td>
-                  <td className="py-1.5 pr-3">Points</td>
-                  <td className="py-1.5 pr-3 tabular-nums">27.4 proj.</td>
-                  <td className="py-1.5 text-pr-text-dim">no graded record yet</td>
-                </tr>
-                <tr className="border-t border-pr-rule">
-                  <td className="py-1.5 pr-3">D. Edwards (UGA)</td>
-                  <td className="py-1.5 pr-3">Rush yds</td>
-                  <td className="py-1.5 pr-3 tabular-nums">96 proj.</td>
-                  <td className="py-1.5 text-pr-text-dim">no availability check (CFB)</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <InstantHead>Anytime TD — top 3</InstantHead>
+          <ProbRow name="J. Jacobs (GB)" detail="Anytime TD" p={0.41} record="bucket 40–50%: hits 44% · n=112" />
+          <ProbRow name="B. Robinson (ATL)" detail="Anytime TD" p={0.38} record="bucket 30–40%: hits 33% · n=140" />
+          <ProbRow name="J. Love (GB)" detail="Anytime TD" p={0.22} record="bucket 20–30%: hits 24% · n=98" />
+          <div className="pt-2"><InstantHead>Rush yards — top 3</InstantHead></div>
+          <ProjRow name="B. Robinson (ATL)" detail="Rush yds" value="96" sub="± 18 MAE" record="yardage MAE 18.2 · n=64" />
+          <ProjRow name="J. Jacobs (GB)" detail="Rush yds" value="78" sub="± 18 MAE" record="out — see news flag above, never recommended" />
+          <ProjRow name="E. Wilson (GB)" detail="Rush yds" value="22" sub="± 18 MAE" record="moves up on the news flag" />
+          <div className="pt-2"><InstantHead>NBA points — top 3 (projections, not probabilities)</InstantHead></div>
+          <ProjRow name="J. Tatum (BOS)" detail="Points" value="27.4" sub="± 4.1 MAE" record="projection, not a probability · no graded record yet" />
+          <ProjRow name="J. Brown (BOS)" detail="Points" value="24.9" sub="± 4.1 MAE" record="projection, not a probability · no graded record yet" />
+          <ProjRow name="B. Adebayo (MIA)" detail="Rebounds" value="10.2" sub="± 2.3 MAE" record="projection, not a probability · no graded record yet" />
         </Proposal>
       </Case>
 
       <Case id="boxfilter" title="10 · box score split by team — Away / Both / Home (proposal)"
-        note="The preceding small PR: group by team then position, team totals once, default Both. Real BoxScore component, mock groups.">
+        note="Phase 0 (Sports PR #20, in review): group by team then position, team totals once, default Both. Real BoxScore component, mock groups.">
         <Proposal label="team filter">
           <div className="flex gap-1" role="group" aria-label="Team filter">
             {["Away", "Both", "Home"].map((t) => (
