@@ -37,6 +37,32 @@
 // ENFORCE_SITE_SYNC to "1" in .github/workflows/site-sync-check.yml once every
 // registered site reads the current version — the warning says so itself, and
 // the failure output says what to sync.
+//
+// There is a third mode, and it is not a softer version of the check. It is
+// SITE_SYNC_EXPECT_RESYNC, and it exists because of a deadlock, not a
+// preference. The four sites vendor `packages/predictor-ui` by copying it as it
+// stands on main, so a PR that changes the package cannot have its sites
+// re-vendor before it merges. Enforcing drift on that PR means the only way to
+// go green is to merge — which requires the green — and the four site PRs that
+// would clear it are themselves waiting behind that same PR. That is how
+// predictor-hub#52 sat with its one CI job red for `4 of 4 sites are behind the
+// hub` and no possible way forward.
+//
+// So on a PR that changes the package the sites are reported as PENDING: the
+// drift is measured, printed and annotated exactly as it always was, and the run
+// exits 0. The two properties that make this a narrowing of the *verdict* and
+// not of the *check*, both asserted in tests/site-sync.test.mjs:
+//
+//   * the comparison is untouched. Every site is still read, and an unreadable
+//     one is still a hard failure here — PENDING covers staleness, which has a
+//     known cause and a known fix, and nothing else;
+//   * enforcement wins. If both variables are set, the run fails. A
+//     contradictory configuration must be louder, not quieter.
+//
+// Main is not in this mode and never will be. Once the bump lands, main IS
+// behind until the four site PRs merge, and that red is the correct signal: the
+// fix is `node scripts/sync-ui.mjs` on the stale site. It self-heals when they
+// do.
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -152,6 +178,7 @@ export async function main({
   sites = SITES,
   want = currentSource(),
   enforce = env.ENFORCE_SITE_SYNC === "1",
+  expectResync = env.SITE_SYNC_EXPECT_RESYNC === "1",
 } = {}) {
   const say = (line = "") => out(line);
   const warn = (title, message) => say(`::warning title=${title}::${message}`);
@@ -257,6 +284,19 @@ export async function main({
   if (enforce) {
     say(`site-sync: FAIL — ${behind.length} of ${rows.length} sites are behind the hub.`);
     return { code: 1, rows, want, skipped: null };
+  }
+  if (expectResync) {
+    // Reached only with enforcement off, and only when the workflow has said
+    // this run's PR is changing the package. Not the migration: enforcement is
+    // on for main, and the advice below the migration verdict — "flip
+    // ENFORCE_SITE_SYNC to 1" — would be wrong in a way that outlives this PR.
+    say(`site-sync: PENDING — ${behind.length} of ${rows.length} sites await the re-sync that follows this merge.`);
+    say("This PR changes packages/predictor-ui, and each site vendors it from main, so none of");
+    say("them can re-vendor a version that is not on main yet. The staleness above is measured and");
+    say("is expected until this merges; the push to main that follows it is ENFORCED, so the same");
+    say("four rows turn that run red until the site PRs land. Re-vendor each site above (one PR");
+    say("each) — that is what turns this row from pending into a pass.");
+    return { code: 0, rows, want, skipped: null };
   }
   say(`site-sync: BEHIND — ${behind.length} of ${rows.length} sites are behind, reported as a warning.`);
   say("This is the migration state, not a pass: adoption is a migration, and a check that lands");

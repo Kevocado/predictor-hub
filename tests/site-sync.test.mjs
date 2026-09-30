@@ -18,7 +18,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -318,4 +318,279 @@ test("every registered site is a real path to a manifest, and the list is not em
   const repos = SITES.map((s) => s.repo);
   assert.ok(!repos.includes("Kevocado/NFL_Predictor") && !repos.includes("Kevocado/CFB_Predictor"));
   assert.deepEqual(repos, [...new Set(repos)], "a repo is registered twice");
+});
+
+// ------------------------------------------- a PR that bumps the package itself
+
+// The deadlock, in one sentence. `sync-ui.mjs` copies `packages/predictor-ui`
+// as it stands on the hub's main, and each site vendors that copy, so a PR that
+// changes the package cannot have its sites re-vendor *before* it merges. Enforce
+// drift on that PR and the check can only go green after the four site PRs that
+// are queued behind it — which is #52: its one job was red with
+//
+//     site-sync: FAIL — 4 of 4 sites are behind the hub.
+//
+// for exactly this reason, and the thing it could not do was merge to unblock
+// the site PRs.
+//
+// The fix is a third state, not a weaker check: on a PR that changes the
+// package, report the sites as PENDING and exit 0; enforce everywhere else; and
+// keep enforcing on main, where "behind" is real drift that clears when the
+// site PRs land. The tests below pin all three, and the workflow tests run the
+// workflow's own `run:` block rather than asserting a regex still matches it.
+
+const STALE_SOURCE = "predictor-ui@000000000000";
+const behindSite = (source = STALE_SOURCE) =>
+  stubFetch({ "acme/One/src/predictor-ui/SYNC.json@main": { text: MANIFEST(source) } });
+const unreadableSite = () => stubFetch({});
+
+/** Drive `main()` with an env and one site, and hand back what it said. */
+async function drive(env, fetchImpl = behindSite()) {
+  const lines = [];
+  const { code, rows } = await main({
+    env: { GITHUB_TOKEN: "t", ...env },
+    out: (l) => lines.push(l), fetchImpl, sites: oneSite, want: currentSource(),
+  });
+  return { code, rows, out: lines.join("\n") };
+}
+
+test("a PR that bumps the package reports the sites as PENDING, and passes", async () => {
+  const { code, rows, out } = await drive({ ENFORCE_SITE_SYNC: "0", SITE_SYNC_EXPECT_RESYNC: "1" });
+  log(out);
+  assert.equal(code, 0, "the sites cannot re-vendor a package that is not on main yet, so failing here deadlocks the PR");
+  assert.equal(rows[0].status, STALE, "the drift must still be measured — PENDING is a verdict, not a skip");
+  // PENDING, and the count. "Something is behind" without a number is the
+  // sentence this whole section exists to replace.
+  assert.match(out, /site-sync: PENDING — 1 of 1 sites/, out);
+  assert.match(out, /re-sync that follows this merge/, "PENDING must say what it is waiting for");
+  // The table is the same table, because it is the same comparison.
+  assert.match(out, /acme\/One\s+main\s+predictor-ui@000000000000\s+stale/);
+  assert.match(out, /::warning /, "a pending site still gets an annotation");
+  assert.doesNotMatch(out, /FAIL/, out);
+  assert.doesNotMatch(out, /::error/, out);
+  // And it must not print the migration advice, which is a different state and
+  // a misleading one here: enforcement is not "off, flip it on", it is on for
+  // main and off for this PR only.
+  assert.doesNotMatch(out, /adoption is a migration/, out);
+  assert.doesNotMatch(out, /ENFORCE_SITE_SYNC: "1"/, out);
+});
+
+test("PENDING does not excuse a site that could not be read", async () => {
+  // The relaxation is about *staleness*, which has a known cause and a known
+  // fix. A manifest that could not be read has neither: it is the hole this
+  // check was written to stop, and it must stay a failure in every mode.
+  const { code, out } = await drive(
+    { ENFORCE_SITE_SYNC: "0", SITE_SYNC_EXPECT_RESYNC: "1" }, unreadableSite(),
+  );
+  assert.equal(code, 1, "a PR that bumps the package must not make an unreadable site pass");
+  assert.match(out, /::error /, out);
+  assert.match(out, /FAIL — 1 of 1 sites could not be read/, out);
+  assert.doesNotMatch(out, /site-sync: PENDING/, out);
+});
+
+test("enforcement wins when a pending PR and ENFORCE_SITE_SYNC are both set", async () => {
+  // Fails *closed* on a contradictory configuration. If the workflow ever sets
+  // both — by a mistake, or by a change to one branch of its own logic — the
+  // safe reading is the enforced one, so that misconfiguration is a louder
+  // failure rather than a silent pass.
+  const { code, out } = await drive({ ENFORCE_SITE_SYNC: "1", SITE_SYNC_EXPECT_RESYNC: "1" });
+  assert.equal(code, 1, "enforcement must not be switchable off by a second variable");
+  assert.match(out, /FAIL — 1 of 1 sites are behind the hub/, out);
+  assert.doesNotMatch(out, /PENDING/, out);
+});
+
+test("a stale site is still PENDING-shaped without the flag, and still fails when enforced", async () => {
+  // The third case from the top, in the script: a run that is not told the
+  // package is changing is an ordinary enforced run. Without the flag the
+  // existing warning path is byte-for-byte the migration message it always was.
+  const migration = await drive({ ENFORCE_SITE_SYNC: "0" });
+  assert.equal(migration.code, 0);
+  assert.match(migration.out, /BEHIND — 1 of 1/, "the pre-existing warning mode must not change");
+  assert.match(migration.out, /ENFORCE_SITE_SYNC: "1"/);
+  assert.doesNotMatch(migration.out, /PENDING/, "the flag is what says pending; nothing else may");
+
+  const enforced = await drive({ ENFORCE_SITE_SYNC: "1" });
+  assert.equal(enforced.code, 1);
+  assert.match(enforced.out, /FAIL — 1 of 1 sites are behind the hub/);
+});
+
+// -------------------------------------------------------- the workflow's decision
+
+// The three cases are only worth anything if the workflow computes them. A test
+// that calls `main()` directly proves the script honours a mode; it does not
+// prove anything ever puts the workflow in that mode, and a workflow file has no
+// test of its own — a typo in one is invisible until a run is red. Same argument
+// `services/explainer/tests/test_ci_workflow.py` makes for the explainer
+// workflow, and the same remedy: read the file, then run the step.
+
+const WORKFLOW = join(HUB, ".github", "workflows", "site-sync-check.yml");
+
+/** The workflow's `run:` blocks, paired with the step each belongs to.
+ *
+ * By hand rather than with a YAML parser, because the hub has no dependencies
+ * and adding one to read a 90-line file would be a worse trade than eight lines
+ * of line-splitting. Tolerates anything it is not looking at: it collects block
+ * scalars under `- ` items and ignores every other key.
+ */
+function workflowSteps(text) {
+  const steps = [];
+  let name = null;
+  let body = null;
+  let base = null;
+  const endRun = () => {
+    if (body !== null) steps.push({ name: name ?? "(unnamed)", run: body.join("\n") });
+    body = null; base = null;
+  };
+  for (const line of text.split("\n")) {
+    // A `- ` starts a new step, so any half-read run block belongs to the old
+    // one and the name is reset. `run:` itself is not a `- ` item — it sits
+    // beside `name:` — so it only closes the body, leaving the name standing.
+    if (/^\s*-\s/.test(line)) { endRun(); name = null; }
+    const key = line.match(/^\s*(?:-\s+)?(name|run):\s*(.*)$/);
+    if (key) {
+      if (key[1] === "name") name = key[2].trim();
+      else if (key[2].includes("|")) { endRun(); body = []; }
+      else { endRun(); body = [key[2]]; }
+      continue;
+    }
+    if (body === null) continue;
+    if (base === null) {
+      // The block's own indentation, from its first non-blank line: assuming two
+      // past the key would break silently on the first re-indent.
+      if (!line.trim()) { body.push(""); continue; }
+      base = line.match(/^ */)[0].length;
+    }
+    if (line.match(/^ */)[0].length >= base) body.push(line.slice(base));
+    else endRun();
+  }
+  endRun();
+  return steps;
+}
+
+/** Run one `run:` block the way Actions runs it — `bash -e` — with a stub `git`
+ *  first on PATH, and return the `KEY=value` lines it appended to GITHUB_ENV.
+ *
+ *  `changed` is the PR's whole file list, and the stub honours the pathspec the
+ *  step actually asked for: a diff of `docs/…` against `-- packages/predictor-ui/`
+ *  is empty, exactly as git would answer it. A stub that ignored the pathspec
+ *  would pass a step that checks the wrong thing, which is the mistake this
+ *  section exists to prevent. */
+function runWorkflowStep(step, { env = {}, changed = [], code = 0 } = {}) {
+  const dir = temp();
+  const bin = join(dir, "bin");
+  mkdirSync(bin, { recursive: true });
+  // Records argv, then answers as `git diff --name-only … -- <pathspec>` would.
+  // The pathspec is taken off the end of argv with sed rather than `${*##-- }`,
+  // which is not portable to /bin/sh and silently yields the whole string.
+  writeFileSync(join(bin, "git"), [
+    "#!/bin/sh",
+    'printf "%s\\n" "$*" > "$STUB_GIT_ARGV"',
+    'pathspec=$(printf "%s" "$*" | sed "s/^.*-- //")',
+    'printf "%s\\n" "$STUB_CHANGED" | grep "^$pathspec" || true',
+    `exit ${code}`,
+    "",
+  ].join("\n"));
+  chmodSync(join(bin, "git"), 0o755);
+
+  const script = join(dir, "step.sh");
+  writeFileSync(script, step.run);
+  const envFile = join(dir, "github_env");
+  const argvFile = join(dir, "git_argv");
+  writeFileSync(envFile, "");
+  let stdout = "";
+  try {
+    stdout = execFileSync("bash", ["-e", script], {
+      encoding: "utf8",
+      env: {
+        PATH: `${bin}:${process.env.PATH}`,
+        GITHUB_ENV: envFile, STUB_GIT_ARGV: argvFile, STUB_CHANGED: changed.join("\n"), ...env,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (err) {
+    throw new Error(`the step exited non-zero under bash -e:\n${err.stderr ?? ""}\n${stdout}`);
+  }
+  return {
+    stdout,
+    argv: existsSync(argvFile) ? readFileSync(argvFile, "utf8").trim() : null,
+    env: Object.fromEntries(readFileSync(envFile, "utf8").split("\n").filter(Boolean).map((l) => l.split("="))),
+  };
+}
+
+const workflow = readFileSync(WORKFLOW, "utf8");
+/** The step that decides, found by what it does rather than where it sits. */
+const decideStep = () => {
+  const steps = workflowSteps(workflow);
+  const step = steps.find((s) => /enforce/i.test(s.name) && /GITHUB_ENV/.test(s.run));
+  assert.ok(step, `no step in ${WORKFLOW} computes the enforcement decision; the three cases cannot be told apart without it`);
+  return step;
+};
+
+const pkgChange = ["packages/predictor-ui/src/components/InstantBlock.tsx"];
+
+test("a PR that changes packages/predictor-ui is pending; a PR that does not, and main, enforce", async () => {
+  // The three cases, from the workflow's own logic rather than from this
+  // file's reading of it.
+  const bumped = runWorkflowStep(decideStep(), {
+    env: { EVENT_NAME: "pull_request", BASE_REF: "main" }, changed: pkgChange,
+  });
+  assert.equal(bumped.env.enforce, "0", "a package-bumping PR must not be blocked by sites that cannot sync yet");
+  assert.equal(bumped.env.expect_resync, "1", "and it must be told the drift is expected, so it can say PENDING");
+
+  const other = runWorkflowStep(decideStep(), {
+    env: { EVENT_NAME: "pull_request", BASE_REF: "main" },
+    changed: ["docs/superpowers/plans/2026-09-30-phase1-instant-block.md"],
+  });
+  assert.equal(other.env.enforce, "1", "a PR that does not touch the package must enforce exactly as before");
+  assert.equal(other.env.expect_resync, "0");
+
+  const landed = runWorkflowStep(decideStep(), {
+    env: { EVENT_NAME: "push", BASE_REF: "" }, changed: pkgChange,
+  });
+  assert.equal(landed.env.enforce, "1",
+    "main must keep enforcing: right after the bump merges the sites ARE behind, and that red is the correct signal until the four site PRs land");
+  assert.equal(landed.env.expect_resync, "0", "main is not waiting for a re-sync, it owes one");
+});
+
+test("the diff that decides is this PR's, filtered to the vendored package", () => {
+  const run = decideStep().run;
+  const bumped = runWorkflowStep(decideStep(), {
+    env: { EVENT_NAME: "pull_request", BASE_REF: "main" }, changed: pkgChange,
+  });
+  assert.equal(bumped.argv, "diff --name-only origin/main...HEAD -- packages/predictor-ui/",
+    "the step must diff this PR against its base, triple-dot, with a pathspec limited to the vendored package");
+  // Every other trigger is one input, and the only condition on the base ref is
+  // that it is a pull request. Anything that widens this widens the hole.
+  assert.match(run, /EVENT_NAME/, run);
+  assert.match(run, /BASE_REF/, run);
+});
+
+test("the workflow passes the decision to the check, and the check step has no hard-coded verdict", () => {
+  // The step's own environment is the contract. A hard-coded `ENFORCE_SITE_SYNC:
+  // "1"` in the check step would pass every test above while deadlocking #52
+  // again, because the decision would never arrive.
+  const check = workflowSteps(workflow).find((s) => /check-site-sync\.mjs/.test(s.run));
+  assert.ok(check, "the workflow no longer runs the check");
+  assert.match(check.run, /node scripts\/check-site-sync\.mjs/, check.run);
+  assert.match(workflow, /ENFORCE_SITE_SYNC:\s*\$\{\{\s*steps\.[\w-]+\.outputs\.enforce\s*\}\}/,
+    "ENFORCE_SITE_SYNC is not the step's decision; the script decides its own mode again");
+  assert.match(workflow, /SITE_SYNC_EXPECT_RESYNC:\s*\$\{\{\s*steps\.[\w-]+\.outputs\.expect_resync\s*\}\}/,
+    "the pending mode is never wired up, so a bumping PR would print the migration message instead of PENDING");
+  assert.doesNotMatch(check.run, /ENFORCE_SITE_SYNC:\s*"[01]"/, "the check step hard-codes the verdict");
+});
+
+test("the check still reads every site on a pending PR, and the comparison is not bypassed", () => {
+  // The relaxation is a verdict, not a filter. The `git diff` pathspec is
+  // deliberately `packages/predictor-ui/` and not `packages/`, because a
+  // widening of it to the whole package dir would swallow README edits and
+  // release the sites' guard on a commit that cannot have moved them.
+  const step = decideStep();
+  assert.doesNotMatch(step.run, /-- packages\/predictor-ui\s/, "the pathspec lost its trailing slash");
+  assert.doesNotMatch(workflow, /continue-on-error/, "a step was marked non-blocking instead of the verdict being computed");
+  assert.doesNotMatch(workflow, /check-site-sync\.mjs\s*(?:\|\||&&|:)/,
+    "the check is short-circuited rather than run and reported");
+  // Fail-closed: if the diff cannot be computed, the run enforces. The step
+  // therefore has to keep the command's failure inside a condition, not let it
+  // abort the job into a "success" it never earned.
+  assert.match(step.run, /if\s+changed="\$\(/, "the diff is not guarded, so a failure aborts before ENFORCE is written");
 });
