@@ -35,7 +35,9 @@ import json
 import pytest
 
 from explainer.contract import market_keys
-from explainer.validate import _ATTRIBUTION_RE, _market_problems, _named_markets, validate
+from explainer.validate import (
+    MARKET_WORDS, _ATTRIBUTION_RE, _market_problems, _named_markets, validate,
+)
 
 # --- the facts, as the deployed service received them -----------------------------
 # NBA 401909903. `line` is the model's own wording; there is no `market_line`,
@@ -292,6 +294,59 @@ def test_a_word_the_model_may_use_without_naming_a_market_is_not_mapped():
     """The negative control for the mapping itself."""
     assert _named_markets("The home record is strong") == set()
     assert _named_markets("Both teams look good") == set()
+
+
+def test_the_total_concept_resolves_a_key():
+    """Found by the trigger measurement, not by a reader.
+
+    `tools/measure_trigger_fps.py` runs the trigger layer over every honest
+    sentence already in this repo and reports what fires. Its one false positive
+    was the fixture sentence below, against the bundle this file already defines:
+
+        AssertionError: ['the text names a market the nba facts do not carry:
+                         total (present: moneyline, spread, total)']
+
+    The problem text names `total` as present **and** says the prose does not
+    carry it, which is the vocabulary disagreeing with itself. NBA calls that
+    market `total`; `MARKET_WORDS["total"]` resolved the prose concept to
+    `("total_goals", "over_under")` only, so the intersection with a bundle that
+    plainly carries it came out empty.
+
+    Asserted on the KEYS rather than on the rendered output, because the key is
+    the thing that was wrong and the output is two rules downstream of it -- a
+    test on the message would pass if some other cause produced the same words.
+    And the negative half is the reason it is not just `assert "total" in keys`:
+    the concept must still resolve for a sport that names the market the other
+    way, or a fix here would have broken PL.
+    """
+    keys, is_line = MARKET_WORDS["total"]
+    assert "total" in keys, (
+        "NBA names the market `total`, so the prose concept has to resolve to it; "
+        f"got {keys}"
+    )
+    assert "total_goals" in keys, (
+        f"PL names it `total_goals` and that resolution has to survive: got {keys}"
+    )
+    assert is_line, "a total needs a book quote to be nameable, same as a spread"
+
+    # And the sentence the measurement found, through the whole rule, on a
+    # bundle that quotes the total. Before the fix this was rejected here AND on
+    # the unquoted bundle, which is the part worth stating: a reader was being
+    # told the sentence named a market the facts did not carry, on a bundle
+    # whose facts carried one and quoted it.
+    quoted = dict(NBA_FACTS, markets=[
+        {"market": "moneyline", "model": {"ORL": 0.348, "BOS": 0.652}},
+        {"market": "spread", "model_margin": -1.857, "line": "BOS by 1.9",
+         "market_line": "BOS by 2.0"},
+        {"market": "total", "model_total": 220.4, "market_line": 221.5},
+    ])
+    text = "The total goals figure is tight."
+    assert _market_problems(quoted, text) == [], (
+        f"rejected honest NBA prose about a market the facts carry and quote: {text!r}"
+    )
+    # And the rule still fires where it must: the same sentence against a bundle
+    # that carries no total at all is still naming a market that is not there.
+    assert _market_problems({"sport": "nba", "markets": [], "pick": None}, text)
 
 
 def test_market_keys_is_what_gates_this():
