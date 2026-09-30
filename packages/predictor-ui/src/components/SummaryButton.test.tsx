@@ -7,6 +7,7 @@
  *  rendered — a proxy 502 and a dead container look the same to a reader.
  */
 import { describe, expect, it, vi } from "vitest";
+import { StrictMode } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -153,5 +154,27 @@ describe("SummaryButton", () => {
   it("shows the label the parent passes, so a retry reads as a retry", () => {
     renderButton({ request: () => Promise.resolve(VALID), label: "Try again" });
     expect(screen.getByRole("button")).toHaveTextContent("Try again");
+  });
+
+  it("stays usable under StrictMode: the button re-enables after the first click", async () => {
+    // StrictMode mounts, unmounts, and remounts: the cleanup sets
+    // mounted.current = false and only the effect setup can set it back. If
+    // the setup never restores it, .finally skips setLoading(false) and the
+    // button stays disabled after the first click in dev.
+    const request = vi.fn(() => Promise.resolve(VALID));
+    const onSummary = vi.fn();
+    const onUnavailable = vi.fn();
+    render(
+      <StrictMode>
+        <SummaryButton request={request} onSummary={onSummary} onUnavailable={onUnavailable} />
+      </StrictMode>,
+    );
+    const user = userEvent.setup();
+    const button = screen.getByRole("button");
+    await user.click(button);
+    expect(onSummary).toHaveBeenCalledTimes(1);
+    expect(button).toBeEnabled();
+    await user.click(button);
+    expect(request).toHaveBeenCalledTimes(2);
   });
 });
