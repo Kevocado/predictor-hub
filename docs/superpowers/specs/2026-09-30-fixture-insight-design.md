@@ -121,7 +121,7 @@ number with its ± margin. Every row carries provenance:
 | PL | anytime goal/assist/G+A prob (Platt-calibrated direct arm); shots/SOT expectations | scorer hit-rate + Brier where ledger exists; shots rows say "no graded record yet" |
 | NFL | anytime-TD prob (uncalibrated) + yardage projections | TD bucket hit-rate (50–60/60–70/70%+) as calibration context; yardage MAE as ± context |
 | CFB | same as NFL minus targets (structurally absent) | same ledgers; every row flagged "no availability check" (no injury/depth feed) |
-| NBA | points/rebounds/assists/threes projections, labelled "projection, not a probability" with ± in-sample MAE | shipped in phase 2 as projections (decision 6 reversed); the aggregate endpoint + probability layer is a later upgrade, not a gate |
+| NBA | points/rebounds/assists/threes projections, labelled "projection, not a probability" with ± in-sample MAE; one category per list, never mixed | shipped in phase 2 as projections (decision 6 reversed), gated on the §D availability wiring in the same phase; the aggregate endpoint + probability layer is a later upgrade, not a gate |
 | F1 | p_win/podium/points/DNF + quali markets per driver | per-market Brier/hit-rate/avgProb; no H2H or fastest-lap (the model cannot price them); no driver-news column (session state only) |
 
 What "confident" means is stated per row: a probability for PL
@@ -139,13 +139,24 @@ extended with player entries and pick-relevance:
 |---|---|---|
 | PL | FPL status/news (gates predictions today) + ESPN confirmed XI in the lineup window | surface what already gates; dated, attributed |
 | NFL | official injury reports + depth-chart flags (gate props today) | surface what already gates; dated by week |
-| NBA | official injury report + ESPN (exist, unwired to props) | wire in: a listed player demotes/flags the pick |
+| NBA | official injury report + ESPN (exist, unwired to props) | wire in **in phase 2, in the same phase as NBA picks** — a listed player is removed from the ranking, never kept |
 | CFB | none exists | picks carry the no-check flag; building a feed is out of scope |
 | F1 | session state only | no news surface; weather stays a session input |
 
 Rules: a player who is out is never recommended — the pick moves or is
 flagged, never silently kept. Doubtful demotes. No news → the block
 says nothing at all (no "no news" row).
+
+**An out player is removed from the ranking, not merely marked in it.**
+He does not appear in any top-3 list, with any bar, tile or bold number;
+he appears once, below the lists, as an attributed line ("Out: J.
+Jacobs · official injury report · GB · week 6"). A list that keeps an
+out player — even labelled — contradicts this spec's own rule, so the
+ranking is computed over available players only. Every sport's picks
+PR includes the test for this: seed an out player, assert he is absent
+from the list and present exactly once in the out line. NBA may not
+ship picks in phase 2 without this gate already in the same phase; if
+the gate cannot land there, NBA picks move to phase 3 whole.
 
 ### E. Box-score team split (preceding small PR)
 
@@ -187,8 +198,10 @@ news adds a second freshness trigger bounded exactly like team news
    read as a panel waiting to load.
    One PR per repo per phase; a parity test per sport asserting the
    block renders from the bundle with the network blocked.
-2. Player picks (§C, including NBA as projections ± MAE).
-3. Player news (§D).
+2. Player picks (§C) — including NBA as projections ± MAE, **with
+   the §D availability gate wired in the same phase**. One category per
+   list. Out players leave the ranking (see §D).
+3. Player news (§D) — remaining sports.
 4. Insight rewrite (§B + validator rule).
 
 Parity test per sport per phase: same assertions, five repos — the
@@ -219,7 +232,7 @@ behavior; callout non-overlap against the real template.
 | 3 | NBA markets table stays whole (odds+edge+grading are additive) | strip it as duplication | remove in phase 1 |
 | 4 | Uncalibrated arms show bucket hit-rate / ±MAE instead of hiding | hide everything uncalibrated | drop the context column |
 | 5 | CFB ships picks flagged "no availability check" rather than waiting for a feed | hold CFB picks until a feed exists | remove CFB rows |
-| 6 | NBA player picks ship in phase 2 as projections ± MAE, labelled "projection, not a probability" (reversed on review — Kevin wants them now) | wait for the aggregate endpoint + prob layer | hold NBA rows until the prob layer lands |
+| 6 | NBA player picks ship in phase 2 as projections ± MAE, labelled "projection, not a probability" (reversed on review — Kevin wants them now), **but not without the §D availability gate in the same phase** | wait for the aggregate endpoint + prob layer | hold NBA rows until the prob layer lands |
 | 7 | Box-score split ships as a preceding Sports-only small PR (PR #20); NBA needs no grouping work | fold into phase 1, or add an NBA filter too | merge into phase 1 PRs |
 | 8 | F1 insight stays per-race (table + ribbon unchanged), no fixture panel | build F1 a fixture-style panel | extend phase 1 to F1 panel |
 | 9 | Finished flow keeps score/result sentences; pre-game flow prose is deleted | keep flow as the no-AI fallback | restore sentences in phase 1 |
@@ -246,6 +259,20 @@ explicitly-marked proposal markup for the new pieces. Shots in
    components (share bars for probabilities, key numbers with ±
    margins for projections), provenance per row.
 10. `boxfilter` — proposal Away/Both/Home over the real BoxScore.
+
+One fixture, enforced by code, not by care: every figure in every mock
+is read from `packages/predictor-ui/harness/fixture.ts`, keyed BY
+CATEGORY (a player has a TD probability and a yardage projection; they
+are different numbers, and mixing them is how the mock once printed
+Robinson's 96 rush yards as a "9600%" TD probability — caught by
+re-shooting the page, not by reading the code).
+`assertFixtureConsistency()` runs when the mock loads and throws,
+naming every problem: a row whose figure differs from the object, a
+row of the wrong kind for its category, an out player who is ranked,
+a row under a heading that does not list him, and the same player
+carrying two numbers in two mocks. `harness/fixture.test.ts` (12 tests)
+proves each guard actually throws, using the exact bugs the review
+found — 84-vs-96, Jacobs ranked, a rebounds row under "NBA points".
 
 Reproduce: `cd packages/predictor-ui/harness && npm install &&
 npm run typecheck && npm run build && npm run preview`
