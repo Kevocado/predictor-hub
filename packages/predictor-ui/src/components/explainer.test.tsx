@@ -182,6 +182,45 @@ describe("ExplainerPanel rebuilt picks", () => {
   });
 });
 
+describe("ExplainerPanel unverified timing", () => {
+  const unknown: Explanation = {
+    ...llm,
+    sport: "f1",
+    pick_timing: "unknown",
+    verdict: "Max Verstappen is the pick.",
+    band: "leaning",
+  };
+
+  it("shows a visible timing badge and withholds the band", () => {
+    render(<ExplainerPanel data={unknown} loading={false} error={false} onRetry={noop} />);
+    expect(screen.getByText("Timing not confirmed")).toBeInTheDocument();
+    expect(screen.getByText(/cannot be shown as made before the start/)).toBeInTheDocument();
+    // A confidence word on a pick the facts cannot place in time is still a
+    // confidence claim: no chip, mirroring the rebuilt row.
+    expect(screen.queryByTestId("band-chip")).not.toBeInTheDocument();
+  });
+
+  it("the badge is structural: it shows even when no factor mentions timing", () => {
+    // A test matching disclosure TEXT would also pass on the factor list, so
+    // deleting the badge row would change nothing. Factors with nothing to do
+    // with timing force the badge to be the only possible match.
+    const silent: Explanation = {
+      ...unknown,
+      factors: [
+        { key: "context", direction: "up", headline: "The pick", text: "The model makes Max Verstappen the pick." },
+      ],
+    };
+    render(<ExplainerPanel data={silent} loading={false} error={false} onRetry={noop} />);
+    expect(screen.getByText("Timing not confirmed")).toBeInTheDocument();
+  });
+
+  it("says nothing about timing when the pick was made in time", () => {
+    render(<ExplainerPanel data={llm} loading={false} error={false} onRetry={noop} />);
+    expect(screen.queryByText("Timing not confirmed")).not.toBeInTheDocument();
+    expect(screen.getByTestId("band-chip")).toBeInTheDocument();
+  });
+});
+
 /** A minimal v2 body for the collapse tests: the collapsed toggle withholds
  *  the body, and the body is verdict + factors now, not headline + sections. */
 const v2body: Explanation = {

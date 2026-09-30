@@ -118,13 +118,16 @@ class Explainer:
         # source for that label. The cache key covers the facts, so a hit and
         # the miss that filled it always agree on it.
         model = "" if row["source"] == "template" else row["model"]
+        # No band for unknown timing: a confidence word on a pick that cannot be
+        # placed in time is a confidence claim the facts do not support. The
+        # template returns None for this case; the model path is validated to
+        # disclose it, so we also withhold the band here.
+        if facts.pick_timing == "unknown":
+            band = None
+        else:
+            band = band_for(pick_prob(facts), market_shape(facts))
         out = {"sport": sport, "id": id, **row["body"],
-               # The band is computed, never asked for (spec §13a). A word is
-               # the same defect as a number when nothing ties it to anything:
-               # a model can call a 52% pick "strong" and there is no fact to
-               # contradict it. Unconditional, so this is the only place the
-               # response's band is decided and the template path cannot drift.
-               "band": band_for(pick_prob(facts), market_shape(facts)),
+               "band": band,
                "source": row["source"], "model": model,
                "generated_at": row["created_at"], "prompt_version": row["prompt_version"],
                "pick_timing": facts.pick_timing}

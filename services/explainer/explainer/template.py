@@ -83,6 +83,13 @@ DEFAULT_MARKET_LINE_KEY: tuple[str, ...] = ("market_line", "line")
 #: rather than listing them, so a new sport gets a sensible word instead of
 #: `KeyError`.
 _START = {"f1": "the session started", "pl": "kickoff", "nba": "tip-off"}
+
+#: What "timing could not be confirmed" means in a sentence for each sport.
+#: Mirrors `_START` because the panel words the status for the same moment.
+#: Two halves: what the schedule failed to supply, and what the pick therefore
+#: cannot be shown as. F1's moment is the session; football's is kickoff.
+_UNVERIFIED_SUPPLY = {"f1": "a session start time", "pl": "a kickoff time", "nba": "a tip-off time"}
+_UNVERIFIED_AS = {"f1": "the session", "pl": "kickoff", "nba": "tip-off"}
 #: How small a projected margin may be before the spread factor stops narrating
 #: it, in points. Half a point, and not a number invented here: NBA's own
 #: `_margin_line` (`api/facts.py`) words a margin as a gap only at
@@ -399,6 +406,18 @@ def explain_from_template(facts: dict) -> dict:
             f"This pick was rebuilt after {_START.get(sport, 'kickoff')}, so it is shown but "
             f"not counted, and it is not graded either way."))
 
+    # An unverified pick (session/kickoff/tip-off time absent from the schedule)
+    # is disclosed as a factor, with no band and a visible status in the panel.
+    # It is a SEPARATE case from rebuilt: nothing was rebuilt, the schedule
+    # simply never supplied the start time. The tone is neutral (grey), not red:
+    # nothing went wrong, and a red badge would invent a fault that isn't there.
+    if timing == "unknown":
+        factors.append(_fact(
+            "context", NEUTRAL, "Timing not confirmed",
+            f"The {sport.upper()} schedule did not provide {_UNVERIFIED_SUPPLY.get(sport, 'a start time')}, "
+            f"so the pick cannot be shown as made before {_UNVERIFIED_AS.get(sport, 'the start')}."
+        ))
+
     if label and prob is not None:
         factors.append(_fact(_outcome_key(by_key, "pick"), "up", "The pick",
                              f"The model makes {label} the pick at {_pct(prob)}."))
@@ -681,7 +700,12 @@ def explain_from_template(facts: dict) -> dict:
     # confidence; this is the name. Pinned exactly, across the band, in
     # `test_template_padding.py`.
     verdict = f"{label} is the pick." if label and prob is not None else "There is no pick for this one yet."
-    return {"verdict": verdict, "band": band_for(prob, market_shape(facts)),
+    # No band for unknown timing: a confidence word on a pick that cannot be
+    # placed in time is still a confidence claim. The panel withholds the band
+    # chip for this case (mirroring rebuilt), so we return None and let the
+    # response decide whether to render it.
+    band = None if timing == "unknown" else band_for(prob, market_shape(facts))
+    return {"verdict": verdict, "band": band,
             "factors": factors[:MAX_FACTORS]}
 
 
