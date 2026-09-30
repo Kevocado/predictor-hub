@@ -1,0 +1,105 @@
+name: Explainer service
+
+# The suite for services/explainer, on the Python the image actually runs. This
+# exists because of #39: #37 put a backslash inside an f-string expression in
+# validate.py, which Python 3.12+ accepts and 3.11 rejects. The image is
+# python:3.11-slim, so main was crash-looping and every summary returned 502,
+# while every test passed locally because the laptop's Python was newer than the
+# image's. A green local suite was not evidence about production.
+#
+# This is deliberately its own workflow rather than a second job in
+# site-sync-check.yml. That file's own header says it is "deliberately only this
+# job", so that a red run means one thing; a syntax error here and a stale
+# vendored copy there are not the same failure, and they should not be one run.
+#
+# The suite itself makes no outbound call: every HTTP call in it is mocked with
+# respx, and it still passes with HTTP_PROXY/HTTPS_PROXY pointed at a closed
+# port. The job does use the network, for the five site clones below, because 20
+# of the tests cannot be checked without them.
+
+on:
+  pull_request: {}
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: explainer-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: services/explainer
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/explainer/uv.lock
+      - name: Install Python 3.11 and the dev extras
+        # 3.11 is not a preference, it is the target: services/explainer/
+        # Dockerfile is FROM python:3.11-slim, and pyproject.toml pins
+        # requires-python = ">=3.11". Pinning it here is the whole point of the
+        # job -- letting uv pick leaves the check open to the same
+        # "it worked on my machine" that let #37 through.
+        # --frozen keeps uv.lock authoritative, so a stale lock fails instead of
+        # silently resolving something new.
+        run: |
+          uv python install 3.11
+          uv sync --frozen --extra dev --python 3.11
+      - name: Check out the five site repos
+        # 20 of the tests cross-check the explainer's market literals against
+        # the real `_markets` in each site's own facts.py, read out of that
+        # sibling's origin/main. They fail loudly rather than skip when the
+        # checkout is missing -- "an unverified literal is the thing this section
+        # exists to prevent" -- so a runner has to supply one. The tests read
+        # <SPORT>_REPO first, and their own docstring says why: "so a CI runner
+        # can point at a checkout without a sibling beside the repo".
+        #
+        # So this job can go red because a *site* repo changed, with no commit
+        # here. That is the drift check doing its job; the fix belongs in
+        # whichever repo moved, not in loosening this. All five repos are public,
+        # so no secret is involved. Shallow on purpose, and tracking main on
+        # purpose: the tests read what ships, not a pinned commit.
+        env:
+          SITE_REPOS: PL_Predictor NBA_Predictor CFB_Predictor F1_Predictor NFL_Predictor
+        run: |
+          mkdir -p "$RUNNER_TEMP/sites"
+          for repo in $SITE_REPOS; do
+            echo "cloning $repo"
+            git clone --quiet --depth 1 --branch main \
+              "https://github.com/Kevocado/$repo.git" "$RUNNER_TEMP/sites/$repo"
+          done
+      - name: Byte-compile every tracked .py in the service
+        # A SyntaxError is the one class of break that no amount of green tests
+        # survives: nothing imports, so nothing is collected. #39 was exactly
+        # that, and it reached production. This runs first and costs about a
+        # second, so a file that cannot even parse is reported as itself.
+        #
+        # git ls-files, not find: .venv/ would be walked by find, and the file
+        # list is then exactly what is committed, with no drift.
+        run: uv run --no-sync --python 3.11 python -m py_compile $(git ls-files '*.py')
+      - name: Tests
+        # The command the suite is run with by hand, character for character, so
+        # a local run and this run cannot be different things. --no-sync because
+        # the step above installed the env from the lockfile; PYTHONPATH=. is
+        # what puts the service's own package on the path.
+        run: PYTHONPATH=. uv run --python 3.11 --extra dev --no-sync pytest -q
+        env:
+          NFL_REPO: ${{ runner.temp }}/sites/NFL_Predictor
+          CFB_REPO: ${{ runner.temp }}/sites/CFB_Predictor
+          PL_REPO: ${{ runner.temp }}/sites/PL_Predictor
+          NBA_REPO: ${{ runner.temp }}/sites/NBA_Predictor
+          F1_REPO: ${{ runner.temp }}/sites/F1_Predictor
+      - name: Report the interpreter the suite actually ran on
+        # Cheap, and it turns "3.11" from a claim in this file into a line in
+        # the run log.
+        run: uv run --no-sync --python 3.11 python -VV
