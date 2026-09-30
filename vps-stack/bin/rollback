@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Roll a service back to a previous image, by commit sha.
+#
+#   bin/rollback nfl 27987cb2c4dd35dffbd23d9a35052ce0b9e0d563
+#
+# This is a thin alias for `deploy <service> <sha>`, which pulls that tag from
+# ghcr.io and restarts the container. It exists so that pruning local images
+# (bin/prune-images) is obviously reversible: the box keeps one local rollback
+# target for speed, and every older sha is still in the registry, so nothing
+# removed from disk is ever actually lost.
+#
+# The sha is a commit in the service's repo, so the list of candidates is also
+# just that repo's git history.
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+usage: bin/rollback <service> <sha>
+
+  service: pl | f1 | nfl | cfb | nba | sports
+  sha:     the commit sha of the image, e.g.
+           git -C ../NFL_Predictor log --oneline -20
+
+Lists the shas this box has run, with the last three still pullable.
+EOF
+  exit 2
+}
+
+[ $# -eq 0 ] && usage
+case "${1:-}" in
+  --list|-l)
+    # Every tag the registry holds for these repos, newest first. This is the
+    # answer to "what can I roll back to" without consulting any local list.
+    for repo in pl-predictor f1-predictor nfl-predictor cfb-predictor nba-predictor-deploy; do
+      echo "== $repo"
+      docker images "ghcr.io/kevocado/$repo" --format '  {{.CreatedAt}}  {{.Tag}}' | sort -r | head -3
+    done
+    exit 0
+    ;;
+esac
+
+[ $# -ne 2 ] && usage
+service=$1
+sha=$2
+
+case "$service" in
+  pl|f1|nfl|cfb|nba|sports) ;;
+  *) echo "rollback: unknown service '$service'" >&2; usage ;;
+esac
+
+[ "${sha//[0-9a-f]/}" != "$sha" ] && { echo "rollback: '$sha' is not a hex sha" >&2; exit 2; }
+[ "${#sha}" -lt 7 ] && { echo "rollback: '$sha' is too short to be a sha" >&2; exit 2; }
+
+echo "Rolling $service back to $sha (pulled from ghcr.io; this may take a minute)..."
+exec bin/deploy deploy "$service" "$sha"

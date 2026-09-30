@@ -1,2 +1,27 @@
 # macOS
 .DS_Store
+
+# Agent working notes. These are per-session scratch, not source.
+#
+# Four of these were COMMITTED, and this repo's `main` is served as static files
+# from the VPS: `/opt/stack/sites/hub` is a symlink to a versioned checkout, and
+# Caddy serves `root * /srv/hub`. So `.superpowers/sdd/...` was reachable at
+# https://<hub>/.superpowers/... with HTTP 200 — internal review notes, naming
+# absolute paths from a developer workstation, in a
+# public web root.
+#
+# The general rule, which the deploy script's own comments already state: never
+# write working files into a served checkout. The versioned-release rewrite
+# fixed the ownership half of that (a root-owned stray file could wedge a deploy)
+# but nothing stopped a stray file that was *tracked* — and a tracked file is
+# copied into every release by definition.
+#
+# `git rm --cached` keeps the files on disk for whoever is mid-session and drops
+# them from the release. Sports_Predictor has eight of the same files tracked;
+# they are not in that image today, but the same rule should apply there.
+.superpowers/
+
+# Per-session agent notes. main is served as static files, so anything tracked at the
+# root is public. Keep these local; put durable records under docs/superpowers/ledgers/.
+/SESSION-STATE.md
+/Handover.MD

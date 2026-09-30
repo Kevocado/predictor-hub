@@ -16,6 +16,8 @@ import httpx
 from pydantic import ValidationError
 
 from .cache import Cache
+from .config import SERVED_SPORTS
+from .contract import band_for, clean_verdict, market_shape, pick_for, pick_prob
 from .facts import Facts, PickTiming, render
 from .ledger import Ledger
 from .llm import LLMError, complete
@@ -29,7 +31,6 @@ logger = logging.getLogger(__name__)
 # A template stored because the model was unavailable (budget, outage) is
 # served for this long, then the model gets another go at the same facts.
 TEMPLATE_RETRY_SECONDS = 3 * 3600
-SECTION_KEYS = ("market", "title", "text")
 # Stored in the model column of a template row the model may retry later.
 UNAVAILABLE = "unavailable"
 
@@ -48,9 +49,32 @@ def _news_terms(f: Facts) -> list[str]:
     return [t.strip() for t in re.split(r"\s+(?:at|v|vs\.?|@)\s+", f.title) if t.strip()]
 
 
+def news_fingerprint(news: list[dict]) -> str:
+    """The newest matched headline's date, or ``""`` when there is no news.
+
+    A DATE and not the headline text: the question this answers is "is the news I
+    was written from still the newest news?", and a headline rewritten for
+    clarity on the same day has not changed the answer.
+    """
+    for item in news:
+        published = str(item.get("published") or "")[:10]
+        if published:
+            return published
+    return ""
+
+
 def _clean(body: dict) -> dict:
-    return {"headline": body["headline"],
-            "sections": [{k: str(s.get(k) or "") for k in SECTION_KEYS} for s in body["sections"]]}
+    """Coerce a model body to the v2 shape, and refuse a body that is not one.
+
+    The cache key covers `prompt_version`, so a v1 row cannot reach here. Asserting
+    anyway: a reused version must fail loudly rather than render an empty panel,
+    and this is the only place that can notice. A missing `verdict` means a shape
+    we do not understand, not a shape we can render.
+    """
+    if not isinstance(body.get("verdict"), str) or not isinstance(body.get("factors"), list):
+        raise ValueError(f"cached body is not a v2 verdict: {sorted(body)}")
+    return clean_verdict(body)
+
 
 
 class Explainer:
@@ -87,16 +111,40 @@ class Explainer:
         except (ValueError, ValidationError, TypeError) as exc:
             raise Upstream(f"{sport} facts failed the contract: {type(exc).__name__}") from None
 
-    def _answer(self, sport: str, id: str, row: dict, pick_timing: PickTiming) -> dict:
+    def _answer(self, sport: str, id: str, row: dict, facts: Facts) -> dict:
         # pick_timing rides along from the facts rather than being read out of
         # the prose: the panel has to repeat the site's own "Rebuilt after
         # kickoff" status, and neither the model nor the template is a reliable
         # source for that label. The cache key covers the facts, so a hit and
         # the miss that filled it always agree on it.
         model = "" if row["source"] == "template" else row["model"]
-        return {"sport": sport, "id": id, **row["body"], "source": row["source"], "model": model,
-                "generated_at": row["created_at"], "prompt_version": row["prompt_version"],
-                "pick_timing": pick_timing}
+        # No band for unknown timing: a confidence word on a pick that cannot be
+        # placed in time is a confidence claim the facts do not support. The
+        # template returns None for this case; the model path is validated to
+        # disclose it, so we also withhold the band here.
+        if facts.pick_timing == "unknown":
+            band = None
+        else:
+            band = band_for(pick_prob(facts), market_shape(facts))
+        out = {"sport": sport, "id": id, **row["body"],
+               "band": band,
+               "source": row["source"], "model": model,
+               "generated_at": row["created_at"], "prompt_version": row["prompt_version"],
+               "pick_timing": facts.pick_timing}
+        # The pick, derived from the facts for the same reason the band is: the
+        # panel has to know which segment of a bar to emphasise, and a model
+        # asked to name its own pick can disagree with the facts this verdict was
+        # computed from. `pick_for` is the only reader of it, and it agrees with
+        # the template's own "is there a pick" test, so the response cannot point
+        # the panel at a pick the verdict does not name.
+        #
+        # The key is OMITTED when there is no pick rather than set to null: the
+        # renderer acts on its absence, and `null` would be one more thing to
+        # check for instead of the one thing to check.
+        pick = pick_for(facts)
+        if pick is not None:
+            out["pick"] = pick
+        return out
 
     def _usable(self, row: dict | None) -> bool:
         if row is None:
@@ -109,6 +157,27 @@ class Explainer:
         return age < TEMPLATE_RETRY_SECONDS
 
     async def explain(self, sport: str, id: str) -> dict:
+        if sport not in SERVED_SPORTS:
+            # First line, before the facts fetch and before try_spend(): a
+            # refused request must cost nothing and must not touch the upstream.
+            #
+            # A refusal, not a template. A template here would render a panel
+            # and spend nothing, which reads as success.
+            #
+            # **This used to end "and F1 is still configured, so nothing else
+            # would ever say it had gone", which stopped being true when F1 was
+            # un-refused.** The sentence was about how a refusal would be
+            # noticed: F1 is a sport `config` still knew about, so a guard that
+            # stopped refusing it would have had no other signal. With every
+            # configured sport served there is no longer such a sport, so
+            # `UNSERVED` is empty and this branch is currently unreachable --
+            # which is the state `tests/test_unserved_sport.py` exists to hold,
+            # since the last time it was empty the file emptied itself. What is
+            # left worth saying is the part that does not depend on which sport
+            # is refused: `SPORTS` is the set of sports with a configurable API,
+            # and anything in it can be asked for, so a refusal here is the only
+            # place a "this sport has no panel" answer is produced.
+            raise NotFound(f"{sport} is not served")
         facts = await self._facts(sport, id)
         news = await headlines(self.client, sport, _news_terms(facts))
         facts_json = render(facts)
@@ -116,17 +185,18 @@ class Explainer:
         s = self.settings
         # News feeds the first write-up but isn't in the key: a fresh
         # headline alone must not cost another generation.
-        key = Cache.key(sport, id, facts_json, "", s.prompt_version, f"{s.model}|{s.fallback_model}")
+        key = Cache.key(sport, id, facts_json, news_fingerprint(news),
+                        s.prompt_version, f"{s.model}|{s.fallback_model}")
 
         row = self.cache.get(key)
         if self._usable(row):
-            return self._answer(sport, id, row, facts.pick_timing)
+            return self._answer(sport, id, row, facts)
         lock = self._locks.setdefault(key, asyncio.Lock())
         try:
             async with lock:
                 row = self.cache.get(key)  # another caller may have just made it
                 if self._usable(row):
-                    return self._answer(sport, id, row, facts.pick_timing)
+                    return self._answer(sport, id, row, facts)
                 try:
                     body, source, model = await self._generate(sport, facts, facts_json, news_json)
                 except Exception:
@@ -135,7 +205,7 @@ class Explainer:
                 self.cache.put(key, sport, id, body, source, model, s.prompt_version)
         finally:
             self._locks.pop(key, None)
-        return self._answer(sport, id, self.cache.get(key), facts.pick_timing)
+        return self._answer(sport, id, self.cache.get(key), facts)
 
     async def _generate(self, sport: str, facts: Facts, facts_json: str, news_json: str) -> tuple[dict, str, str]:
         s = self.settings

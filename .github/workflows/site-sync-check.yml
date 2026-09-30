@@ -1,0 +1,67 @@
+name: Vendored UI is current
+
+# Is every site's vendored copy of packages/predictor-ui the one this commit
+# would vendor? Each site runs its own drift test, and each one compares the
+# copy against the site's *own* SYNC.json — so it catches a hand edit and is
+# blind to this. That is how sites sat at an old version with every suite in
+# every repo green. See scripts/check-site-sync.mjs for why the check has to
+# live in the hub rather than in a site.
+#
+# This is the only job in CI, and it is deliberately only this job. The rest of
+# the suites run locally; wiring them up is a separate change, and folding it in
+# here would make a red run ambiguous between "the sites are stale" and
+# "something unrelated broke".
+
+on:
+  pull_request: {}
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read # the automatic GITHUB_TOKEN. Every site repo is public, so an
+  #                anonymous read already returns 200 (verified with curl), and
+  #                this token is the only credential the check expects.
+
+concurrency:
+  group: site-sync-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24" # fetch and node:test, no build step
+      - name: Compare each site's SYNC.json against the hub's contentVersion
+        env:
+          # Unset today, and the check does not need it: all six site repos are
+          # public. It is here as the one-line escape hatch, because a
+          # GITHUB_TOKEN is an installation token scoped to *this* repository
+          # and whether GitHub honours one for a different public repository is
+          # not something a local run can answer. If the first run in Actions
+          # reports every site unreadable, add a repository secret
+          # SITE_REPOS_TOKEN (a PAT with `contents: read` on the site repos)
+          # and re-run — nothing else changes.
+          SITE_REPOS_TOKEN: ${{ secrets.SITE_REPOS_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # ENFORCED as of 2026-09-28. It shipped as "0" on purpose: adoption is a
+          # migration, and a check that lands red on main is a check nobody reads.
+          #
+          # The precondition is met. All four registered sites now read the version
+          # the hub is at:
+          #   NBA_Predictor      #10  e4f15576b8e0 -> 9c14c67d91df  (merged 38bd6df)
+          #   F1_Predictor       #11  e4f15576b8e0 -> 9c14c67d91df  (merged 498ffde)
+          #   PL_Predictor       #5   already current
+          #   Sports_Predictor   #5   already current
+          # Both re-vendors were checked before syncing, and both were CLEAN, so
+          # nothing a person had written by hand was destroyed to get here.
+          #
+          # Until this flip it could not catch a site falling behind *after* today.
+          # It can now. If it goes red, the fix is `node scripts/sync-ui.mjs` on the
+          # stale site, not loosening this.
+          ENFORCE_SITE_SYNC: "1"
+        run: node scripts/check-site-sync.mjs

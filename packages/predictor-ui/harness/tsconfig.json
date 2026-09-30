@@ -1,0 +1,34 @@
+{
+  // The harness's OWN tsconfig, and the reason it is its own: `predictor-ui`'s
+  // `include` is `["src", "vitest.config.ts", "test-setup.ts"]`, so the harness
+  // sits outside every type-checker the library runs. A screenshot harness that
+  // no compiler reads is not evidence — it is a page that happens to render.
+  // This file puts `main.tsx` and `vite.config.ts` under `tsc` without touching
+  // the library's own run, which is the thing the harness README warns about:
+  // adding a build tool to the library's manifest broke six test files once.
+  //
+  // `noEmit` is here as well as in the `typecheck` script on purpose. A bare
+  // `tsc -p .` in an editor is the common way this gets run, and without it that
+  // writes `.js` next to the sources.
+  //
+  // The options are the library's, minus the three test-time `types` the harness
+  // has no use for. `types: ["react"]` is not redundant: `main.tsx` names
+  // `React.ReactNode` as a TYPE without importing React, which resolves through
+  // the UMD global namespace, and that namespace is only in scope because it is
+  // listed here. Drop it and the harness stops compiling for a reason that has
+  // nothing to do with the harness.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["react"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  "include": ["main.tsx", "vite.config.ts"]
+}

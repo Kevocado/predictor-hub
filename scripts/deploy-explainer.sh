@@ -84,11 +84,13 @@ golive)
   [ -n "$KEY" ] || { echo "no key given"; exit 1; }
   read -rp "Primary model [keep current / default]: " M1
   read -rp "Fallback model [keep current / default]: " M2
-  printf '%s\n%s\n%s\n' "$KEY" "${M1:-}" "${M2:-}" | $SSH 'bash -s' 3<&0 <<'EOF'
+  # The script travels as the remote command; stdin carries only the key and models.
+  # (ssh forwards stdin alone, so the secrets cannot ride on another fd.)
+  IFS= read -r -d '' REMOTE <<'EOF' || true
 set -euo pipefail
 S=""; [ "$(id -u)" -ne 0 ] && S="sudo"
 docker ps >/dev/null 2>&1 || docker() { command sudo docker "$@"; }
-IFS= read -r KEY <&3; IFS= read -r M1 <&3; IFS= read -r M2 <&3
+IFS= read -r KEY; IFS= read -r M1; IFS= read -r M2
 F=/etc/predictor/explainer.env
 $S test -f "$F" || { echo "run setup first"; exit 1; }
 NET=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' predictor-explainer | awk '{print $1}')
@@ -104,6 +106,7 @@ sleep 6
 docker run --rm --network "$NET" curlimages/curl -s http://predictor-explainer:8090/status; echo
 echo "Live: the model writes summaries; pre-generation runs every 3 h. Watch used_today with: status"
 EOF
+  printf '%s\n%s\n%s\n' "$KEY" "${M1:-}" "${M2:-}" | $SSH "bash -c $(printf %q "$REMOTE")"
   ;;
 status)
   $SSH 'bash -s' <<EOF

@@ -28,7 +28,7 @@ Each pick shows its confidence, its reasoning and a public record of how often t
 
 ## Positioning
 
-- **An honest track record.** Every counted pick is locked in before kickoff and scored in public. Picks rebuilt after kickoff stay visible and labelled "Rebuilt after kickoff", but they never count toward any hit rate.
+- **An honest track record.** The headline is the pre-kickoff record: every counted pick is locked in before kickoff and scored in public, and picks rebuilt after kickoff never count toward it. They are still counted and shown separately — a second figure over every resolved pick, and a per-pick list with hits and misses in the same table — because a hit rate is only meaningful if the pick existed before the result, and hiding the rest would lose sight of the picks that have already passed.
 - **It shows its reasoning.** The model explains why it likes a side (drivers, form, head-to-head, ratings), not just the number.
 - **Five sports in one place.** One maker and one way of reading a pick across all five sports. Each sport keeps its **full functionality**: a Games view and a Data Hub (teams, players, standings or rankings, track record, model details). The family shares a product frame; the sites are not collapsed into a single summary page.
 
@@ -68,7 +68,7 @@ Each pick shows its confidence, its reasoning and a public record of how often t
 ## Brand Commitments
 
 - The name "Predictor".
-- The honesty rule above: rebuilt picks are never counted.
+- The honesty rule above: rebuilt picks never count toward the headline. They are counted and shown separately, and every resolved pick is listed.
 - Plain-language copy. No developer terms on public pages.
 
 ## Evidence on Hand
@@ -77,6 +77,13 @@ Each pick shows its confidence, its reasoning and a public record of how often t
 - F1 Track Record: winners called per race.
 - NBA calibration buckets.
 - Design critique baseline: `.impeccable/critique/2026-09-25T07-27-01Z__index-html.md` (18/40).
+  **Stale, and 18/40 is no longer a fair number for the product.** That critique predates the
+  Phase 2 family redesign. Re-measured 2026-09-27: the hub now scores clean on every heuristic
+  that critique covers — no sub-12px text, no contrast failures, no small tap targets, no
+  horizontal scroll at 1440 or 390, no raw developer values, links on the live VPS hosts. The
+  file is kept as the historical record and is not rewritten. The findings that are still real
+  are in Task 24 of the phase-4 ledger, and they are on `Sports_Predictor` (the NFL/CFB site),
+  not the hub — including the one P0, an error-less permanent "Loading…" on a failed fetch.
 - **Absent, and must not be fabricated:** user counts, testimonials, press, betting profit or ROI claims, "beats the bookies" claims.
 
 ## Product Principles
