@@ -19,7 +19,7 @@ state, and every row was checked rather than recalled.
 | site | panel mounted on `main` | route to the service | served by the service |
 |---|---|---|---|
 | PL | `FixtureModal.tsx` | own FastAPI proxy | yes |
-| F1 | `SessionTimelinePanel.tsx` | own FastAPI proxy (`F1_Predictor#16`, merged 2026-09-29) | yes |
+| F1 | `SessionTimelinePanel.tsx` | own FastAPI proxy (`F1_Predictor#15`, merged 2026-09-29) | yes |
 | NBA | `GameDetailModal.tsx` (`NBA_Predictor#14`, merged) | own FastAPI proxy (`NBA_Predictor#9`, merged) | yes |
 | NFL + CFB | via Sports' `GameDetailModal.tsx` | Caddy `handle_path /api/explain/*` | yes |
 
@@ -30,7 +30,7 @@ of the four hosts: all four answer `502 The summary service is not available.`
 for an unknown id, which is the fixed message the proxies return. A 502 proves
 the route exists and reached the service; a 404 would have meant no route.
 
-**F1's proxy has landed** — `F1_Predictor#16` merged 2026-09-29, so the F1
+**F1's proxy has landed** — `F1_Predictor#15` merged 2026-09-29, so the F1
 row above describes `main` as it stands. The service already serves `f1`
 (`SERVED_SPORTS`); the route from F1's site was the missing half.
 
