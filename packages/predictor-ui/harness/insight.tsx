@@ -26,24 +26,19 @@ import {
   type Segment,
   type BoxScoreGroup,
 } from "../src/index";
+import {
+  FIX,
+  PLAYERS,
+  LISTS,
+  CATEGORY_KIND,
+  ranked,
+  outPlayers,
+  valueOf,
+  assertFixtureConsistency,
+  type Category,
+} from "./fixture";
 
-/** The one game. All figures below are restated here and derived nowhere else. */
-const FIX = {
-  home: "GB",
-  away: "ATL",
-  homeWinProb: 0.72,
-  awayWinProb: 0.28,
-  spreadLine: -4.5, // GB −4.5, home frame
-  modelMargin: -6.1, // home minus away: the model wants 1.6 more than the market
-  predictedTotal: 42.1,
-  totalLine: 43.5,
-  recordHits: 11,
-  recordSettled: 15,
-  pick: "Green Bay",
-  outPlayer: "J. Jacobs",
-  outTeam: "GB",
-} as const;
-
+/** The game and every player figure live in ./fixture — nothing restates them. */
 const pct = (p: number) => `${Math.round(p * 100)}%`;
 
 const NFL_TILES: MarketTile[] = [
@@ -163,23 +158,61 @@ const BOX_COLUMNS = [
   { key: "yds", label: "Yds" },
   { key: "td", label: "TD%" },
 ];
+// Built from PLAYERS, so the box score cannot disagree with the picks about
+// the same player: Yds reads the rush-yardage projection, TD% the anytime-TD
+// probability. Jacobs is out: he gets no projection row, which is why the out
+// line below the lists matters.
 const BOX_GROUPS_BOTH: BoxScoreGroup[] = [
   {
-    position: "GB · RB",
+    position: `${FIX.home} · RB`,
     rows: [
-      { key: "jacobs", name: "J. Jacobs", position: "RB", team: "GB", order: 1, isStarter: true, values: [78, 41] },
-      { key: "wilson", name: "E. Wilson", position: "RB", team: "GB", order: 2, isStarter: false, values: [22, 12] },
+      {
+        key: "wilson",
+        name: PLAYERS.wilson.name,
+        position: "RB",
+        team: FIX.home,
+        order: 1,
+        isStarter: true,
+        values: [
+          valueOf(PLAYERS.wilson, "Rush yds"),
+          Math.round(valueOf(PLAYERS.wilson, "Anytime TD") * 100),
+        ],
+      },
     ],
-    subtotals: [{ label: "GB total", values: [100, null] }],
+    subtotals: [{ label: `${FIX.home} total`, values: [valueOf(PLAYERS.wilson, "Rush yds"), null] }],
   },
   {
-    position: "ATL · RB",
+    position: `${FIX.away} · RB`,
     rows: [
-      { key: "robinson", name: "B. Robinson", position: "RB", team: "ATL", order: 1, isStarter: true, values: [84, 38] },
+      {
+        key: "robinson",
+        name: PLAYERS.robinson.name,
+        position: "RB",
+        team: FIX.away,
+        order: 1,
+        isStarter: true,
+        values: [
+          valueOf(PLAYERS.robinson, "Rush yds"),
+          Math.round(valueOf(PLAYERS.robinson, "Anytime TD") * 100),
+        ],
+      },
     ],
-    subtotals: [{ label: "ATL total", values: [84, null] }],
+    subtotals: [{ label: `${FIX.away} total`, values: [valueOf(PLAYERS.robinson, "Rush yds"), null] }],
   },
 ];
+
+/**
+ * The review's four findings, as code that runs when the mock loads: one
+ * fixture means one number, no out player is ranked, one category per list,
+ * and no row of the wrong KIND (a yardage figure read as a probability).
+ * Throws with every problem named, rather than rendering a wrong mock.
+ */
+assertFixtureConsistency(
+  LISTS.flatMap(({ category }) =>
+    ranked(category).map((p) => ({ category, playerKey: p.key, value: valueOf(p, category) })),
+  ),
+  BOX_GROUPS_BOTH.flatMap((g) => g.rows.map((r) => ({ key: r.key, values: r.values }))),
+);
 
 const never = () => new Promise<unknown>(() => {});
 const noop = () => {};
@@ -288,8 +321,8 @@ function App() {
               Out
             </span>
             <div className="flex min-w-0 flex-col gap-0.5">
-              <p className="text-sm font-medium leading-snug text-pr-text">{FIX.outPlayer} is out — the RB pick moves to E. Wilson.</p>
-              <p className="text-xs text-pr-text-faint">Official injury report · {FIX.outTeam} · week 6 · via nfl_data_py</p>
+              <p className="text-sm font-medium leading-snug text-pr-text">{PLAYERS.jacobs.name} is out — the RB ranking moves to {PLAYERS.wilson.name}.</p>
+              <p className="text-xs text-pr-text-faint">Official injury report · {PLAYERS.jacobs.team} · week 6 · via nfl_data_py</p>
             </div>
           </div>
           <InstantHead>Without news</InstantHead>
@@ -300,7 +333,7 @@ function App() {
       <Case id="callouts" title="8 · AI insight — callouts, not paragraphs (proposal)"
         note="Two scannable rows, both derived from the one fixture above: the disagreement is model −6.1 against line −4.5 (gap 1.6, the tile's own figures — the interpretation is new, the numbers are not). Anything without a fact behind it is rejected by the validator.">
         <Proposal label="insight callouts">
-          <Callout delta="▲ 1.6 pts" deltaTone="text-pr-win"
+          <Callout delta={`▲ ${FIX.edge} pts`} deltaTone="text-pr-win"
             text={`The model wants more than the market on ${FIX.pick}.`}
             evidence={`Model ${FIX.home} ${FIX.modelMargin} vs line ${FIX.home} ${FIX.spreadLine} · last 10 GB covers: 7`} />
           <Callout delta="7–3" deltaTone="text-pr-text-dim"
@@ -310,20 +343,37 @@ function App() {
       </Case>
 
       <Case id="picks" title="9 · best player picks — top 3 per category, visual (proposal)"
-        note="Probability rows get a share bar (real ProbabilityBar); projection rows get a key number with its margin (real KeyNumberTile). Every row carries provenance: a graded record where a ledger exists, an explicit note where none does. Never wagering advice.">
+        note="Probability rows get a share bar (real ProbabilityBar); projection rows get a key number with its margin (real KeyNumberTile). One category per list. Out players leave the ranking entirely and appear once, below the lists, attributed — never with a bar, a tile or a bold number. Every figure is read from harness/fixture.ts; assertFixtureConsistency throws if a mock ever restates one.">
         <Proposal label="player picks">
-          <InstantHead>Anytime TD — top 3</InstantHead>
-          <ProbRow name="J. Jacobs (GB)" detail="Anytime TD" p={0.41} record="bucket 40–50%: hits 44% · n=112" />
-          <ProbRow name="B. Robinson (ATL)" detail="Anytime TD" p={0.38} record="bucket 30–40%: hits 33% · n=140" />
-          <ProbRow name="J. Love (GB)" detail="Anytime TD" p={0.22} record="bucket 20–30%: hits 24% · n=98" />
-          <div className="pt-2"><InstantHead>Rush yards — top 3</InstantHead></div>
-          <ProjRow name="B. Robinson (ATL)" detail="Rush yds" value="96" sub="± 18 MAE" record="yardage MAE 18.2 · n=64" />
-          <ProjRow name="J. Jacobs (GB)" detail="Rush yds" value="78" sub="± 18 MAE" record="out — see news flag above, never recommended" />
-          <ProjRow name="E. Wilson (GB)" detail="Rush yds" value="22" sub="± 18 MAE" record="moves up on the news flag" />
-          <div className="pt-2"><InstantHead>NBA points — top 3 (projections, not probabilities)</InstantHead></div>
-          <ProjRow name="J. Tatum (BOS)" detail="Points" value="27.4" sub="± 4.1 MAE" record="projection, not a probability · no graded record yet" />
-          <ProjRow name="J. Brown (BOS)" detail="Points" value="24.9" sub="± 4.1 MAE" record="projection, not a probability · no graded record yet" />
-          <ProjRow name="B. Adebayo (MIA)" detail="Rebounds" value="10.2" sub="± 2.3 MAE" record="projection, not a probability · no graded record yet" />
+          {LISTS.map(({ category }) => (
+            <div key={category} className={category === LISTS[0].category ? "" : "pt-2"}>
+              <InstantHead>
+                {category === "Points" || category === "Rebounds" ? "NBA " : ""}
+                {category} — top {ranked(category).length}
+                {CATEGORY_KIND[category as Category] === "projection" ? " (projections, not probabilities)" : ""}
+              </InstantHead>
+              {ranked(category).map((p) => {
+                const v = valueOf(p, category);
+                return CATEGORY_KIND[category] === "probability" ? (
+                  <ProbRow key={p.key} name={`${p.name} (${p.team})`} detail={category}
+                    p={v}
+                    record={`model ${pct(v)} · bucket hits ${pct(p.bucket!.hits)} · n=${p.bucket!.n}`} />
+                ) : (
+                  <ProjRow key={p.key} name={`${p.name} (${p.team})`} detail={category}
+                    value={String(v)} sub={`± ${p.mae![category]} MAE`}
+                    record={p.bucket
+                      ? `MAE ${p.mae![category]} · n=${p.bucket.n}`
+                      : "projection, not a probability · no graded record yet"} />
+                );
+              })}
+            </div>
+          ))}
+          {/* §D: an out player is shown ONCE, here, and nowhere in a ranking. */}
+          {outPlayers().map((p) => (
+            <p key={p.key} data-testid="out-player-line" className="pt-2 text-xs text-pr-text-faint">
+              Out: {p.name} · official injury report · {p.team} · week 6 — not ranked above
+            </p>
+          ))}
         </Proposal>
       </Case>
 
