@@ -594,3 +594,24 @@ test("the check still reads every site on a pending PR, and the comparison is no
   // abort the job into a "success" it never earned.
   assert.match(step.run, /if\s+changed="\$\(/, "the diff is not guarded, so a failure aborts before ENFORCE is written");
 });
+
+// A workflow can read `steps.<id>.outputs.<name>` only if that step wrote
+// `<name>=...` to $GITHUB_OUTPUT. Writing to $GITHUB_ENV instead creates an
+// environment variable and leaves the output EMPTY -- which here meant
+// ENFORCE_SITE_SYNC="" and a check that silently stopped enforcing anything.
+test("every steps.<id>.outputs.<name> the site-sync workflow reads is written to GITHUB_OUTPUT by that step", () => {
+  const yml = readFileSync(new URL("../.github/workflows/site-sync-check.yml", import.meta.url), "utf8");
+  const refs = [...yml.matchAll(/steps\.([A-Za-z0-9_-]+)\.outputs\.([A-Za-z0-9_-]+)/g)].map((m) => [m[1], m[2]]);
+  assert.ok(refs.length > 0, "the workflow is expected to read at least one step output");
+  for (const [id, name] of refs) {
+    const start = yml.indexOf(`id: ${id}`);
+    assert.ok(start >= 0, `step id '${id}' is read but not defined`);
+    const nextStep = yml.indexOf("\n      - ", start + 1);
+    const body = yml.slice(start, nextStep === -1 ? undefined : nextStep);
+    assert.match(
+      body,
+      new RegExp(`${name}=[^\\n]*>>\\s*"?\\$GITHUB_OUTPUT"?`),
+      `step '${id}' must write ${name}= to $GITHUB_OUTPUT (found GITHUB_ENV instead: ${/GITHUB_ENV/.test(body)})`,
+    );
+  }
+});

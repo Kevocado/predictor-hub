@@ -107,8 +107,8 @@ jobs:
             enforce=1
             expect_resync=0
           fi
-          echo "enforce=$enforce" >>"$GITHUB_ENV"
-          echo "expect_resync=$expect_resync" >>"$GITHUB_ENV"
+          echo "enforce=$enforce" >>"$GITHUB_OUTPUT"
+          echo "expect_resync=$expect_resync" >>"$GITHUB_OUTPUT"
       - name: Compare each site's SYNC.json against the hub's contentVersion
         env:
           # Unset today, and the check does not need it: all six site repos are
