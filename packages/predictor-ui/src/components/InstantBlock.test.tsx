@@ -100,4 +100,37 @@ describe("InstantBlock", () => {
     const { container } = render(<InstantBlock sport="nfl" bundle={{ home_team: "GB", away_team: "ATL" }} />);
     expect(container.firstChild).toBeNull();
   });
+
+  // --- Review fixes (CodeRabbit on hub#52), each proven red before the fix ---
+
+  it("accents the bar segment of the PICK, and only that one, whichever side it is on", () => {
+    const accented = (c: HTMLElement) =>
+      Array.from(c.querySelectorAll<HTMLElement>('[data-testid="pbar-fill"]'))
+        .map((el, i) => ({ i, on: (el.getAttribute("style") || "").includes("color-pr-accent") }))
+        .filter((x) => x.on).map((x) => x.i);
+    // Pick GB = first segment.
+    const a = render(<InstantBlock sport="nfl" bundle={NFL} extras={{ tiles: TILES, segments: SEGMENTS }} />);
+    expect(accented(a.container)).toEqual([0]);
+    a.unmount();
+    // Pick ATL = second segment: emphasis follows the pick, never the order.
+    const ATL = { ...NFL, home_win_prob: 0.4, away_win_prob: 0.6, pick: { label: "ATL", prob: 0.6 } };
+    const b = render(<InstantBlock sport="nfl" bundle={ATL}
+      extras={{ tiles: TILES, segments: [{ label: "GB", prob: 0.4, market: "moneyline" }, { label: "ATL", prob: 0.6, market: "moneyline" }] }} />);
+    expect(accented(b.container)).toEqual([1]);
+  });
+
+  it("accents nothing when the bundle has no pick", () => {
+    const { container } = render(<InstantBlock sport="nfl" bundle={{ home_team: "GB", away_team: "ATL" }}
+      extras={{ tiles: TILES, segments: SEGMENTS }} />);
+    const on = Array.from(container.querySelectorAll<HTMLElement>('[data-testid="pbar-fill"]'))
+      .filter((el) => (el.getAttribute("style") || "").includes("color-pr-accent"));
+    expect(on).toHaveLength(0);
+  });
+
+  it("still renders the record when the bundle has no pick and the extras carry only a record", () => {
+    const { container } = render(<InstantBlock sport="nfl" bundle={{ home_team: "GB", away_team: "ATL" }}
+      extras={{ record: { label: "Picks made before kickoff", hits: 11, settled: 15 } }} />);
+    expect(container.firstChild).not.toBeNull();
+    expect(screen.getByText(/11\s*\/\s*15|11 of 15/)).toBeInTheDocument();
+  });
 });

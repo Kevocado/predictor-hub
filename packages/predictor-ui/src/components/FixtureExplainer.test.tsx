@@ -170,7 +170,7 @@ describe("FixtureExplainer", () => {
     expect(screen.queryByTestId("news-date")).toBeNull();
   });
 
-  it("draws the site's figures under the summary when extras are passed", async () => {
+  it("draws the site's figures ONCE, in the facts block above the summary, when extras are passed", async () => {
     const user = userEvent.setup();
     const extras = {
       tiles: [{ market: "moneyline", label: "moneyline", value: "62%", sub: "win · BAL" }],
@@ -196,11 +196,12 @@ describe("FixtureExplainer", () => {
 
     await user.click(screen.getByRole("button"));
     const summaryView = screen.getByTestId("fixture-summary");
-    // The tile and both bar segments render inside the summary state, scoped:
-    // bar labels carry their figures, so bare team names match nothing.
-    expect(within(summaryView).getByTestId("tile-moneyline")).toBeInTheDocument();
-    expect(within(summaryView).getAllByTestId("pbar-fill")).toHaveLength(2);
-    expect(within(summaryView).getByText("62%")).toBeInTheDocument();
+    // Interpretation does not repeat the facts: the tile and the bar stay where
+    // they already were (the block, above), and the summary carries neither.
+    expect(within(summaryView).queryByTestId("tile-moneyline")).toBeNull();
+    expect(within(summaryView).queryAllByTestId("pbar-fill")).toHaveLength(0);
+    expect(within(screen.getByTestId("instant-block")).getByTestId("tile-moneyline")).toBeInTheDocument();
+    expect(screen.getAllByTestId("tile-moneyline")).toHaveLength(1);
   });
 
   it("joins the answer's pick against the extras' segments, translating '<team> win'", async () => {
@@ -228,6 +229,32 @@ describe("FixtureExplainer", () => {
     expect(
       screen.getByRole("img", { name: /the pick is BAL/i }),
     ).toBeInTheDocument();
+  });
+
+  it("puts the facts block BEFORE the AI summary, and the summary does not repeat the tiles, bar or record", async () => {
+    const user = userEvent.setup();
+    const extras = {
+      tiles: [{ market: "moneyline", label: "moneyline", value: "62%", sub: "win · BAL" }],
+      segments: [
+        { label: "KC", prob: 0.38, market: "moneyline" },
+        { label: "BAL", prob: 0.62, market: "moneyline" },
+      ],
+      record: { label: "Picks made before kickoff", hits: 11, settled: 15 },
+    };
+    const { container } = render(
+      <FixtureExplainer sport="nfl" state="pre-game" bundle={BUNDLE}
+        request={() => Promise.resolve(SUMMARY)} extras={extras} />,
+    );
+    await user.click(screen.getByRole("button"));
+    const block = screen.getByTestId("instant-block");
+    const summary = screen.getByTestId("fixture-summary");
+    // Facts first, interpretation after.
+    expect(block.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Each figure exactly once on the page: one bar, one 62% tile, one record.
+    expect(container.querySelectorAll('[data-testid="pbar-fill"]')).toHaveLength(2); // the two segments of ONE bar
+    expect(screen.getAllByText("62%")).toHaveLength(1);
+    expect(screen.getAllByText(/11\s*\/\s*15|11 of 15/)).toHaveLength(1);
+    expect(within(summary).queryByText("62%")).toBeNull();
   });
 
   it("renders the summary bare when no extras are passed", async () => {

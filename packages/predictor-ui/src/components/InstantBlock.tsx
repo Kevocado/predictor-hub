@@ -13,7 +13,7 @@ import { KeyNumberTile } from "./KeyNumberTile";
 import { ProbabilityBar } from "./ProbabilityBar";
 import { RecordStrip } from "./RecordStrip";
 import { StatusBadge } from "./StatusBadge";
-import { pickTiming, verdictSentence } from "../lib/bundleFacts";
+import { pickLabel, pickTiming, verdictSentence } from "../lib/bundleFacts";
 import type { FixtureExtras } from "./FixtureExplainer";
 
 export interface InstantBlockProps {
@@ -33,7 +33,12 @@ export function InstantBlock({ sport, bundle, extras }: InstantBlockProps) {
   const verdict = verdictSentence(bundle, sport);
   const tiles = extras?.tiles ?? [];
   const segments = extras?.segments;
-  if (!verdict && tiles.length === 0 && !segments) return null;
+  // A record alone is still something to show: a bundle with no pick can carry
+  // the record strip, and a guard that ignored it dropped the record silently.
+  if (!verdict && tiles.length === 0 && !segments && !extras?.record) return null;
+  // The pick the BUNDLE names, never worked out here: the bar accents the segment
+  // whose label matches it, and nothing when there is no pick.
+  const pick = pickLabel(bundle, sport);
 
   return (
     <div className="flex flex-col gap-3" data-testid="instant-block">
@@ -66,7 +71,7 @@ export function InstantBlock({ sport, bundle, extras }: InstantBlockProps) {
         </div>
       )}
       {segments && segments.length > 0 && (
-        <ProbabilityBar segments={segments} legend={extras?.legend} minSegmentPx={2} />
+        <ProbabilityBar segments={segments} legend={extras?.legend} minSegmentPx={2} pick={pick ? { label: pick } : null} />
       )}
       {extras?.record && (
         <RecordStrip label={extras.record.label} hits={extras.record.hits} settled={extras.record.settled} />

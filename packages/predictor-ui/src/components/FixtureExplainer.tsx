@@ -85,10 +85,8 @@ function SummaryView({ summary, extras }: { summary: Summary; extras?: FixtureEx
         loading={false}
         error={false}
         onRetry={() => {}}
-        tiles={extras?.tiles}
-        segments={extras?.segments}
-        legend={extras?.legend}
-        record={extras?.record}
+        // No tiles, bar, legend or record: the instant block above already renders
+        // each of them, and a second copy is the overlap this phase removes.
         players={extras?.players}
         moment={extras?.moment}
       />
@@ -117,8 +115,10 @@ export function FixtureExplainer({ sport, state, bundle, request, extras, promis
 
   return (
     <div className="flex flex-col gap-3" data-testid="fixture-explainer">
-      {panelState === "summary" && summary && <SummaryView summary={summary} extras={extras} />}
+      {/* Facts first, interpretation after: the block is the finished "what", so the
+          AI summary reads as what it adds and never as a second copy of the page. */}
       <InstantBlock sport={sport} bundle={bundle} extras={extras} />
+      {panelState === "summary" && summary && <SummaryView summary={summary} extras={extras} />}
       <FixtureFlow sport={sport} state={state} bundle={bundle} request={request} />
       {panelState !== "summary" && (
         <div className="flex flex-col gap-1">
