@@ -20,3 +20,8 @@
 # them from the release. Sports_Predictor has eight of the same files tracked;
 # they are not in that image today, but the same rule should apply there.
 .superpowers/
+
+# Per-session agent notes. main is served as static files, so anything tracked at the
+# root is public. Keep these local; put durable records under docs/superpowers/ledgers/.
+/SESSION-STATE.md
+/Handover.MD
