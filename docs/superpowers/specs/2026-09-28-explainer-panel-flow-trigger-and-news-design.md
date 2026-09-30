@@ -19,7 +19,7 @@ state, and every row was checked rather than recalled.
 | site | panel mounted on `main` | route to the service | served by the service |
 |---|---|---|---|
 | PL | `FixtureModal.tsx` | own FastAPI proxy | yes |
-| F1 | `SessionTimelinePanel.tsx` | own FastAPI proxy (`F1_Predictor#16` pending) | yes |
+| F1 | `SessionTimelinePanel.tsx` | own FastAPI proxy (`F1_Predictor#15`, merged 2026-09-29) | yes |
 | NBA | `GameDetailModal.tsx` (`NBA_Predictor#14`, merged) | own FastAPI proxy (`NBA_Predictor#9`, merged) | yes |
 | NFL + CFB | via Sports' `GameDetailModal.tsx` | Caddy `handle_path /api/explain/*` | yes |
 
@@ -30,8 +30,8 @@ of the four hosts: all four answer `502 The summary service is not available.`
 for an unknown id, which is the fixed message the proxies return. A 502 proves
 the route exists and reached the service; a 404 would have meant no route.
 
-**F1's proxy is the one still open** — `F1_Predictor#16` is unmerged, so the F1
-row above describes `main` plus that PR. The service already serves `f1`
+**F1's proxy has landed** — `F1_Predictor#15` merged 2026-09-29, so the F1
+row above describes `main` as it stands. The service already serves `f1`
 (`SERVED_SPORTS`); the route from F1's site was the missing half.
 
 **What this spec did not deliver, and still has not:**
@@ -41,7 +41,7 @@ row above describes `main` plus that PR. The service already serves `f1`
   (`predictor-hub#36`, deployed). Neither was in this spec; both came from the
   first live summaries.
 - **Prose naming a market the facts do not quote is now rejected**
-  (`predictor-hub#37`, open). The first live NBA summary claimed "the market
+  (`predictor-hub#37`, merged 2026-09-29). The first live NBA summary claimed "the market
   line of BOS by 1.9" for a game with no book quote at all, and every
   number-level rule passed it because the number was real.
 - F1 remains a **reduced** panel by design — no line, so no spread or total
