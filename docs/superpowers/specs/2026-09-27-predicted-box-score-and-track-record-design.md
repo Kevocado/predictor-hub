@@ -1,7 +1,12 @@
 # Predicted box score + track record rebuild (design)
 
 **Date:** 2026-09-27
-**Status:** awaiting Kevin's review.
+**Status:** **implemented and live on both sites**; awaiting Kevin's review of the
+design only. Corrected 2026-09-29 — this said only "awaiting Kevin's review" with
+nothing to distinguish a shipped feature from an unimplemented proposal. Verified
+by `git grep BoxScore origin/main` in both repos: `GameDetailModal.tsx` on
+`Sports_Predictor` and `PlayerBoxScore.tsx` on `NBA_Predictor`, both mounting it
+outside the vendored package tree.
 **Roadmap:** [../plans/2026-09-25-predictor-frontend-action-plan.md](../plans/2026-09-25-predictor-frontend-action-plan.md). This is Phase 5.
 **Mode:** Operate. The visitor's job is to read a projected roster and decide whether to trust it. Scanability and honest numbers outrank expression; the broadcast-scoreboard world is inherited unchanged.
 

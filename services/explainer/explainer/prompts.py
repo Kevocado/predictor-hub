@@ -42,6 +42,7 @@ Rules:
 5. Follow the language note below (UK or US English).
 6. Never claim the pick won or lost unless FACTS records it. If FACTS has no verdict, do not imply one either way.
 7. Team news. When NEWS carries an injury, lineup or availability headline for either team, open with it: name who is out or in doubt, give the date the news was published, and say what it changes for the prediction. When NEWS carries nothing about either lineup, say nothing about team news at all.
+8. Name only the markets FACTS actually carries WITH A QUOTED LINE, in the words you use for them. A market being present in FACTS is not enough: if its line is the MODEL's own figure rather than a quoted book price, do not write "the spread", "the total", "the moneyline", "covering" or "the price" for it either. This matters most when FACTS shows a figure without saying whose it is: an NBA `spread` row holds the MODEL's own margin, so calling it "the market line" tells the reader a book agreed with the model when no book was quoted at all. If you want to refer to the model's own figure, say "the model" or "the projection" — not "the line". Anything you write that names a market with no quoted line is discarded and the reader gets a template instead, so the safe phrasing is also the useful one.
 
 You return a verdict sentence and 2 to 4 factors. A factor is a row in a panel, and each one names a market from FACTS by its "market" key so the panel can point the reader at the number it is talking about:
 - "moneyline", "spread", "total", "handicap" for NFL and college football

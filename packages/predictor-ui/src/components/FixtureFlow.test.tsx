@@ -213,14 +213,14 @@ describe("FixtureFlow: state-appropriate, honest flow description", () => {
     it("PL: says the pick and stops — no line named when no market_line", () => {
       const { screen } = renderFixtureFlow("pl", "pre-game", preGameBundles.pl);
       // The flow should name the pick and must not contain a line sentence.
-      const flowText = screen.getByRole("main").innerHTML;
+      const flowText = screen.getByTestId("fixture-flow").innerHTML;
       expect(flowText).not.toContain("market line");
       expect(flowText).toContain("Arsenal");
     });
 
     it("Sports: two moneyline segments, no line tile", () => {
       const { screen } = renderFixtureFlow("sp", "pre-game", preGameBundles.sp);
-      const flowText = screen.getByRole("main").innerHTML;
+      const flowText = screen.getByTestId("fixture-flow").innerHTML;
       expect(flowText).not.toContain("spread");
       expect(flowText).not.toContain("total");
       expect(flowText).toContain("KC");
@@ -229,7 +229,7 @@ describe("FixtureFlow: state-appropriate, honest flow description", () => {
 
     it("F1: draws no market-line tile and no split-bar market row", () => {
       const { screen } = renderFixtureFlow("f1", "pre-game", preGameBundles.f1);
-      const flowText = screen.getByRole("main").innerHTML;
+      const flowText = screen.getByTestId("fixture-flow").innerHTML;
       // F1 has no market_line, so no line tile should appear.
       expect(flowText).not.toContain("market-line");
       expect(flowText).not.toContain("split-bar");
@@ -240,7 +240,7 @@ describe("FixtureFlow: state-appropriate, honest flow description", () => {
     it("NBA thin bundle: flow is legible even with no market_line", () => {
       renderFixtureFlow("nba", "pre-game", preGameBundles.nba.minimal);
       // Flow should render without error; the "no line" case is handled.
-      expect(screen.getByRole("main")).not.toBeNull();
+      expect(screen.getByTestId("fixture-flow")).not.toBeNull();
     });
 
     it("F1 rebuilt: the moment is the session, not a kickoff", () => {
@@ -248,7 +248,7 @@ describe("FixtureFlow: state-appropriate, honest flow description", () => {
         ...preGameBundles.f1,
         pick_timing: "rebuilt",
       });
-      expect(screen.getByRole("main").innerHTML).toContain("after the session started");
+      expect(screen.getByTestId("fixture-flow").innerHTML).toContain("after the session started");
     });
 
     it("NFL rebuilt: the moment stays the game", () => {
@@ -256,7 +256,7 @@ describe("FixtureFlow: state-appropriate, honest flow description", () => {
         ...preGameBundles.sp,
         pick_timing: "rebuilt",
       });
-      expect(screen.getByRole("main").innerHTML).toContain("after the game started");
+      expect(screen.getByTestId("fixture-flow").innerHTML).toContain("after the game started");
     });
   });
 
@@ -265,7 +265,7 @@ describe("FixtureFlow: state-appropriate, honest flow description", () => {
   describe("in-play", () => {
     it("PL: shows score and how it stands against the line when there is one", () => {
       const { screen } = renderFixtureFlow("pl", "in-play", inPlayBundles.pl);
-      const flowText = screen.getByRole("main").innerHTML;
+      const flowText = screen.getByTestId("fixture-flow").innerHTML;
       expect(flowText).toContain("score");
       // PL has no market_line, so no line sentence should appear.
       expect(flowText).not.toContain("market line");
@@ -273,14 +273,14 @@ describe("FixtureFlow: state-appropriate, honest flow description", () => {
 
     it("Sports: shows score and how it stands against the line when there is one", () => {
       const { screen } = renderFixtureFlow("sp", "in-play", inPlayBundles.sp);
-      const flowText = screen.getByRole("main").innerHTML;
+      const flowText = screen.getByTestId("fixture-flow").innerHTML;
       expect(flowText).toContain("score");
       expect(flowText).not.toContain("no market line");
     });
 
     it("F1: shows the state of the game and how it stands", () => {
       const { screen } = renderFixtureFlow("f1", "in-play", inPlayBundles.f1);
-      const flowText = screen.getByRole("main").innerHTML;
+      const flowText = screen.getByTestId("fixture-flow").innerHTML;
       expect(flowText).toContain("state");
       expect(flowText).not.toContain("market line");
     });
@@ -291,21 +291,21 @@ describe("FixtureFlow: state-appropriate, honest flow description", () => {
   describe("finished", () => {
     it("PL: result and whether the model's pick was right", () => {
       const { screen } = renderFixtureFlow("pl", "finished", finishedBundles.pl);
-      const flowText = screen.getByRole("main").innerHTML;
+      const flowText = screen.getByTestId("fixture-flow").innerHTML;
       expect(flowText).toContain("result");
       expect(flowText).toContain("was right");
     });
 
     it("Sports: result and pick rightness", () => {
       const { screen } = renderFixtureFlow("sp", "finished", finishedBundles.sp);
-      const flowText = screen.getByRole("main").innerHTML;
+      const flowText = screen.getByTestId("fixture-flow").innerHTML;
       expect(flowText).toContain("result");
       expect(flowText).toContain("pick rightness");
     });
 
     it("F1: result and pick rightness", () => {
       const { screen } = renderFixtureFlow("f1", "finished", finishedBundles.f1);
-      const flowText = screen.getByRole("main").innerHTML;
+      const flowText = screen.getByTestId("fixture-flow").innerHTML;
       expect(flowText).toContain("result");
       expect(flowText).toContain("pick rightness");
     });
