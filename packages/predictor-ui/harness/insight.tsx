@@ -22,6 +22,7 @@ import {
   RecordStrip,
   BoxScore,
   SummaryButton,
+  InstantBlock,
   type MarketTile,
   type Segment,
   type BoxScoreGroup,
@@ -184,6 +185,25 @@ const BOX_GROUPS_BOTH: BoxScoreGroup[] = [
 const never = () => new Promise<unknown>(() => {});
 const noop = () => {};
 
+/** The bundle shapes the two live block cases below feed `InstantBlock`, in the
+ *  shape each site's adapter already builds. Nothing here is restated as prose:
+ *  the block reads the same object the flow did. */
+const NFL_BUNDLE = {
+  home_team: FIX.home,
+  home_team_full: "Green Bay",
+  away_team: FIX.away,
+  home_win_prob: FIX.homeWinProb,
+  away_win_prob: FIX.awayWinProb,
+  pick: { label: FIX.home, prob: FIX.homeWinProb },
+} as const;
+
+const F1_BUNDLE = {
+  driver: "Max Verstappen",
+  pick: "Max Verstappen",
+  pick_timing: "unknown",
+  session_start: null,
+} as const;
+
 function App() {
   return (
     <main data-sport="nfl" className="min-h-screen bg-pr-stage font-pr-body text-pr-text">
@@ -340,6 +360,27 @@ function App() {
           </div>
           <BoxScore columns={BOX_COLUMNS} groups={BOX_GROUPS_BOTH} title="Predicted box score · RB" />
         </Proposal>
+      </Case>
+    <Case id="instant-nfl" title="11 · the shipped block — NFL, full (InstantBlock)"
+        note="The real component, the site's own bundle and extras: timing chip, verdict, tiles, bar, record. No request, no state, no effect — the case above and this one read the same figures from the same object.">
+        <InstantBlock
+          sport="nfl"
+          bundle={NFL_BUNDLE}
+          extras={{
+            tiles: NFL_TILES,
+            segments: NFL_SEGMENTS,
+            record: { label: "Picks made before kickoff", hits: FIX.recordHits, settled: FIX.recordSettled },
+          }}
+        />
+      </Case>
+
+      <Case id="instant-f1" title="12 · the shipped block — F1, reduced (InstantBlock)"
+        note="Same component, no extras beyond the record: F1 draws no tiles and no bar (decision 8 keeps its insight per-race). The unverified badge is the honest reading when the schedule carried no session start.">
+        <InstantBlock
+          sport="f1"
+          bundle={F1_BUNDLE}
+          extras={{ record: { label: "Picks made before the session", hits: 9, settled: 14 } }}
+        />
       </Case>
     </main>
   );
