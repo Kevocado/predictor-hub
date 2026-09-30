@@ -468,7 +468,7 @@ function workflowSteps(text) {
 }
 
 /** Run one `run:` block the way Actions runs it — `bash -e` — with a stub `git`
- *  first on PATH, and return the `KEY=value` lines it appended to GITHUB_ENV.
+ *  first on PATH, and return the `KEY=value` lines it appended to GITHUB_OUTPUT.
  *
  *  `changed` is the PR's whole file list, and the stub honours the pathspec the
  *  step actually asked for: a diff of `docs/…` against `-- packages/predictor-ui/`
@@ -503,7 +503,7 @@ function runWorkflowStep(step, { env = {}, changed = [], code = 0 } = {}) {
       encoding: "utf8",
       env: {
         PATH: `${bin}:${process.env.PATH}`,
-        GITHUB_ENV: envFile, STUB_GIT_ARGV: argvFile, STUB_CHANGED: changed.join("\n"), ...env,
+        GITHUB_OUTPUT: envFile, STUB_GIT_ARGV: argvFile, STUB_CHANGED: changed.join("\n"), ...env,
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -521,7 +521,7 @@ const workflow = readFileSync(WORKFLOW, "utf8");
 /** The step that decides, found by what it does rather than where it sits. */
 const decideStep = () => {
   const steps = workflowSteps(workflow);
-  const step = steps.find((s) => /enforce/i.test(s.name) && /GITHUB_ENV/.test(s.run));
+  const step = steps.find((s) => /enforce/i.test(s.name) && /GITHUB_OUTPUT/.test(s.run));
   assert.ok(step, `no step in ${WORKFLOW} computes the enforcement decision; the three cases cannot be told apart without it`);
   return step;
 };
