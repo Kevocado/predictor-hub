@@ -30,5 +30,5 @@
     "types": ["react"],
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
-  "include": ["main.tsx", "vite.config.ts"]
+  "include": ["main.tsx", "insight.tsx", "vite.config.ts"]
 }
