@@ -24,3 +24,10 @@ packages = ["explainer"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# `slow` is not "skipped": it runs by default in CI. It marks the tests that wait
+# out a real deadline on purpose -- the deploy health probe against a target that
+# never answers -- so that the number they print is a measurement and not a
+# claim, and so that deleting a bound shows up as a test that gets slower.
+markers = [
+    "slow: waits out a real deadline on purpose; runs by default",
+]
