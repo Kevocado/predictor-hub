@@ -23,9 +23,13 @@ import {
   BoxScore,
   SummaryButton,
   InstantBlock,
+  PicksList,
   type MarketTile,
   type Segment,
   type BoxScoreGroup,
+  type PickRow,
+  type OutPlayer,
+  type PicksListProps,
 } from "../src/index";
 import {
   FIX,
@@ -215,6 +219,53 @@ assertFixtureConsistency(
   BOX_GROUPS_BOTH.flatMap((g) => g.rows.map((r) => ({ key: r.key, values: r.values }))),
 );
 
+/**
+ * The fixture, in the SHIPPED component's own props — the shape Tasks 2-5 will
+ * build from their adapters. Nothing here is a literal number: every `value`
+ * and every `margin` comes from `valueOf(p, category)` / `p.mae`, so the mocks
+ * above and this component cannot disagree about a player.
+ */
+const PICKS_PROPS: PicksListProps = (() => {
+  const categories = LISTS.map(({ category }) => {
+    const kind = CATEGORY_KIND[category as Category];
+    const rows: PickRow[] = ranked(category as Category).map((p) => {
+      const v = valueOf(p, category as Category);
+      return {
+        key: `${p.key}:${category}`,
+        name: p.name,
+        team: p.team,
+        detail: category,
+        value: v,
+        kind,
+        // Provenance is the CALLER's words, verbatim. Which words are honest is
+        // the adapter's problem (the plan's corrections 1 and 2 land there), so
+        // this reads the fixture's own record rather than composing a sentence.
+        provenance:
+          kind === "probability"
+            ? `model ${pct(v)} · bucket hits ${pct(p.bucket!.hits)} · n=${p.bucket!.n}`
+            : p.bucket
+              ? `MAE ${p.mae![category]} · n=${p.bucket.n}`
+              : "projection, not a probability · no graded record yet",
+        ...(kind === "projection" ? { margin: p.mae?.[category as Category] } : {}),
+      };
+    });
+    // One category per list, and the words say which kind each list holds.
+    return {
+      category: `${category === "Points" || category === "Rebounds" ? "NBA " : ""}${category}${
+        kind === "projection" ? " — projections, not probabilities" : ""
+      }`,
+      rows,
+    };
+  });
+  const out: OutPlayer[] = outPlayers().map((p) => ({
+    name: p.name,
+    team: p.team,
+    source: "official injury report · via nfl_data_py",
+    dated: "Sep 30, 2026",
+  }));
+  return { categories, out };
+})();
+
 const never = () => new Promise<unknown>(() => {});
 const noop = () => {};
 
@@ -395,6 +446,37 @@ function App() {
             </p>
           ))}
         </Proposal>
+      </Case>
+
+      <Case id="picks-component" title="13 · SHIPPED PicksList — the real component, real atoms"
+        note="Not a proposal: this is src/components/PicksList.tsx, rendering the fixture's own ranked players. Probability rows draw the real ProbabilityBar with minSegmentPx=2; projection rows draw the real KeyNumberTile with its ±. Every figure is READ from harness/fixture.ts (nothing is retyped here), so assertFixtureConsistency and the component's own kind guard both hold over it. Jacobs is out: he is in no ranking and appears once, below the lists, attributed and dated.">
+        <PicksList {...PICKS_PROPS} />
+      </Case>
+
+      <Case id="picks-states" title="14 · SHIPPED PicksList — empty state and the cap"
+        note="Two states the shipped sites will hit. Left: a category with no rows renders the existing 'No pick yet' vocabulary rather than a fabricated zero, bar or tile. Right: a four-player category renders THREE — the cap is a ceiling, and the first three are shown, not the last three.">
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-2">
+            <InstantHead>Empty category</InstantHead>
+            <PicksList categories={[{ category: "Anytime TD", rows: [] }]} />
+          </div>
+          <div className="flex flex-col gap-2">
+            <InstantHead>Four rows in, three rendered</InstantHead>
+            <PicksList
+              categories={[
+                {
+                  category: "Anytime TD",
+                  rows: [
+                    { key: "td:jacobs", name: PLAYERS.jacobs.name, team: PLAYERS.jacobs.team, detail: "Anytime TD", value: 0.41, kind: "probability", provenance: "not shown — outside the cap" },
+                    { key: "td:robinson", name: PLAYERS.robinson.name, team: PLAYERS.robinson.team, detail: "Anytime TD", value: 0.38, kind: "probability", provenance: "model 38% · bucket hits 33% · n=140" },
+                    { key: "td:wilson", name: PLAYERS.wilson.name, team: PLAYERS.wilson.team, detail: "Anytime TD", value: 0.24, kind: "probability", provenance: "model 24% · bucket hits 24% · n=98" },
+                    { key: "td:love", name: PLAYERS.love.name, team: PLAYERS.love.team, detail: "Anytime TD", value: 0.22, kind: "probability", provenance: "model 22% · bucket hits 24% · n=98" },
+                  ],
+                },
+              ]}
+            />
+          </div>
+        </div>
       </Case>
 
       <Case id="boxfilter" title="10 · box score split by team — Away / Both / Home (proposal)"

@@ -162,7 +162,11 @@ export function outPlayers(): Player[] {
  */
 export function assertFixtureConsistency(
   rows: { category: Category; playerKey: string; value: number }[],
-  boxRows: { key: string; values: number[] }[],
+  // `values` is `(number | null)[]` because `BoxScoreRow` is: a column the
+  // fixture has no figure for is a null, and this guard reads only the Yds
+  // figure at index 0. Typing it `number[]` would force the mock to lie about
+  // the null cells to satisfy the checker, which is the opposite of a guard.
+  boxRows: { key: string; values: (number | null)[] }[],
 ): void {
   const problems: string[] = [];
 
