@@ -80,66 +80,62 @@ describe("1 · a heading per category, at most three rows, never padded", () => 
   });
 });
 
-describe("2 · a probability row draws a share bar and its percentage", () => {
-  it("renders the bar and the percentage, from the real ProbabilityBar", () => {
-    const { container } = render(
-      <PicksList categories={[{ category: "Anytime TD", rows: [prob({ key: "a", name: "B. Robinson", value: 0.38 })] }]} />,
-    );
-    // The bar carries BOTH halves of the share: this row's 38% and the 62% the
-    // rest of the field holds. A bar of one segment alone would draw 100%.
-    expect(screen.getByText("Anytime TD 38%")).toBeInTheDocument();
-    expect(screen.getByText("the rest of the field 62%")).toBeInTheDocument();
-    const bar = container.querySelector('[role="img"]');
-    expect(bar).toHaveAttribute("aria-label", expect.stringContaining("38%"));
-    // The 2px sliver floor travels with it, so a 3% probability is still visible.
-    expect(container.querySelector('[data-testid="pbar-fill"]')).toHaveAttribute("data-min-width", "2px");
+describe("2 · a probability row is the player and one percentage, with a thin bar", () => {
+  it("shows the percentage and a bar of exactly that share, and nothing else", () => {
+    render(<PicksList categories={[{ category: "Anytime TD", rows: [prob({ key: "a", name: "B. Robinson", team: "ATL", value: 0.38 })] }]} />);
+    const row = screen.getByTestId("picks-row");
+    expect(within(row).getByTestId("picks-value")).toHaveTextContent("38%");
+    expect(within(row).getByTestId("picks-bar")).toHaveStyle({ width: "38%" });
+    expect(row.textContent).toContain("B. Robinson");
+    expect(row.textContent).toContain("ATL");
+  });
+
+  it("keeps a tiny probability visible rather than rounding the bar away", () => {
+    render(<PicksList categories={[{ category: "Anytime TD", rows: [prob({ key: "a", name: "Edge", value: 0.03 })] }]} />);
+    const w = parseFloat((screen.getByTestId("picks-bar") as HTMLElement).style.width);
+    expect(w).toBeGreaterThanOrEqual(3);
   });
 });
 
-describe("3 · a projection row draws the key number and its ±, and NEVER a percentage", () => {
-  it("renders the figure and the margin, with no % anywhere on the row", () => {
+describe("3 · a projection row is the player and one figure, and NEVER a percentage", () => {
+  it("shows the figure with no % and no bar", () => {
     const { container } = render(
       <PicksList categories={[{ category: "Rush yds", rows: [proj({ key: "b", name: "B. Robinson", value: 96 })] }]} />,
     );
     const row = screen.getByTestId("picks-row");
-    expect(within(row).getByText("96.0")).toBeInTheDocument();
-    expect(row.textContent).toContain("± 18.0");
-    // The defect this whole row shape exists to prevent: 96 read as a share.
+    expect(within(row).getByTestId("picks-value")).toHaveTextContent("96.0");
+    // The defect this row shape exists to prevent: 96 read as a share.
     expect(row.textContent).not.toContain("%");
-    // The REAL KeyNumberTile, keyed by the row's own key — not a composed
-    // percentage wearing a tile's classes.
-    expect(container.querySelector('[data-testid="tile-b"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-testid="pbar-fill"]')).toBeNull();
-  });
-
-  it("says there is no error estimate yet rather than ± 0 when the caller has no margin", () => {
-    render(
-      <PicksList
-        categories={[
-          { category: "Points", rows: [proj({ key: "c", name: "J. Tatum", value: 27.4, margin: undefined, detail: "Points" })] },
-        ]}
-      />,
-    );
-    const row = screen.getByTestId("picks-row");
-    expect(row.textContent).toContain("no error estimate yet");
-    expect(row.textContent).not.toContain("± 0");
+    expect(container.querySelector('[data-testid="picks-bar"]')).toBeNull();
   });
 });
 
-describe("4 · provenance renders verbatim on every row", () => {
-  it("quotes the caller's own words and composes none of its own", () => {
-    const first = "model 38% · bucket hits 33% · n=140";
-    const second = "aggregate only · no per-player ledger exists yet";
-    render(
+describe("4 · nothing but the prediction is on a row (Kevin, 2026-10-01)", () => {
+  it("renders none of the caller's provenance, record, error or calibration prose", () => {
+    const provenance = "raw score, uncalibrated · graded · Brier 0.15 over 346 resolved props · bucket 50-60% scored 60%";
+    const { container } = render(
       <PicksList
         categories={[
-          { category: "Anytime TD", rows: [prob({ key: "a", name: "B. Robinson", value: 0.38, provenance: first })] },
-          { category: "Rush yds", rows: [proj({ key: "b", name: "B. Robinson", value: 96, provenance: second })] },
+          { category: "Anytime TD", rows: [prob({ key: "a", name: "A. Rodgers", team: "PIT", value: 0.81, provenance })] },
+          { category: "Rush yds", rows: [proj({ key: "b", name: "B. Robinson", value: 96, margin: 18, provenance })] },
         ]}
       />,
     );
-    expect(screen.getByText(first)).toBeInTheDocument();
-    expect(screen.getByText(second)).toBeInTheDocument();
+    const text = container.textContent ?? "";
+    for (const bit of ["uncalibrated", "Brier", "graded", "resolved", "bucket", "MAE", "±", "no error estimate", "projection, not", "the rest of the field"]) {
+      expect(text, `row text must not contain "${bit}"`).not.toContain(bit);
+    }
+  });
+
+  it("numbers the rows 1 to 3 so the ranking reads at a glance", () => {
+    render(
+      <PicksList
+        categories={[{ category: "Anytime TD", rows: [
+          prob({ key: "a", name: "One", value: 0.6 }), prob({ key: "b", name: "Two", value: 0.5 }), prob({ key: "c", name: "Three", value: 0.4 }),
+        ] }]}
+      />,
+    );
+    expect(screen.getAllByTestId("picks-rank").map((e) => e.textContent)).toEqual(["1", "2", "3"]);
   });
 });
 
