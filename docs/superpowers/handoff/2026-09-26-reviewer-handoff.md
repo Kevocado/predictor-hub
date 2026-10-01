@@ -9,9 +9,11 @@ comments, and — new in this session — deploy to the VPS, which the cloud ses
 Five sports prediction sites share one design system ("Predictor", broadcast-scoreboard tone, trust first):
 PL (Premier League), F1, NBA, and NFL + CFB (one site: Sports_Predictor). predictor-hub holds the shared UI package
 (`packages/predictor-ui`, vendored into each site by `node scripts/sync-ui.mjs src` with a drift test), the family landing
-page, the plans/specs/ledgers, and `services/explainer` (the AI match explainer). **Honesty rule, above everything:** only a
-pick made before the start counts; a pick rebuilt after kickoff/tip-off/the session is shown, labelled, and never counted,
-and nothing computed after the start may appear as a pre-start prediction. Everything runs on one VPS; the Azure deploy
+page, the plans/specs/ledgers, and `services/explainer` (the AI match explainer). **Honesty rule, above everything** (revised by Kevin on
+2026-10-01, see `specs/2026-10-01-track-record-counts-every-pick.md`): every recorded pick counts toward the track record
+(one per game+market, the earliest recorded; recorded picks are immutable and a model rerun never replaces them); the
+headline is all of them and the figure beside it is the subset made before kickoff. A pick made after the start is
+**labelled, never hidden**, and nothing computed after the start may appear as a pre-start prediction. Everything runs on one VPS; the Azure deploy
 workflows are manual-only (don't re-enable them). The algo-trade-hub repos are **out of scope** — ignore them entirely.
 
 ## Repos and branch
@@ -37,8 +39,12 @@ The agent works on branch `claude/sports-predictors-frontend-plan-qpab3v` in eve
    review, then start it again. Also re-check every ~30 min in case the watcher died (a `/loop 30m` or a scheduled check-in).
    Ignore moves that are your own pushes or plain `Merge origin/main` commits with no PR.
 2. **Review efficiently.** Pull, look at the diff against `origin/main` (two-dot if merge bases are messy), run the
-   changed repo's suites, and read the risky parts only. Check hardest: the honesty rule (started games/sessions quote only
-   the stored pre-start record — never the public snapshot's prediction, which rebuilds recent rounds after the start),
+   changed repo's suites, and read the risky parts only. **Read CodeRabbit before merging:** `scripts/coderabbit.sh <owner/repo> <pr>` lists the open
+   Critical/Major findings (exit 2 if any), `--all` adds Minor and addressed ones. Verify each Critical/Major against the
+   code; fix it on the branch or send it back. Chain the merge on it:
+   `scripts/coderabbit.sh R N && gh pr merge N -R R --merge --match-head-commit SHA`. Check hardest: the honesty rule
+   (started games/sessions quote only the stored pick, never the public snapshot's prediction, which rebuilds recent
+   rounds after the start; a post-start pick is labelled, never presented as pre-start),
    no per-request module globals (sync endpoints run in a thread pool), no secrets, tests that fail without the fix.
 3. **Decide.**
    - Good → **merge it yourself** (Kevin: "once approved you can push"): merge commit, `expectedHeadSha` pinned to the

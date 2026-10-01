@@ -28,7 +28,7 @@ Each pick shows its confidence, its reasoning and a public record of how often t
 
 ## Positioning
 
-- **An honest track record.** The headline is the pre-kickoff record: every counted pick is locked in before kickoff and scored in public, and picks rebuilt after kickoff never count toward it. They are still counted and shown separately — a second figure over every resolved pick, and a per-pick list with hits and misses in the same table — because a hit rate is only meaningful if the pick existed before the result, and hiding the rest would lose sight of the picks that have already passed.
+- **An honest track record.** Every recorded pick counts, once per game and market (the earliest recorded; a model rerun never replaces or double-counts it), and recorded picks are never overwritten. The headline is all of them; the figure beside it is the subset made before kickoff, and every pick in the per-pick list says when it was made. A pick made after kickoff is labelled, never hidden and never presented as a pre-game prediction. (Revised 2026-10-01: Kevin re-runs the models constantly and wanted model changes to stop silently dropping picks from the record.)
 - **It shows its reasoning.** The model explains why it likes a side (drivers, form, head-to-head, ratings), not just the number.
 - **Five sports in one place.** One maker and one way of reading a pick across all five sports. Each sport keeps its **full functionality**: a Games view and a Data Hub (teams, players, standings or rankings, track record, model details). The family shares a product frame; the sites are not collapsed into a single summary page.
 
@@ -68,7 +68,7 @@ Each pick shows its confidence, its reasoning and a public record of how often t
 ## Brand Commitments
 
 - The name "Predictor".
-- The honesty rule above: rebuilt picks never count toward the headline. They are counted and shown separately, and every resolved pick is listed.
+- The honesty rule above: every recorded pick counts; picks made after kickoff are labelled and shown in a pre-kickoff-only figure beside the headline, and every resolved pick is listed.
 - Plain-language copy. No developer terms on public pages.
 
 ## Evidence on Hand
@@ -89,7 +89,7 @@ Each pick shows its confidence, its reasoning and a public record of how often t
 ## Product Principles
 
 1. **Pick first.** Every game surface answers "who, how sure, has it been right" before anything else.
-2. **Never overclaim.** Only pre-kickoff picks count. Uncertainty is shown, not hidden ("Toss-up", "No pick yet").
+2. **Never overclaim.** A pick is never presented as made before kickoff unless its own timestamps prove it. Uncertainty is shown, not hidden ("Toss-up", "No pick yet").
 3. **Show the why.** Every pick links to its reasoning and to the model's record.
 4. **One product, full depth.** A shared frame and shared components, with each sport's full Games and Data Hub intact.
 5. **Works on a phone at kickoff.** Fast, readable, one-handed.
