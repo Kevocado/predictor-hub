@@ -11,7 +11,14 @@ const script = fileURLToPath(new URL("../scripts/sync-ui.mjs", import.meta.url))
 const made = [];
 const tempSite = () => { const d = mkdtempSync(join(tmpdir(), "site-")); made.push(d); return d; };
 after(() => made.forEach((d) => rmSync(d, { recursive: true, force: true })));
-const run = (...args) => spawnSync(process.execPath, [script, ...args], { encoding: "utf8" });
+// `--vendor-anyway`, and deliberately so: this file is about the vendoring
+// mechanics (headers, manifests, idempotence, drift) and runs from whatever
+// checkout the suite was started in — which during development is a feature
+// branch or a worktree, and which the source guard refuses for good reason.
+// Opting in here is what keeps the guard from having to be loosened to let this
+// file pass. The guard itself is tested in sync-ui-source.test.mjs, against real
+// throwaway repos whose branch and dirtiness are set deliberately.
+const run = (...args) => spawnSync(process.execPath, [script, "--vendor-anyway", ...args], { encoding: "utf8" });
 
 test("vendors the package source (no tests) with a do-not-edit header and a checksum manifest", () => {
   const site = tempSite();
