@@ -258,14 +258,45 @@ _CLAUSE_SPLIT_RE = re.compile(
 #: letting one of them into this table would hand every rejection a way out.
 #: `_BOOK_SOUNDING_RE` below is what stops that from happening by accident, and
 #: `test_a_book_is_never_a_third_party_transfer` is what holds it.
+#:
+#: **And a PARTICIPANT is not a source**, which is the second half of that
+#: principle and the half that was missing. `side`, `sides`, `team`, `teams`,
+#: `club` and `clubs` name the thing the sentence is *about* -- the two sides of
+#: the game, the team being predicted -- and every one of them walked into the
+#: permit, because the second gate (`_clause_is_a_transfer`'s ordering test) only
+#: asks whether the noun sits before the market word. Measured on `origin/main`
+#: (`bb91579`):
+#:
+#:     "The model likes Boston, and the side favours the spread."
+#:         _market_problems(...) == []        # accepted
+#:
+#: `side` is before `spread`, nothing in the clause sounds like a book, so the
+#: clause is somebody else's clause and the spread claim in it skips the quote
+#: requirement -- against NBA, whose `spread` holds the MODEL's own margin and
+#: carries no book quote at all. The reader is told a third party said it when
+#: the model said it, which is the one sentence shape this rule exists to stop.
+#:
+#: `test`, `tests`, `update`, `updates`, `notes` and `news` went for a different
+#: reason: they are event nouns. "An update on the squad" and "the notes on the
+#: squad" are about a game and are not anybody's account of it, and a permit
+#: keyed on them is a permit keyed on "the sentence mentions something
+#: report-shaped". `medical team`, `injury report` and `league bulletin` all keep
+#: working, because the SOURCE half of the compound is what matches.
+#:
+#: The cost, stated rather than discovered: "The news says the handicap is a
+#: shade tighter" is now rejected unless a book quoted one, and the model was
+#: given news to read. That is the same trade this file has made twice already
+#: (`line` alone, bare `total`) and it is the safe side of it — a news-sourced
+#: spread figure is exactly the unverified figure class — but it is a real
+#: narrowing and `test_a_genuine_source_still_owns_its_own_clause` is what keeps
+#: the sources that remain from shrinking further.
 _THIRD_PARTY_RE = re.compile(
-    r"\b(?:report|reports|reported|bulletin|wire|release|releases|news|headline|"
-    r"headlines|feed|filing|filings|coach|coaches|manager|managers|staff|"
-    r"owner|owners|board|director|directors|club|clubs|team|teams|side|sides|"
+    r"\b(?:report|reports|reported|bulletin|bulletins|wire|release|releases|"
+    r"headline|headlines|feed|filing|filings|coach|coaches|manager|managers|"
+    r"staff|owner|owners|board|director|directors|"
     r"doctor|doctors|medical|medic|medics|injury|injuries|roster|scanner|"
     r"scanners|official|officials|umpire|umpires|referee|league|"
-    r"conference|commissioner|coach's|notes|diagnosis|test|tests|scan|"
-    r"scans|update|updates)\b",
+    r"conference|commissioner|coach's|diagnosis|scan|scans)\b",
     re.I,
 )
 #: Words that name the MARKET or a book, as a subject or an object. A clause that
@@ -313,7 +344,9 @@ def _clause_is_a_transfer(clause: str) -> bool:
     Three conditions, and the third is the one that keeps this from being a way
     to say anything:
 
-    * somebody other than the model is named in it;
+    * somebody other than the model is named in it, and "somebody" means a SOURCE
+      -- `_THIRD_PARTY_RE` holds no participant and no event noun, which is what
+      stops "the side favours the spread" from reading as somebody else's claim;
     * nobody who names a book or a market is named in it, so the sentence cannot
       be pointing at the very counterparty the guard exists to check;
     * the third party comes BEFORE the market word, so it is the clause's
@@ -321,6 +354,16 @@ def _clause_is_a_transfer(clause: str) -> bool:
       calls the spread too wide" is a transfer; "the spread is two and a half
       and the injury report agrees" is not, and the position test is what tells
       them apart. Without it, prefixing any claim with any source would pass.
+
+    **What the ordering test is not, and the residual it leaves.** It compares
+    positions and nothing else, so it cannot tell a subject from an object, and a
+    clause that names a real source in the middle still reads as that source's
+    clause -- "and per the report the spread is two and a half" is a transfer.
+    Closing that needs a subject parser, and a rule that guessed at subjects
+    would start rejecting the honest sentences the third bullet is here to admit.
+    What is left is bounded to clauses naming a genuine source, which is the
+    case a reader can already see the source of, so it is stated rather than
+    guessed at.
     """
     party = _THIRD_PARTY_RE.search(clause)
     if not party or _BOOK_SOUNDING_RE.search(clause):
