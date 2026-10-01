@@ -108,6 +108,15 @@ Interpretation menu per sport (only where the facts carry it):
 
 ### C. Best player picks, per sport, honestly labelled
 
+> **Amendment, Kevin 2026-10-01 — supersedes "every row carries provenance" in this section.**
+> The best calls are a pop-out of the player and the prediction, nothing else: three ranked rows per
+> category, the player and team, one figure (a percentage with a thin bar for a probability, a plain
+> number for a projection). No per-row record, Brier, calibration, "uncalibrated", MAE or "no error
+> estimate" prose. The honesty rules that remain are enforced in code, not in row text: an out player
+> is never ranked, a projection is never drawn as a percentage, at most three rows per category.
+> What the old provenance said is not lost: the `trust` signal (fixture-signals-design) is where a
+> reader learns how much a number can be relied on.
+
 Name: "Model's top calls". Never "lock", "guaranteed", "best bet"
 (validator banned-word list grows accordingly). Ranked by the model's
 own number within lists of **exactly three rows** per category — three
