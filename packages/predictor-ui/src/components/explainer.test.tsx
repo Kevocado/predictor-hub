@@ -128,25 +128,29 @@ describe("ExplainerPanel content", () => {
 describe("ExplainerPanel rebuilt picks", () => {
   const rebuilt: Explanation = { ...llm, sport: "nfl", pick_timing: "rebuilt" };
 
-  it("repeats the site's own rebuilt status and says the pick is not counted", () => {
-    render(<ExplainerPanel data={rebuilt} loading={false} error={false} onRetry={noop} />);
+  it("repeats the site's own rebuilt status and says the pick still counts", () => {
+    const { container } = render(<ExplainerPanel data={rebuilt} loading={false} error={false} onRetry={noop} />);
     // The same label the site's own StatusBadge shows, not a new wording: a
     // summary that called it something else would read as a second opinion.
-    expect(screen.getByText("Rebuilt after kickoff")).toBeInTheDocument();
-    expect(screen.getByText(/not counted/)).toBeInTheDocument();
+    expect(screen.getByText("Made after kickoff")).toBeInTheDocument();
+    // The track record counts the earliest recorded pick per (game, market)
+    // whenever it was made (spec 2026-10-01-track-record-counts-every-pick), so
+    // the panel discloses the moment and no longer claims an exclusion.
+    expect(container.textContent).toMatch(/counted in the track record/i);
+    expect(container.textContent).not.toMatch(/not\s+counted/i);
   });
 
   it("an F1 session reads 'after the session', because that is the moment there", () => {
     // No `moment` prop: the sport alone must produce the wording. This package
     // owns that mapping, so it is what has to test it.
     render(<ExplainerPanel data={{ ...rebuilt, sport: "f1" }} loading={false} error={false} onRetry={noop} />);
-    expect(screen.getByText("Rebuilt after the session")).toBeInTheDocument();
+    expect(screen.getByText("Made after the session")).toBeInTheDocument();
     expect(screen.getByText(/after the session started/)).toBeInTheDocument();
   });
 
   it("an NBA game reads 'after tip-off', because basketball says that", () => {
     render(<ExplainerPanel data={{ ...rebuilt, sport: "nba" }} loading={false} error={false} onRetry={noop} />);
-    expect(screen.getByText("Rebuilt after tip-off")).toBeInTheDocument();
+    expect(screen.getByText("Made after tip-off")).toBeInTheDocument();
   });
 
   it("a site can still override the moment its own cards use", () => {
@@ -159,12 +163,12 @@ describe("ExplainerPanel rebuilt picks", () => {
         moment="kickoff"
       />,
     );
-    expect(screen.getByText("Rebuilt after kickoff")).toBeInTheDocument();
+    expect(screen.getByText("Made after kickoff")).toBeInTheDocument();
   });
 
   it("says nothing about rebuilding when the pick was made in time", () => {
     render(<ExplainerPanel data={llm} loading={false} error={false} onRetry={noop} />);
-    expect(screen.queryByText(/Rebuilt after/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Made after/)).not.toBeInTheDocument();
     expect(screen.queryByText(/not counted/)).not.toBeInTheDocument();
   });
 
@@ -178,7 +182,7 @@ describe("ExplainerPanel rebuilt picks", () => {
         onRetry={noop}
       />,
     );
-    expect(screen.getByText("Rebuilt after kickoff")).toBeInTheDocument();
+    expect(screen.getByText("Made after kickoff")).toBeInTheDocument();
   });
 });
 

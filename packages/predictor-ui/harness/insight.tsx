@@ -296,9 +296,9 @@ function App() {
         <div className="flex flex-col gap-3">
           <p className="flex max-w-[70ch] flex-wrap items-center gap-2 text-sm text-pr-text-dim">
             <StatusBadge status="rebuilt" moment="kickoff" />
-            <span>This pick was made after the game started, so it is shown for reference and not counted.</span>
+            <span>This pick was made after the game started. Counted in the track record like any other pick.</span>
           </p>
-          <Verdict>{FIX.pick} is the pick, for reference.</Verdict>
+          <Verdict>{FIX.pick} is the pick.</Verdict>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {NFL_TILES.map((t) => <KeyNumberTile key={t.market} tile={t} />)}
           </div>

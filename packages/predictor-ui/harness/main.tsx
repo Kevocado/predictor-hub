@@ -190,7 +190,7 @@ function App() {
         <div className="max-w-[46rem]"><ProbabilityBar segments={SLIVER} minSegmentPx={2} pick={{ label: "FAL" }} /></div>
       </Case>
 
-      <Case id="rebuilt" title="5 · a rebuilt pick" note="Shown, never counted, never graded — and no band, because a confidence word beside 'not counted' asks the reader to resolve a contradiction this panel made (spec §13e).">
+      <Case id="rebuilt" title="5 · a pick made after the start" note="Counted, and labelled with the moment it was made — and no band, because a confidence word about a number produced once the answer was known asks the reader to resolve a contradiction this panel made (spec §13e).">
         <div className="max-w-[46rem]">
           <ExplainerPanel {...RESTING} data={{ ...NFL_VERDICT, pick_timing: "rebuilt" }}
             tiles={NFL_TILES} segments={NFL_SEGMENTS} />

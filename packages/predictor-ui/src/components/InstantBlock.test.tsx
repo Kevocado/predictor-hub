@@ -51,12 +51,16 @@ describe("InstantBlock", () => {
     expect(screen.queryByTestId("record-fill")).toBeNull();
   });
 
-  it("shows the rebuilt badge and says the pick is not counted", () => {
-    render(<InstantBlock sport="nba" bundle={{ ...NFL, pick_timing: "rebuilt" }} />);
+  it("shows the rebuilt badge and says the pick still counts", () => {
+    const { container } = render(<InstantBlock sport="nba" bundle={{ ...NFL, pick_timing: "rebuilt" }} />);
     // The badge's own words, not a regex the sentence repeats: `/after tip-off/i`
     // matches both the badge and the sentence beside it.
-    expect(screen.getByText("Rebuilt after tip-off")).toBeInTheDocument();
-    expect(screen.getByText(/not counted/i)).toBeInTheDocument();
+    expect(screen.getByText("Made after tip-off")).toBeInTheDocument();
+    // Since the record began counting the earliest recorded pick whatever
+    // moment it was made (spec 2026-10-01-track-record-counts-every-pick), the
+    // line says so rather than holding the pick out of the count.
+    expect(container.textContent).toMatch(/counted in the track record/i);
+    expect(container.textContent).not.toMatch(/not\s+counted/i);
   });
 
   it("shows the quiet chip for a pick made before the start", () => {
@@ -64,7 +68,7 @@ describe("InstantBlock", () => {
     expect(screen.getByText("Made before kickoff")).toBeInTheDocument();
     // StatusBadge carries no testid, so its own words are the handle: none of
     // the three badge readings is on the page for a pick made before the start.
-    expect(screen.queryByText(/Rebuilt after|Timing not confirmed|No pick yet/)).toBeNull();
+    expect(screen.queryByText(/Made after|Timing not confirmed|No pick yet/)).toBeNull();
   });
 
   it("shows the unverified badge when F1's schedule gave no start time", () => {

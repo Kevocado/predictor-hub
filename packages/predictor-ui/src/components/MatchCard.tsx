@@ -21,7 +21,7 @@ type Props = {
   bar?: Segment[];
   /** Shown instead of a pick when there is none yet (default "No pick yet"). */
   pickPlaceholder?: string;
-  /** Status wording: "Rebuilt after kickoff" or "… tip-off". */
+  /** Status wording: "Made after kickoff" or "… tip-off". */
   moment?: Moment;
   /** Tighter card for nights with many games (NBA). Same content. */
   compact?: boolean;

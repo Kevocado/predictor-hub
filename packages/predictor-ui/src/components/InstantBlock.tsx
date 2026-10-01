@@ -52,7 +52,19 @@ export function InstantBlock({ sport, bundle, extras }: InstantBlockProps) {
       {timing?.status === "rebuilt" && (
         <p className="flex flex-wrap items-center gap-2 text-sm text-pr-text-dim">
           <StatusBadge status="rebuilt" moment={timing.moment} />
-          <span>This pick was made {STARTED[timing.moment]}, so it is shown for reference and not counted.</span>
+          {/* The moment, and the fact that it counts. This line used to say the
+            pick was shown only as a reference and held out of the count, which
+            is the opposite of the rule: the track record counts the earliest
+            recorded pick per (game, market) whenever it was made (spec
+            2026-10-01-track-record-counts-every-pick). The badge beside this
+            line already carries the moment, so what the sentence adds is that
+            the pick is not being held back from the record — the two halves of
+            disclosure, which is what replaced exclusion. The old words are
+            spelled out in `countedCopy.test.tsx`, which guards against them
+            coming back. */}
+          <span>
+            This pick was made {STARTED[timing.moment]}. Counted in the track record like any other pick.
+          </span>
         </p>
       )}
       {timing?.status === "unverified" && (
