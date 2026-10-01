@@ -228,6 +228,22 @@ EXPLAINER_DEADLINE_IMPL=${EXPLAINER_DEADLINE_IMPL:-auto}
 #           until the limit, kill it if it is still there. POSIX sh only, which
 #           is what the two implementations have in common -- and the reason the
 #           portable one is not the GNU one is that macOS has no timeout(1).
+#
+# Which one runs is decided by what the command IS, not by a preference, because
+# the two are not interchangeable. timeout(1) execs a program: it resolves its
+# target through PATH, so it can run a file and nothing else. A shell function, an
+# alias and a keyword have no file, and when a name is both -- docker, on the VPS,
+# where the login user is not in the docker group and the remote block defines
+# docker() { command sudo docker "$@"; } -- the file is exactly the thing that must
+# not be run. Handing a function to timeout(1) does not fail loudly: it runs the
+# bare binary, which answers permission denied, and the wrapper reports that as a
+# timeout. A deadline that silently stops applying looks like a command that
+# finished quickly, which is how a green deploy skipped a deadline and nobody
+# noticed until the build came back in four minutes instead of four seconds.
+#
+# So: the watchdog runs whatever the shell itself can call, timeout(1) runs only
+# what exec can find, and a name that is neither is refused out loud. See
+# explainer_resolve_kind, which is the only place that question is asked.
 
 # explainer_watchdog LIMIT COMMAND... -- run COMMAND, killed at LIMIT.
 #
@@ -284,19 +300,137 @@ explainer_watchdog() {
   return "$explainer_wd_rc"
 }
 
+# explainer_path_of NAME -- the file that exec would run for NAME, on stdout, or
+# nothing at all.
+#
+# This is `type -P` written out, because `type -P` is a bashism and this file is
+# read by dash and ksh93 as well as bash. It asks about FILES ONLY, on purpose: it
+# ignores functions, builtins, aliases and keywords, because for a name that is
+# both a function and a file -- docker, on the VPS -- the file is precisely the one
+# that must not be run.
+explainer_path_of() {
+  explainer_po_name=${1:-}
+  case "$explainer_po_name" in
+    */*)
+      # A name with a slash is used as written, which is what exec does with it too.
+      if [ -f "$explainer_po_name" ] && [ -x "$explainer_po_name" ]; then
+        printf "%s\n" "$explainer_po_name"
+        return 0
+      fi
+      return 1
+      ;;
+  esac
+  explainer_po_left=${PATH:-}
+  while [ -n "$explainer_po_left" ]; do
+    explainer_po_dir=${explainer_po_left%%:*}
+    if [ "$explainer_po_dir" = "$explainer_po_left" ]; then
+      explainer_po_left=
+    else
+      explainer_po_left=${explainer_po_left#*:}
+    fi
+    # An empty PATH element means the current directory, which is what exec says too.
+    [ -n "$explainer_po_dir" ] || explainer_po_dir=.
+    if [ -f "$explainer_po_dir/$explainer_po_name" ] && [ -x "$explainer_po_dir/$explainer_po_name" ]; then
+      printf "%s\n" "$explainer_po_dir/$explainer_po_name"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# explainer_resolve_kind NAME -- what a bare NAME would run here, in the order the
+# shell itself resolves it, on stdout: function, alias, keyword, builtin or file.
+# Returns non-zero, and prints nothing, when this shell has no idea what NAME is.
+#
+# `command -V` is the portable question -- POSIX has it, and bash, dash and ksh93 all
+# answer it -- but the answer is prose, and the prose differs per shell: "NAME is a
+# function" (bash, ksh93), "NAME is a shell function" (dash), "NAME is a shell
+# builtin", "NAME is /bin/sleep". So the WORDING is matched rather than the status,
+# because the status is not usable either: dash reports an unknown name on stdout and
+# still exits 0. Only the first line is read, because bash prints the entire body of
+# a function after it and a function body can contain any word at all.
+#
+# `type -t` is the tidier question and is not portable: dash has no -t and dies on the
+# attempt, and ksh93 maps type to whence and rejects -t. That is not cosmetic. The
+# first fix for the VPS bug classified with `type -t`, so on dash and ksh93 the
+# classification came back empty, the function was not recognised, and the deadline
+# wrapper handed the name to timeout(1) -- which execs the bare docker, which is not
+# in the docker group. The fix that was meant to stop that failure did not fire on
+# two of the three shells this file is written for.
+#
+# A name that classifies as neither is not guessed at. The caller is expected to
+# refuse it out loud, because the alternative is timeout(1) reporting "not found" for
+# a program on a host where the real problem was a function all along.
+explainer_resolve_kind() {
+  explainer_rk_name=${1:-}
+  if [ -z "$explainer_rk_name" ]; then
+    return 2
+  fi
+  # `|| :` because command -V is allowed to fail on a name it does not know, and
+  # this file is read under set -e. The description is the answer; the status is not.
+  explainer_rk_desc=$(command -V "$explainer_rk_name" 2>&1) || :
+  # A newline held in a variable, because cutting the description at one is the only
+  # way to read the first line of it in a POSIX shell. Double quotes, not single:
+  # this file has no apostrophes in it at all (see the top of the file).
+  explainer_rk_nl="
+"
+  case "$explainer_rk_desc" in
+    *"$explainer_rk_nl"*) explainer_rk_line=${explainer_rk_desc%%"$explainer_rk_nl"*} ;;
+    *) explainer_rk_line=$explainer_rk_desc ;;
+  esac
+  case "$explainer_rk_line" in
+    *function*) explainer_rk_kind="function" ;;
+    *alias*) explainer_rk_kind="alias" ;;
+    *keyword*) explainer_rk_kind="keyword" ;;
+    *builtin*) explainer_rk_kind="builtin" ;;
+    *)
+      # Either a path, or a name this shell does not know at all. Only the PATH walk
+      # tells those apart, and since dash exits 0 for the second case, the walk --
+      # not the status of command -V -- is what decides.
+      if explainer_path_of "$explainer_rk_name" >/dev/null; then
+        explainer_rk_kind="file"
+      else
+        return 1
+      fi
+      ;;
+  esac
+  printf "%s\n" "$explainer_rk_kind"
+}
+
 # explainer_within LIMIT COMMAND... -- the outer deadline around one command.
 explainer_within() {
   explainer_within_limit=$1
   shift
-  # A shell FUNCTION cannot be executed by timeout(1). On the VPS docker is one:
-  # the remote block wraps it with sudo because the login user is not in the docker
-  # group, so timeout 900 docker build ran the bare binary and died with permission
-  # denied (reported, misleadingly, as a timeout). A function takes the watchdog
-  # path, which can call it.
-  if [ "$(type -t "$1" 2>/dev/null)" = function ]; then
-    explainer_watchdog "$explainer_within_limit" "$@"
-    return
+  if [ "$#" -eq 0 ]; then
+    echo "explainer_within: no command was given to run within ${explainer_within_limit}s" >&2
+    return 2
   fi
+  # What the first argument actually is, which is the only thing that says whether an
+  # exec-based wrapper can run it at all. Asked once, here, so that no second deadline
+  # entry point can answer it differently.
+  if ! explainer_within_kind=$(explainer_resolve_kind "$1"); then
+    echo "explainer_within: $1 is not a command this shell can run: it is not a function, a builtin, or an executable on PATH" >&2
+    return 127
+  fi
+  case "$explainer_within_kind" in
+    function | alias | keyword)
+      # timeout(1) execs a program, and none of these is one. The watchdog runs the
+      # command the way the shell around it would, which is the whole reason the
+      # remote block defines docker as a function at all.
+      explainer_watchdog "$explainer_within_limit" "$@" || return $?
+      return 0
+      ;;
+    builtin)
+      # A builtin is exec-able only when PATH has a file of the same name, because
+      # execvp has no other way to find one. With one -- true, cat -- timeout(1) runs
+      # the same thing the shell would. Without one, only this shell knows what the
+      # builtin does, so only the watchdog can run it.
+      if ! explainer_path_of "$1" >/dev/null; then
+        explainer_watchdog "$explainer_within_limit" "$@" || return $?
+        return 0
+      fi
+      ;;
+  esac
   case "${EXPLAINER_DEADLINE_IMPL:-auto}" in
     shell) explainer_watchdog "$explainer_within_limit" "$@" ;;
     timeout) timeout -k "$EXPLAINER_GRACE" "$explainer_within_limit" "$@" ;;
@@ -312,17 +446,6 @@ explainer_within() {
       return 2
       ;;
   esac
-}
-
-# explainer_within_function LIMIT FUNCTION... -- the same ceiling for a shell
-# FUNCTION. GNU timeout execs a program and cannot call one, so this always takes
-# the watchdog path. The ceiling it enforces is identical; only the mechanism
-# for enforcing it differs, because there is no portable way to make execvp call
-# a function.
-explainer_within_function() {
-  explainer_wfn_limit=$1
-  shift
-  explainer_watchdog "$explainer_wfn_limit" "$@"
 }
 
 # --------------------------------------------------------------------------
@@ -395,7 +518,10 @@ explainer_health() {
   # ten seconds. Doing this here rather than in each deploy is what guarantees it
   # happens on every path that probes, including a rollback.
   explainer_prefetch_probe_image
-  if explainer_within_function "$EXPLAINER_HEALTH_CEILING" explainer_health_loop; then
+  # explainer_health_loop is a shell function, so explainer_within classifies it and
+  # runs it with the watchdog rather than handing it to timeout(1), which cannot call
+  # a function. One deadline entry point means that decision is made in one place.
+  if explainer_within "$EXPLAINER_HEALTH_CEILING" explainer_health_loop; then
     return 0
   else
     explainer_health_rc=$?
@@ -749,6 +875,22 @@ EXPLAINER_DEADLINE_IMPL=${EXPLAINER_DEADLINE_IMPL:-auto}
 #           until the limit, kill it if it is still there. POSIX sh only, which
 #           is what the two implementations have in common -- and the reason the
 #           portable one is not the GNU one is that macOS has no timeout(1).
+#
+# Which one runs is decided by what the command IS, not by a preference, because
+# the two are not interchangeable. timeout(1) execs a program: it resolves its
+# target through PATH, so it can run a file and nothing else. A shell function, an
+# alias and a keyword have no file, and when a name is both -- docker, on the VPS,
+# where the login user is not in the docker group and the remote block defines
+# docker() { command sudo docker "$@"; } -- the file is exactly the thing that must
+# not be run. Handing a function to timeout(1) does not fail loudly: it runs the
+# bare binary, which answers permission denied, and the wrapper reports that as a
+# timeout. A deadline that silently stops applying looks like a command that
+# finished quickly, which is how a green deploy skipped a deadline and nobody
+# noticed until the build came back in four minutes instead of four seconds.
+#
+# So: the watchdog runs whatever the shell itself can call, timeout(1) runs only
+# what exec can find, and a name that is neither is refused out loud. See
+# explainer_resolve_kind, which is the only place that question is asked.
 
 # explainer_watchdog LIMIT COMMAND... -- run COMMAND, killed at LIMIT.
 #
@@ -805,19 +947,137 @@ explainer_watchdog() {
   return "$explainer_wd_rc"
 }
 
+# explainer_path_of NAME -- the file that exec would run for NAME, on stdout, or
+# nothing at all.
+#
+# This is `type -P` written out, because `type -P` is a bashism and this file is
+# read by dash and ksh93 as well as bash. It asks about FILES ONLY, on purpose: it
+# ignores functions, builtins, aliases and keywords, because for a name that is
+# both a function and a file -- docker, on the VPS -- the file is precisely the one
+# that must not be run.
+explainer_path_of() {
+  explainer_po_name=${1:-}
+  case "$explainer_po_name" in
+    */*)
+      # A name with a slash is used as written, which is what exec does with it too.
+      if [ -f "$explainer_po_name" ] && [ -x "$explainer_po_name" ]; then
+        printf "%s\n" "$explainer_po_name"
+        return 0
+      fi
+      return 1
+      ;;
+  esac
+  explainer_po_left=${PATH:-}
+  while [ -n "$explainer_po_left" ]; do
+    explainer_po_dir=${explainer_po_left%%:*}
+    if [ "$explainer_po_dir" = "$explainer_po_left" ]; then
+      explainer_po_left=
+    else
+      explainer_po_left=${explainer_po_left#*:}
+    fi
+    # An empty PATH element means the current directory, which is what exec says too.
+    [ -n "$explainer_po_dir" ] || explainer_po_dir=.
+    if [ -f "$explainer_po_dir/$explainer_po_name" ] && [ -x "$explainer_po_dir/$explainer_po_name" ]; then
+      printf "%s\n" "$explainer_po_dir/$explainer_po_name"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# explainer_resolve_kind NAME -- what a bare NAME would run here, in the order the
+# shell itself resolves it, on stdout: function, alias, keyword, builtin or file.
+# Returns non-zero, and prints nothing, when this shell has no idea what NAME is.
+#
+# `command -V` is the portable question -- POSIX has it, and bash, dash and ksh93 all
+# answer it -- but the answer is prose, and the prose differs per shell: "NAME is a
+# function" (bash, ksh93), "NAME is a shell function" (dash), "NAME is a shell
+# builtin", "NAME is /bin/sleep". So the WORDING is matched rather than the status,
+# because the status is not usable either: dash reports an unknown name on stdout and
+# still exits 0. Only the first line is read, because bash prints the entire body of
+# a function after it and a function body can contain any word at all.
+#
+# `type -t` is the tidier question and is not portable: dash has no -t and dies on the
+# attempt, and ksh93 maps type to whence and rejects -t. That is not cosmetic. The
+# first fix for the VPS bug classified with `type -t`, so on dash and ksh93 the
+# classification came back empty, the function was not recognised, and the deadline
+# wrapper handed the name to timeout(1) -- which execs the bare docker, which is not
+# in the docker group. The fix that was meant to stop that failure did not fire on
+# two of the three shells this file is written for.
+#
+# A name that classifies as neither is not guessed at. The caller is expected to
+# refuse it out loud, because the alternative is timeout(1) reporting "not found" for
+# a program on a host where the real problem was a function all along.
+explainer_resolve_kind() {
+  explainer_rk_name=${1:-}
+  if [ -z "$explainer_rk_name" ]; then
+    return 2
+  fi
+  # `|| :` because command -V is allowed to fail on a name it does not know, and
+  # this file is read under set -e. The description is the answer; the status is not.
+  explainer_rk_desc=$(command -V "$explainer_rk_name" 2>&1) || :
+  # A newline held in a variable, because cutting the description at one is the only
+  # way to read the first line of it in a POSIX shell. Double quotes, not single:
+  # this file has no apostrophes in it at all (see the top of the file).
+  explainer_rk_nl="
+"
+  case "$explainer_rk_desc" in
+    *"$explainer_rk_nl"*) explainer_rk_line=${explainer_rk_desc%%"$explainer_rk_nl"*} ;;
+    *) explainer_rk_line=$explainer_rk_desc ;;
+  esac
+  case "$explainer_rk_line" in
+    *function*) explainer_rk_kind="function" ;;
+    *alias*) explainer_rk_kind="alias" ;;
+    *keyword*) explainer_rk_kind="keyword" ;;
+    *builtin*) explainer_rk_kind="builtin" ;;
+    *)
+      # Either a path, or a name this shell does not know at all. Only the PATH walk
+      # tells those apart, and since dash exits 0 for the second case, the walk --
+      # not the status of command -V -- is what decides.
+      if explainer_path_of "$explainer_rk_name" >/dev/null; then
+        explainer_rk_kind="file"
+      else
+        return 1
+      fi
+      ;;
+  esac
+  printf "%s\n" "$explainer_rk_kind"
+}
+
 # explainer_within LIMIT COMMAND... -- the outer deadline around one command.
 explainer_within() {
   explainer_within_limit=$1
   shift
-  # A shell FUNCTION cannot be executed by timeout(1). On the VPS docker is one:
-  # the remote block wraps it with sudo because the login user is not in the docker
-  # group, so timeout 900 docker build ran the bare binary and died with permission
-  # denied (reported, misleadingly, as a timeout). A function takes the watchdog
-  # path, which can call it.
-  if [ "$(type -t "$1" 2>/dev/null)" = function ]; then
-    explainer_watchdog "$explainer_within_limit" "$@"
-    return
+  if [ "$#" -eq 0 ]; then
+    echo "explainer_within: no command was given to run within ${explainer_within_limit}s" >&2
+    return 2
   fi
+  # What the first argument actually is, which is the only thing that says whether an
+  # exec-based wrapper can run it at all. Asked once, here, so that no second deadline
+  # entry point can answer it differently.
+  if ! explainer_within_kind=$(explainer_resolve_kind "$1"); then
+    echo "explainer_within: $1 is not a command this shell can run: it is not a function, a builtin, or an executable on PATH" >&2
+    return 127
+  fi
+  case "$explainer_within_kind" in
+    function | alias | keyword)
+      # timeout(1) execs a program, and none of these is one. The watchdog runs the
+      # command the way the shell around it would, which is the whole reason the
+      # remote block defines docker as a function at all.
+      explainer_watchdog "$explainer_within_limit" "$@" || return $?
+      return 0
+      ;;
+    builtin)
+      # A builtin is exec-able only when PATH has a file of the same name, because
+      # execvp has no other way to find one. With one -- true, cat -- timeout(1) runs
+      # the same thing the shell would. Without one, only this shell knows what the
+      # builtin does, so only the watchdog can run it.
+      if ! explainer_path_of "$1" >/dev/null; then
+        explainer_watchdog "$explainer_within_limit" "$@" || return $?
+        return 0
+      fi
+      ;;
+  esac
   case "${EXPLAINER_DEADLINE_IMPL:-auto}" in
     shell) explainer_watchdog "$explainer_within_limit" "$@" ;;
     timeout) timeout -k "$EXPLAINER_GRACE" "$explainer_within_limit" "$@" ;;
@@ -833,17 +1093,6 @@ explainer_within() {
       return 2
       ;;
   esac
-}
-
-# explainer_within_function LIMIT FUNCTION... -- the same ceiling for a shell
-# FUNCTION. GNU timeout execs a program and cannot call one, so this always takes
-# the watchdog path. The ceiling it enforces is identical; only the mechanism
-# for enforcing it differs, because there is no portable way to make execvp call
-# a function.
-explainer_within_function() {
-  explainer_wfn_limit=$1
-  shift
-  explainer_watchdog "$explainer_wfn_limit" "$@"
 }
 
 # --------------------------------------------------------------------------
@@ -916,7 +1165,10 @@ explainer_health() {
   # ten seconds. Doing this here rather than in each deploy is what guarantees it
   # happens on every path that probes, including a rollback.
   explainer_prefetch_probe_image
-  if explainer_within_function "$EXPLAINER_HEALTH_CEILING" explainer_health_loop; then
+  # explainer_health_loop is a shell function, so explainer_within classifies it and
+  # runs it with the watchdog rather than handing it to timeout(1), which cannot call
+  # a function. One deadline entry point means that decision is made in one place.
+  if explainer_within "$EXPLAINER_HEALTH_CEILING" explainer_health_loop; then
     return 0
   else
     explainer_health_rc=$?
