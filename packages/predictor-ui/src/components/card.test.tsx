@@ -34,7 +34,7 @@ describe("MatchCard", () => {
   });
   it("says 'No pick yet' without a pick, and shows exactly one status", () => {
     render(<MatchCard {...base} status="nopick" />);
-    expect(screen.getAllByText(/Next up|Live|Called it|Missed|No pick yet|Rebuilt after kickoff/)).toHaveLength(1);
+    expect(screen.getAllByText(/Next up|Live|Called it|Missed|No pick yet|Made after kickoff/)).toHaveLength(1);
     expect(screen.getByText("No pick yet")).toBeInTheDocument();
   });
   it("is a real button: Enter and Space both open it, and its name summarises the pick", async () => {
@@ -183,7 +183,7 @@ describe("MatchCard review fixes", () => {
 describe("MatchCard without a status", () => {
   it("shows no status words for an upcoming game that is not next, but still says when there is no pick", () => {
     render(<MatchCard left={base.left} right={base.right} centre="15:00" onOpen={() => {}} />);
-    expect(screen.queryByText(/Next up|Live|Called it|Missed|Rebuilt after kickoff/)).toBeNull();
+    expect(screen.queryByText(/Next up|Live|Called it|Missed|Made after kickoff/)).toBeNull();
     expect(screen.getByText("No pick yet")).toBeInTheDocument();
   });
 });
@@ -206,7 +206,7 @@ describe("long team names", () => {
 describe("MatchCard in basketball", () => {
   it("says tip-off instead of kickoff when told the sport's moment", () => {
     render(<MatchCard {...base} status="rebuilt" moment="tip-off" pick={{ label: "AVL", prob: 0.6 }} />);
-    expect(screen.getByText("Rebuilt after tip-off")).toBeInTheDocument();
+    expect(screen.getByText("Made after tip-off")).toBeInTheDocument();
     expect(screen.queryByText(/kickoff/i)).not.toBeInTheDocument();
   });
 
@@ -221,7 +221,7 @@ describe("MatchCard in basketball", () => {
 describe("MatchCard top row", () => {
   it("keeps the status badge on one line, and lets it drop below the date on a narrow card", () => {
     render(<MatchCard {...base} status="rebuilt" moment="tip-off" when="Mon 2 Mar · Final" compact />);
-    const badge = screen.getByText("Rebuilt after tip-off");
+    const badge = screen.getByText("Made after tip-off");
     expect(badge.className).toMatch(/whitespace-nowrap/);
     expect(badge.parentElement!.className).toMatch(/flex-wrap/);
   });

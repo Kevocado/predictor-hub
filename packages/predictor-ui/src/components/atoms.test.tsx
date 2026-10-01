@@ -12,7 +12,7 @@ describe("StatusBadge", () => {
     ["called", "Called it ✓"],
     ["missed", "Missed ✗"],
     ["nopick", "No pick yet"],
-    ["rebuilt", "Rebuilt after kickoff"],
+    ["rebuilt", "Made after kickoff"],
   ] as const)("%s reads '%s' (never colour alone)", (status, words) => {
     render(<StatusBadge status={status} />);
     expect(screen.getByText(words)).toBeInTheDocument();
@@ -76,6 +76,6 @@ describe("TeamChip outline", () => {
 describe("StatusBadge in F1", () => {
   it("words a rebuilt pick around the session", () => {
     render(<StatusBadge status="rebuilt" moment="the session" />);
-    expect(screen.getByText("Rebuilt after the session")).toBeInTheDocument();
+    expect(screen.getByText("Made after the session")).toBeInTheDocument();
   });
 });

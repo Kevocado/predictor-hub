@@ -893,15 +893,18 @@ describe("a rebuilt pick's band", () => {
   });
 
   it("withholds it on a rebuilt pick, while the status line still says rebuilt", () => {
-    // "STRONG" beside "shown for reference and not counted" asks the reader to
-    // resolve a contradiction the panel created, and a rebuilt probability came
-    // from a model that had already seen the score.
+    // "STRONG" beside a disclosure that the pick was made after the start asks
+    // the reader to resolve a contradiction the panel created, and a rebuilt
+    // probability came from a model that had already seen the score. The pick
+    // still counts (spec 2026-10-01-track-record-counts-every-pick); the band
+    // is withheld because a confidence word about that number is the claim the
+    // panel cannot make.
     const { container } = render(
       <ExplainerPanel {...RESTING} data={answer({ band: "strong", pick_timing: "rebuilt" })} segments={NFL_BAR} />,
     );
     expect(screen.queryByTestId("band-chip")).toBeNull();
     expect(container.textContent).not.toMatch(/strong/i);
-    expect(screen.getByText("Rebuilt after kickoff")).toBeInTheDocument();
+    expect(screen.getByText("Made after kickoff")).toBeInTheDocument();
   });
 });
 
