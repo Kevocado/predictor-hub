@@ -56,6 +56,46 @@ model number, so per §D of the parent spec and the rule fixed in predictor-hub#
 (an out player leaves the ranking entirely), such a player may appear in a
 "no data yet" list and nowhere else: no bar, no tile, no rank position, no callout.
 
+## Why the current-season table is empty today (measured)
+
+The membership rule above is not the reason a reader sees an empty player
+table. **The upstream source publishes no weekly player stats for 2025 or
+2026.** Measured 2026-09-30 against the live API:
+
+```
+GET /api/nfl/hub/players?season=2026  -> 200, 0 rows
+GET /api/nfl/hub/players?season=2025  -> 200, 0 rows
+GET /api/nfl/hub/players?season=2024  -> 200, 562 rows
+```
+
+So two consecutive seasons are empty, not one, and the hub is behaving
+correctly: it has nothing to list. The decision in this document is
+therefore about what happens when data *does* arrive, not a fix for the
+current blank table.
+
+**Reproduction note:** measure against the **sports** host
+(`sports.40-160-91-131.sslip.io/api/nfl/...`), not the `nfl` host. As of
+2026-09-30 the `nfl.` host returns `404 {"detail":"Not Found"}` for the
+entire `/api/nfl/*` surface, including `/api/nfl/health`, while the same
+path on the sports host serves 200. That is a live routing fault on the
+`nfl` host, not a missing endpoint — flagged separately, and not something
+this document resolves.
+
+## What the reader sees when the current season is empty
+
+`Sports_Predictor` PR #17 (`src/pages/PlayersPage.tsx:177-183`, merged)
+already distinguishes the two kinds of empty, because they have different
+causes and "yet" was honest about neither:
+
+| condition | copy |
+|---|---|
+| the API returned rows, none passed the filter | "Loaded N player(s) for SEASON season, but none passed the name filter." |
+| the API returned nothing | "No weekly player stats published for SEASON season yet. The source (nflverse) has not released them." |
+
+The second row is the live case for 2025 and 2026. It names the cause and
+the source rather than implying the app is still loading, and it is the
+wording this decision adopts for any future empty-player surface.
+
 ## Alternatives considered
 
 - **Union the depth chart into `/hub/players` now.** Rejected: it would put
