@@ -110,7 +110,10 @@ Interpretation menu per sport (only where the facts carry it):
 
 Name: "Model's top calls". Never "lock", "guaranteed", "best bet"
 (validator banned-word list grows accordingly). Ranked by the model's
-own number within top-3 lists per category (PL goals | shots; NFL/CFB
+own number within lists of **exactly three rows** per category — three
+when three are available, fewer when fewer are (never padded, never a
+fourth), so "top-3" in the mocks means a cap and not a quota (PL goals
+| shots; NFL/CFB
 TD | passing | rushing | receiving yards; NBA points | rebounds |
 assists | threes). Every row carries a visual, built from the real
 components: probability rows get a share bar, projection rows get a key
@@ -143,8 +146,12 @@ extended with player entries and pick-relevance:
 | CFB | none exists | picks carry the no-check flag; building a feed is out of scope |
 | F1 | session state only | no news surface; weather stays a session input |
 
-Rules: a player who is out is never recommended — the pick moves or is
-flagged, never silently kept. Doubtful demotes. No news → the block
+Rules: a player who is out is never recommended. **Removed wins over
+flagged** — the earlier wording here ("the pick moves or is flagged")
+contradicted the rule added with #50, and "moves" is the weaker word:
+an out player leaves the ranking entirely and appears once below the
+lists as an attributed line, never inside a list with a flag on him.
+Doubtful **demotes** (he may stay ranked, lower). No news → the block
 says nothing at all (no "no news" row).
 
 **An out player is removed from the ranking, not merely marked in it.**
