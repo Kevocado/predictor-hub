@@ -990,3 +990,28 @@ def test_the_deploy_script_refuses_to_send_a_block_that_drifted_from_the_library
     assert "deploy_safety.sh" in done.stderr, (
         f"the drift check did not name the file: {done.stderr}"
     )
+
+
+def test_a_shell_function_named_docker_is_what_the_deadline_wrapper_runs(fake_host):
+    """The VPS user is not in the docker group, so the remote block defines
+    `docker() { sudo docker "$@"; }`. `timeout` execs a PROGRAM and cannot call a
+    function, so `timeout 900 docker build` silently ran the bare binary and failed
+    with "permission denied" -- reported as "did not finish within 900s". Every
+    other test here mocks `docker` as a program, which is exactly why none saw it.
+    This one makes `docker` a function and asserts the FUNCTION ran."""
+    done, _ = run_library(
+        fake_host,
+        'docker() { echo FUNCTION-WRAPPER-USED; }\n'
+        'explainer_within 20 docker build -t x .\n',
+        EXPLAINER_DEADLINE_IMPL="auto",
+    )
+    assert done.returncode == 0, done.stderr
+    assert "FUNCTION-WRAPPER-USED" in done.stdout, (
+        "explainer_within ran the docker PROGRAM instead of the shell function: "
+        f"stdout={done.stdout!r} stderr={done.stderr!r}")
+
+
+def test_a_real_program_still_goes_through_timeout(fake_host):
+    done, _ = run_library(fake_host, 'explainer_within 20 true\n', EXPLAINER_DEADLINE_IMPL="timeout")
+    assert done.returncode == 0, done.stderr
+    assert fake_host["timeout_log"].read_text().strip(), "a plain program no longer reaches timeout(1)"

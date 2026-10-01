@@ -161,6 +161,15 @@ explainer_watchdog() {
 explainer_within() {
   explainer_within_limit=$1
   shift
+  # A shell FUNCTION cannot be executed by timeout(1). On the VPS docker is one:
+  # the remote block wraps it with sudo because the login user is not in the docker
+  # group, so timeout 900 docker build ran the bare binary and died with permission
+  # denied (reported, misleadingly, as a timeout). A function takes the watchdog
+  # path, which can call it.
+  if [ "$(type -t "$1" 2>/dev/null)" = function ]; then
+    explainer_watchdog "$explainer_within_limit" "$@"
+    return
+  fi
   case "${EXPLAINER_DEADLINE_IMPL:-auto}" in
     shell) explainer_watchdog "$explainer_within_limit" "$@" ;;
     timeout) timeout -k "$EXPLAINER_GRACE" "$explainer_within_limit" "$@" ;;
