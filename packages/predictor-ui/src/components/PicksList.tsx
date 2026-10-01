@@ -88,8 +88,7 @@ export class RowKindMismatchError extends Error {
       kind === "probability"
         ? `PicksList: "${player}" is a ${detail} probability row, so its value must be in [0,1] — got ${value}. ` +
             `A yardage figure read as a share is the defect this guard exists for.`
-        : `PicksList: "${player}" is a ${detail} projection row, so its value must not be in [0,1] — got ${value}. ` +
-            `A probability read as a figure hides rather than shouts, which makes it the harder one to catch.`,
+        : `PicksList: "${player}" is a ${detail} projection row, so its value must be finite and not negative — got ${value}.`,
     );
     this.name = "RowKindMismatchError";
   }
@@ -109,11 +108,11 @@ function checkRow(row: PickRow): void {
   if (row.kind === "probability") {
     if (row.value < 0 || row.value > 1) throw new RowKindMismatchError(row.name, row.detail, row.kind, row.value);
   } else {
-    // A projection is a count or a distance, so it is never a fraction. Zero and
-    // one are the boundaries a share owns, and taking them leaves a projection
-    // with nowhere to sit — so this refuses the whole closed interval rather
-    // than allowing 0 exactly and quietly rendering "0.0" beside a 0% bar.
-    if (row.value >= 0 && row.value <= 1) throw new RowKindMismatchError(row.name, row.detail, row.kind, row.value);
+    // A projection is a count or a distance: finite and not negative. It MAY be a
+    // fraction (0.8 steals, 0.6 touchdowns). The row's `kind` is explicit, so a
+    // magnitude test is not how a mislabelled row is caught here; refusing [0,1]
+    // threw during render for legitimate rows and took the whole list down.
+    if (row.value < 0) throw new RowKindMismatchError(row.name, row.detail, row.kind, row.value);
   }
 }
 

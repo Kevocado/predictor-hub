@@ -256,12 +256,25 @@ describe("the kind guard — a row's visual must match what its number IS", () =
     ).toThrow(/probability.*\[0,1\]/);
   });
 
-  it("REFUSES a probability passed as a projection", () => {
-    // The mirror of the same mistake: 0.38 read as 0.4 yards is a projection
-    // nobody made, and it is the one that hides rather than shouts.
-    expect(() =>
-      render(<PicksList categories={[{ category: "Rush yds", rows: [proj({ key: "a", name: "J. Love", value: 0.38 })] }]} />),
-    ).toThrow(RowKindMismatchError);
+  it("accepts a projection below 1 — 0.8 steals and 0.6 touchdowns are real projections", () => {
+    // A count can legitimately be a fraction. Refusing the closed interval [0,1]
+    // threw during render and took the whole list down (CodeRabbit on hub#63). The
+    // row's `kind` is passed explicitly, so magnitude is not how a caller's mistake
+    // is caught; the adapter that builds the row owns that.
+    for (const value of [0, 0.38, 0.8, 1, 1.4]) {
+      const { unmount } = render(
+        <PicksList categories={[{ category: "Steals", rows: [proj({ key: "s", name: "Wing", value })] }]} />,
+      );
+      unmount();
+    }
+  });
+
+  it("still refuses a negative or non-finite projection", () => {
+    for (const value of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() =>
+        render(<PicksList categories={[{ category: "Rush yds", rows: [proj({ key: "a", name: "J. Love", value })] }]} />),
+      ).toThrow(RowKindMismatchError);
+    }
   });
 
   it("accepts the boundaries a real model produces: 0 and 1 are probabilities", () => {
