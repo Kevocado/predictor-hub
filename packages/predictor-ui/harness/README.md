@@ -36,6 +36,23 @@ does not serve itself, including `fonts.googleapis.com`: `src/fonts.css` imports
 Barlow, and a capture taken with the CDN reachable and the fonts not yet settled
 measures the fallback face and reports a layout a reader never gets.
 
+## The mocks must use the strings a real adapter passes
+
+Case 15 originally used a harness-shaped heading (`"Rush yds — projections, not
+probabilities"`) with detail `"Rush yds"`, and every test was green. `Sports_Predictor`
+`origin/main` `src/lib/picksPanel.ts:79` passes `category: "QB passing yards"` with
+`detail: "Pass yds"` — an **abbreviation**, so the two share no token and the
+de-duplication that worked in the mock did not work on the page. Three of that
+panel's categories were affected, and a second defect rode along: the qualifier
+was applied to every drawn detail, so a yardage estimate rendered as
+`Pass yds · model call`.
+
+A mock built on strings no adapter passes cannot catch a defect about real
+strings. So the PicksList mocks copy the real `category`/`detail`/`kind` triples,
+with the file and line each came from, and the same strings are pinned as tests
+in `src/components/sportsPayloads.test.tsx`. When an adapter's wording changes,
+change both, and the screenshots.
+
 ## Why it has its own dependencies
 
 `resolve.dedupe` points React at one instance, but the deeper reason is that

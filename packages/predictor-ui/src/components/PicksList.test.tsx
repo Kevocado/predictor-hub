@@ -8,6 +8,8 @@
  *    not flagged" has to be enforced by the component rather than by every
  *    caller's discipline.
  */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import {
@@ -16,6 +18,7 @@ import {
   OutPlayerInRankingError,
   RowKindMismatchError,
   detailAddsToHeading,
+  rowShowsDetail,
   type PickRow,
 } from "./PicksList";
 
@@ -350,13 +353,18 @@ describe("the row's own detail · when it adds a word the heading does not carry
     // The cost this rule exists to avoid. NFL, CFB and NBA rows carry
     // `detail: "Pass yds"` under a `"Pass yds"` heading today; printing it three
     // times per card is the duplication, not the fix.
+    //
+    // A `prob` row, not a `proj` one, on purpose: `rowShowsDetail` gates on
+    // `kind` FIRST, so a projection row would be suppressed by the gate and
+    // this test would pass without the token half existing at all. The gate is
+    // pinned separately, below, in "the kind gate".
     render(
       <PicksList
         categories={[{
           category: "Pass yds",
           rows: [
-            proj({ key: "a", name: "A. Rodgers", value: 284, detail: "Pass yds" }),
-            proj({ key: "b", name: "B. Robinson", value: 96, detail: "Pass yds" }),
+            prob({ key: "a", name: "A. Rodgers", value: 0.64, detail: "Pass yds" }),
+            prob({ key: "b", name: "B. Robinson", value: 0.38, detail: "Pass yds" }),
           ],
         }]}
       />,
@@ -366,19 +374,20 @@ describe("the row's own detail · when it adds a word the heading does not carry
       // Still the player and the prediction, and nothing else.
       expect(row.textContent).not.toContain("Pass yds");
     }
-    expect(screen.getAllByTestId("picks-row")[0].textContent).toBe("1A. Rodgers284.0");
+    expect(screen.getAllByTestId("picks-row")[0].textContent).toBe("1A. Rodgers64%");
   });
 
   it("suppresses a detail the heading already carries INSIDE a longer heading", () => {
     // Equality would not do this, and this is the case that proves it: the
     // harness builds the heading "Rush yds — projections, not probabilities",
     // so `"Rush yds" !== heading` and every projection card in the family would
-    // print its heading three more times.
+    // print its heading three more times. A `prob` row again, so the token half
+    // is what is under test.
     render(
       <PicksList
         categories={[{
-          category: "Rush yds — projections, not probabilities",
-          rows: [proj({ key: "b", name: "B. Robinson", value: 96, detail: "Rush yds" })],
+          category: "Rush yds — model lines",
+          rows: [prob({ key: "b", name: "B. Robinson", value: 0.41, detail: "Rush yds" })],
         }]}
       />,
     );
@@ -522,6 +531,50 @@ describe("the detail rule cannot break the two guards", () => {
   });
 });
 
+describe("the kind gate · a projection row draws no detail and no qualifier at all", () => {
+  // The second half of the review's Defect 2, isolated from the token half. Here
+  // the detail is deliberately UNMATCHED — "vs ATL" shares nothing with the
+  // heading — so the only thing that can suppress it is `kind`. That is what
+  // makes this a test of the gate rather than a test of the tokenizer.
+  it("suppresses a projection detail that matches nothing, and draws no qualifier", () => {
+    render(
+      <PicksList
+        categories={[{
+          category: "RB rushing yards",
+          rows: [proj({ key: "a", name: "A. Rodgers", team: "ATL", value: 96, detail: "vs ATL" })],
+        }]}
+      />,
+    );
+    expect(screen.queryByTestId("picks-detail")).not.toBeInTheDocument();
+    expect(screen.getByTestId("picks-row").textContent).toBe("1A. Rodgers · ATL96.0");
+  });
+
+  it("draws the same detail on a probability row, because kind is the only difference", () => {
+    // The control for the test above: identical strings, `kind` flipped, and
+    // the detail appears. Without this pair, "suppressed" could be the
+    // tokenizer and "drawn" could be chance.
+    render(
+      <PicksList
+        categories={[{ category: "Rush yds", rows: [prob({ key: "a", name: "A. Rodgers", value: 0.64, detail: "Over 74.5" })] }]}
+      />,
+    );
+    expect(screen.getByTestId("picks-detail").textContent).toBe("Over 74.5 · model call");
+  });
+
+  it("ignores a detailLabel on a projection row rather than trusting the caller", () => {
+    render(
+      <PicksList
+        categories={[{
+          category: "RB rushing yards",
+          rows: [proj({ key: "a", name: "A. Rodgers", value: 96, detail: "Over 74.5", detailLabel: "model line" })],
+        }]}
+      />,
+    );
+    expect(screen.queryByTestId("picks-detail")).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("model line");
+  });
+});
+
 describe("detailAddsToHeading · the rule itself, edge by edge", () => {
   it("renders a call whose words the heading does not carry", () => {
     expect(detailAddsToHeading("Over 2.5", "QB passing TDs")).toBe(true);
@@ -552,9 +605,20 @@ describe("detailAddsToHeading · the rule itself, edge by edge", () => {
 
   it("renders the detail under a heading that does not mention its own category", () => {
     // The caller's inconsistency, said out loud rather than dropped. A detail
-    // of "Pass yds" under "Rush yds" is a bug in the adapter; hiding it would
+    // of "Over 74.5" under "Rush yds" is a bug in the adapter; hiding it would
     // make the bug invisible, which is what the kind guard exists to prevent.
-    expect(detailAddsToHeading("Pass yds", "Rush yds")).toBe(true);
+    expect(detailAddsToHeading("Over 74.5", "Rush yds")).toBe(true);
+  });
+
+  it("CANNOT see an abbreviation, which is why rowShowsDetail gates on kind first", () => {
+    // The reviewer's Defect 1, as a fact about this function. A token
+    // comparison is not a parser: `{pass, yds}` and `{qb, passing, yards}` share
+    // nothing, so this returns TRUE for a row that is plainly a restatement.
+    // Pinned so that anyone tempted to delete the kind gate reads this first —
+    // "fixing" this function with a synonym table is the change that was
+    // considered and rejected.
+    expect(detailAddsToHeading("Pass yds", "QB passing yards")).toBe(true);
+    expect(detailAddsToHeading("Rec yds", "WR/TE receiving yards")).toBe(true);
   });
 
   it("renders a detail that is only partly covered, on the uncovered word alone", () => {
@@ -566,5 +630,53 @@ describe("detailAddsToHeading · the rule itself, edge by edge", () => {
     // rows under one heading." Pinned so a future widening of the rule is a
     // deliberate act rather than a side effect of a regex change.
     expect(detailAddsToHeading("passing", "QB passing TDs")).toBe(false);
+  });
+});
+
+describe("rowShowsDetail · both conditions, and the order they fire in", () => {
+  const row = (over: Partial<PickRow>): PickRow => ({
+    key: "a", name: "A. Rodgers", detail: "Over 2.5", value: 0.64, kind: "probability", ...over,
+  });
+
+  it("needs kind probability AND a new word", () => {
+    expect(rowShowsDetail(row({}), "QB passing TDs")).toBe(true);
+    // Each condition alone is not enough, and both failures are named here so
+    // a future change to either is visible in this file rather than in a review.
+    expect(rowShowsDetail(row({ kind: "projection", value: 2.5 }), "QB passing TDs")).toBe(false);
+    expect(rowShowsDetail(row({ detail: "QB passing TDs" }), "QB passing TDs")).toBe(false);
+  });
+
+  it("is false for a projection row however new its detail is", () => {
+    expect(rowShowsDetail(row({ kind: "projection", detail: "Over 74.5", value: 74.5 }), "Rush yds")).toBe(false);
+  });
+});
+
+describe("the category card paints a token that exists", () => {
+  // `bg-pr-surface/40` shipped for months and generated NOTHING: `--color-pr-surface`
+  // is not in tokens.css, so Tailwind emitted no rule and the card sat on the
+  // stage with a border and no surface behind it. It is now `bg-pr-panel-2/40`,
+  // which is a defined token and the same alpha `StatTable.tsx` uses.
+  //
+  // Asserted on the class the component emits rather than on a screenshot,
+  // because a missing utility is not a build error — it is an unstyled
+  // component — so nothing else in the repo would have caught it.
+  const source = readFileSync(resolve(__dirname, "PicksList.tsx"), "utf8");
+  const tokens = new Set(
+    [...readFileSync(resolve(__dirname, "../tokens.css"), "utf8")
+      .matchAll(/--color-pr-([\w-]+):/g)].map((m) => m[1]),
+  );
+
+  it("declares no pr- colour utility this package does not define", () => {
+    const used = [...source.matchAll(/\b(?:bg|text|border|from|to|ring|fill|stroke)-pr-([\w-]+)/g)]
+      .map((m) => m[1]);
+    expect(used.length, "the scan found no utilities, so it would pass on anything").toBeGreaterThan(0);
+    for (const name of used) {
+      expect(tokens.has(name), `pr-${name} is not a token in tokens.css, so Tailwind emits nothing for it`).toBe(true);
+    }
+  });
+
+  it("the card surface is bg-pr-panel-2/40", () => {
+    expect(source).toContain("bg-pr-panel-2/40");
+    expect(source).not.toContain("pr-surface");
   });
 });

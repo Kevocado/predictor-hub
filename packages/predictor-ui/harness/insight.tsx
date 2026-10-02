@@ -270,26 +270,27 @@ const never = () => new Promise<unknown>(() => {});
 const noop = () => {};
 
 /**
- * Case 15's two categories, the pair the new rule has to get right in BOTH
- * directions: a detail that adds a word, and a detail that adds none.
+ * Case 15's categories: Sports_Predictor's REAL heading/detail pairs, copied
+ * from `origin/main` `src/lib/picksPanel.ts` rather than invented.
  *
- * These carry their own figures rather than `fixture.ts`'s, and that is a
- * decision rather than a shortcut. `fixture.ts` is the guard for the 2026-09-30
- * mocks and its 12 tests are pinned in harness/fixture.test.ts; growing it to
- * hold a market that did not exist when it was written would change what those
- * tests check, and a reviewer reading that guard should not have to re-read it
- * because a screenshot needed three more rows. The same shape over the REAL
- * fixture — including the proof that every fixture row renders no detail at all
- * — is pinned in src/components/picksListFixture.test.tsx, which is where a
- * regression would actually be caught.
+ * That is a change from the first version of this case, and it is the change
+ * review forced. The original case used a harness-shaped heading
+ * (`"Rush yds — projections, not probabilities"`) with detail `"Rush yds"`,
+ * where the two tokenise to the same words — so the de-duplication worked in
+ * the harness and failed on the page, because the real rows abbreviate
+ * (`"Pass yds"` under `"QB passing yards"`). A screenshot harness built on
+ * strings that no real adapter passes cannot catch a defect about real strings.
+ * The same rows are pinned in src/components/sportsPayloads.test.tsx; these are
+ * the pixels.
  *
  * The QB lines follow the plan's rule (nearest half point to the projection,
- * floor 0.5): 2.4 -> 2.5, 1.1 -> 1.0 -> under 1.5 is the called side for a QB
- * projected under a point and a half, and so on. `detailLabel: "model line"` is
- * the caller's own noun, per the plan's "never a sportsbook line".
+ * floor 0.5). `detailLabel: "model line"` is the caller's own noun, per the
+ * plan's "never a sportsbook line" — and note that the yardage rows pass no
+ * `detailLabel` and get no qualifier at all, which is the point: a projection
+ * is not a call.
  */
 const QB_PASSING_TD_CATEGORY: PicksListProps["categories"][number] = {
-  category: "QB passing TDs",
+  category: "QB passing TDs", // picksPanel.ts:121
   rows: [
     { key: "pass:rodgers", name: "A. Rodgers", team: "PIT", detail: "Over 2.5", detailLabel: "model line", value: 0.64, kind: "probability" },
     { key: "pass:allen", name: "J. Allen", team: "BUF", detail: "Over 1.5", detailLabel: "model line", value: 0.58, kind: "probability" },
@@ -297,12 +298,28 @@ const QB_PASSING_TD_CATEGORY: PicksListProps["categories"][number] = {
   ],
 };
 
-const PASS_YDS_CATEGORY: PicksListProps["categories"][number] = {
-  category: "Pass yds — projections, not probabilities",
+/** picksPanel.ts:79 — heading `"QB passing yards"`, detail `"Pass yds"`, projection.
+ *  An ABBREVIATED restatement: `{pass, yds}` shares no token with
+ *  `{qb, passing, yards}`, so the token half of the rule alone would draw it. */
+const QB_PASSING_YARDS_CATEGORY: PicksListProps["categories"][number] = {
+  category: "QB passing yards",
   rows: [
     { key: "pass:rodgers", name: "A. Rodgers", team: "PIT", detail: "Pass yds", value: 284, kind: "projection", margin: 41 },
     { key: "pass:allen", name: "J. Allen", team: "BUF", detail: "Pass yds", value: 271, kind: "projection", margin: 41 },
     { key: "pass:burrow", name: "J. Burrow", team: "CIN", detail: "Pass yds", value: 262, kind: "projection", margin: 41 },
+  ],
+};
+
+/** picksPanel.ts:116 / :256 — `detail: tdCategory` is the heading's own text, and
+ *  this row is `kind: "probability"`, so the KIND gate cannot suppress it and
+ *  the token half is the only thing standing between this card and its own
+ *  heading printed three times. */
+const NFL_TD_CATEGORY: PicksListProps["categories"][number] = {
+  category: "Rush or receiving TD",
+  rows: [
+    { key: "td:rodgers", name: "A. Rodgers", team: "PIT", detail: "Rush or receiving TD", value: 0.41, kind: "probability" },
+    { key: "td:alllen", name: "J. Allen", team: "BUF", detail: "Rush or receiving TD", value: 0.38, kind: "probability" },
+    { key: "td:chase", name: "J. Chase", team: "CIN", detail: "Rush or receiving TD", value: 0.31, kind: "probability" },
   ],
 };
 
@@ -517,15 +534,19 @@ function App() {
       </Case>
 
       <Case id="picks-detail" title="15 · SHIPPED PicksList — a row's own detail, and the rule that draws it"
-        note="Three states of ONE rule: a row renders its detail only when it adds a word the heading above it does not already carry. TOP is the new market — NFL's QB passing TDs, where the call is the detail and the probability is the value, so the row reads 'Over 2.5 · model line' beside 64% instead of a bare percentage with no line. MIDDLE is the existing data: 'Rush yds' under a 'Rush yds — projections' heading, where the detail is a restatement and drawing it would print the heading three more times, so nothing is added and the row is exactly what it was. BOTTOM is an empty list, which renders nothing at all — not the title, not a zero, not a placeholder line. The QB rows carry their own figures rather than a fixture's, because fixture.ts is the guard for the 2026-09-30 mocks and extending it would change what those 12 tests check; the same shape over the real fixture is pinned in src/components/picksListFixture.test.tsx instead.">
+        note="Four states of ONE rule, on Sports_Predictor's REAL heading/detail pairs copied from origin/main src/lib/picksPanel.ts. A row draws its detail only when it is a PROBABILITY row whose detail adds a word the heading does not carry. TOP is the new market: 'QB passing TDs' rows are kind probability with detail 'Over 2.5', so each reads 'Over 2.5 · model line' beside 64% instead of a bare percentage with no line. MIDDLE is picksPanel.ts:79, the case review found: heading 'QB passing yards', detail 'Pass yds', kind projection — an ABBREVIATED restatement whose words share no token with the heading, so a word-compare alone drew it and appended ' · model call' to a yardage estimate. Nothing is drawn now, and no projection row is ever labelled a call. THIRD is picksPanel.ts:256: a probability row whose detail IS the heading, which the kind gate cannot catch and only the word-compare can. BOTTOM is an empty list, which renders nothing at all — not the title, not a zero. The same rows are pinned as tests in src/components/sportsPayloads.test.tsx; these are the pixels.">
         <div className="flex flex-col gap-6">
           <div data-shot="qb-passing-tds" className="flex flex-col gap-2">
-            <InstantHead>QB passing TDs — the detail is the call</InstantHead>
+            <InstantHead>QB passing TDs — probability row, the detail is the call</InstantHead>
             <PicksList categories={[QB_PASSING_TD_CATEGORY]} />
           </div>
           <div data-shot="no-duplication" className="flex flex-col gap-2">
-            <InstantHead>Pass yds — the detail restates the heading, so nothing is drawn</InstantHead>
-            <PicksList categories={[PASS_YDS_CATEGORY]} />
+            <InstantHead>QB passing yards — projection row, abbreviated restatement, nothing drawn</InstantHead>
+            <PicksList categories={[QB_PASSING_YARDS_CATEGORY]} />
+          </div>
+          <div data-shot="detail-equals-heading" className="flex flex-col gap-2">
+            <InstantHead>Rush or receiving TD — probability row whose detail IS the heading</InstantHead>
+            <PicksList categories={[NFL_TD_CATEGORY]} />
           </div>
           <div data-shot="empty-list" className="flex flex-col gap-2">
             <InstantHead>An empty list</InstantHead>
