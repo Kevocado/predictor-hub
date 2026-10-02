@@ -7,11 +7,15 @@ on:
 
 jobs:
   build_and_deploy_job:
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+    # Legacy: Azure is being cut over to the VPS, which deploy.yml handles. Gated on
+    # `== 'true'` and not `!= 'false'` -- the failing-open form turns Azure back on for
+    # every repo that has not explicitly set the variable, which is the opposite of the
+    # intent.
+    if: vars.DEPLOY_AZURE == 'true' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed'))
     runs-on: ubuntu-latest
     name: Build and Deploy Job
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
           lfs: false
@@ -30,7 +34,7 @@ jobs:
           ###### End of Repository/Build Configurations ######
 
   close_pull_request_job:
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    if: vars.DEPLOY_AZURE == 'true' && github.event_name == 'pull_request' && github.event.action == 'closed'
     runs-on: ubuntu-latest
     name: Close Pull Request Job
     steps:
