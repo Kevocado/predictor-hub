@@ -269,6 +269,60 @@ const PICKS_PROPS: PicksListProps = (() => {
 const never = () => new Promise<unknown>(() => {});
 const noop = () => {};
 
+/**
+ * Case 15's categories: Sports_Predictor's REAL heading/detail pairs, copied
+ * from `origin/main` `src/lib/picksPanel.ts` rather than invented.
+ *
+ * That is a change from the first version of this case, and it is the change
+ * review forced. The original case used a harness-shaped heading
+ * (`"Rush yds — projections, not probabilities"`) with detail `"Rush yds"`,
+ * where the two tokenise to the same words — so the de-duplication worked in
+ * the harness and failed on the page, because the real rows abbreviate
+ * (`"Pass yds"` under `"QB passing yards"`). A screenshot harness built on
+ * strings that no real adapter passes cannot catch a defect about real strings.
+ * The same rows are pinned in src/components/sportsPayloads.test.tsx; these are
+ * the pixels.
+ *
+ * The QB lines follow the plan's rule (nearest half point to the projection,
+ * floor 0.5). `detailLabel: "model line"` is the caller's own noun, per the
+ * plan's "never a sportsbook line" — and note that the yardage rows pass no
+ * `detailLabel` and get no qualifier at all, which is the point: a projection
+ * is not a call.
+ */
+const QB_PASSING_TD_CATEGORY: PicksListProps["categories"][number] = {
+  category: "QB passing TDs", // picksPanel.ts:121
+  rows: [
+    { key: "pass:rodgers", name: "A. Rodgers", team: "PIT", detail: "Over 2.5", detailLabel: "model line", value: 0.64, kind: "probability" },
+    { key: "pass:allen", name: "J. Allen", team: "BUF", detail: "Over 1.5", detailLabel: "model line", value: 0.58, kind: "probability" },
+    { key: "pass:burrow", name: "J. Burrow", team: "CIN", detail: "Under 2.5", detailLabel: "model line", value: 0.53, kind: "probability" },
+  ],
+};
+
+/** picksPanel.ts:79 — heading `"QB passing yards"`, detail `"Pass yds"`, projection.
+ *  An ABBREVIATED restatement: `{pass, yds}` shares no token with
+ *  `{qb, passing, yards}`, so the token half of the rule alone would draw it. */
+const QB_PASSING_YARDS_CATEGORY: PicksListProps["categories"][number] = {
+  category: "QB passing yards",
+  rows: [
+    { key: "pass:rodgers", name: "A. Rodgers", team: "PIT", detail: "Pass yds", value: 284, kind: "projection", margin: 41 },
+    { key: "pass:allen", name: "J. Allen", team: "BUF", detail: "Pass yds", value: 271, kind: "projection", margin: 41 },
+    { key: "pass:burrow", name: "J. Burrow", team: "CIN", detail: "Pass yds", value: 262, kind: "projection", margin: 41 },
+  ],
+};
+
+/** picksPanel.ts:116 / :256 — `detail: tdCategory` is the heading's own text, and
+ *  this row is `kind: "probability"`, so the KIND gate cannot suppress it and
+ *  the token half is the only thing standing between this card and its own
+ *  heading printed three times. */
+const NFL_TD_CATEGORY: PicksListProps["categories"][number] = {
+  category: "Rush or receiving TD",
+  rows: [
+    { key: "td:rodgers", name: "A. Rodgers", team: "PIT", detail: "Rush or receiving TD", value: 0.41, kind: "probability" },
+    { key: "td:alllen", name: "J. Allen", team: "BUF", detail: "Rush or receiving TD", value: 0.38, kind: "probability" },
+    { key: "td:chase", name: "J. Chase", team: "CIN", detail: "Rush or receiving TD", value: 0.31, kind: "probability" },
+  ],
+};
+
 /** The bundle shapes the two live block cases below feed `InstantBlock`, in the
  *  shape each site's adapter already builds. Nothing here is restated as prose:
  *  the block reads the same object the flow did. */
@@ -475,6 +529,35 @@ function App() {
                 },
               ]}
             />
+          </div>
+        </div>
+      </Case>
+
+      <Case id="picks-detail" title="15 · SHIPPED PicksList — a row's own detail, and the rule that draws it"
+        note="Four states of ONE rule, on Sports_Predictor's REAL heading/detail pairs copied from origin/main src/lib/picksPanel.ts. A row draws its detail only when it is a PROBABILITY row whose detail adds a word the heading does not carry. TOP is the new market: 'QB passing TDs' rows are kind probability with detail 'Over 2.5', so each reads 'Over 2.5 · model line' beside 64% instead of a bare percentage with no line. MIDDLE is picksPanel.ts:79, the case review found: heading 'QB passing yards', detail 'Pass yds', kind projection — an ABBREVIATED restatement whose words share no token with the heading, so a word-compare alone drew it and appended ' · model call' to a yardage estimate. Nothing is drawn now, and no projection row is ever labelled a call. THIRD is picksPanel.ts:256: a probability row whose detail IS the heading, which the kind gate cannot catch and only the word-compare can. BOTTOM is an empty list, which renders nothing at all — not the title, not a zero. The same rows are pinned as tests in src/components/sportsPayloads.test.tsx; these are the pixels.">
+        <div className="flex flex-col gap-6">
+          <div data-shot="qb-passing-tds" className="flex flex-col gap-2">
+            <InstantHead>QB passing TDs — probability row, the detail is the call</InstantHead>
+            <PicksList categories={[QB_PASSING_TD_CATEGORY]} />
+          </div>
+          <div data-shot="no-duplication" className="flex flex-col gap-2">
+            <InstantHead>QB passing yards — projection row, abbreviated restatement, nothing drawn</InstantHead>
+            <PicksList categories={[QB_PASSING_YARDS_CATEGORY]} />
+          </div>
+          <div data-shot="detail-equals-heading" className="flex flex-col gap-2">
+            <InstantHead>Rush or receiving TD — probability row whose detail IS the heading</InstantHead>
+            <PicksList categories={[NFL_TD_CATEGORY]} />
+          </div>
+          <div data-shot="empty-list" className="flex flex-col gap-2">
+            <InstantHead>An empty list</InstantHead>
+            {/* Nothing follows this line but the note. `categories={[]}` returns
+                null, so there is no title, no panel and no figure to screenshot;
+                the label above is what a screenshot of "nothing" needs beside it
+                to be readable as a state rather than as a broken page. */}
+            <PicksList categories={[]} />
+            <p className="text-xs text-pr-text-faint">
+              ↑ nothing rendered. Not the title, not an empty card, not a 0%.
+            </p>
           </div>
         </div>
       </Case>

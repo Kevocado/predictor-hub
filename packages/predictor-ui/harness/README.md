@@ -16,6 +16,42 @@ npm run preview      # http://localhost:4180
   will not open a window narrower than 500px, so the phone width is measured
   inside a frame rather than by resizing. Same origin, or the frame is
   cross-origin and unreadable.
+- `insight.html` / `insight-narrow.html` — the fixture-insight mocks (cases 1–15)
+  and the same page at 390px.
+- `narrow.html`'s iframe trick is only needed for a **window**. A Playwright run
+  that sets `viewport: { width: 390 }` measures the real thing and is what the
+  `shots/pickslist-detail-*-390.png` captures used.
+
+## Where the screenshots live, and how to re-shoot them
+
+`shots/`, beside the page, and the name is the case id plus the width —
+`pickslist-detail-qb-passing-tds-390.png` is `[data-shot="qb-passing-tds"]` at
+390px. The `data-shot` attributes exist so a script can clip one state without
+counting `div`s: `shots/pickslist-picks-component-desktop.png` is the precedent.
+
+Two things a re-shoot must not lose. Read the rendered `textContent` of each row
+back out of the page and print it — a screenshot proves a thing was drawn, only
+the text says whether it was the right thing. And block every request the harness
+does not serve itself, including `fonts.googleapis.com`: `src/fonts.css` imports
+Barlow, and a capture taken with the CDN reachable and the fonts not yet settled
+measures the fallback face and reports a layout a reader never gets.
+
+## The mocks must use the strings a real adapter passes
+
+Case 15 originally used a harness-shaped heading (`"Rush yds — projections, not
+probabilities"`) with detail `"Rush yds"`, and every test was green. `Sports_Predictor`
+`origin/main` `src/lib/picksPanel.ts:79` passes `category: "QB passing yards"` with
+`detail: "Pass yds"` — an **abbreviation**, so the two share no token and the
+de-duplication that worked in the mock did not work on the page. Three of that
+panel's categories were affected, and a second defect rode along: the qualifier
+was applied to every drawn detail, so a yardage estimate rendered as
+`Pass yds · model call`.
+
+A mock built on strings no adapter passes cannot catch a defect about real
+strings. So the PicksList mocks copy the real `category`/`detail`/`kind` triples,
+with the file and line each came from, and the same strings are pinned as tests
+in `src/components/sportsPayloads.test.tsx`. When an adapter's wording changes,
+change both, and the screenshots.
 
 ## Why it has its own dependencies
 
