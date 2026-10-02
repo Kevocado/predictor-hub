@@ -75,7 +75,12 @@ test("the version the guard compares against is the one the sync tool writes", a
   // value is pinned to the derivation rather than free, in the guard *and* in
   // main()'s default, so it cannot be quietly repointed.
   const site = temp();
-  execFileSync(process.execPath, [join(HUB, "scripts", "sync-ui.mjs"), site], { encoding: "utf8" });
+  // `--vendor-anyway`: this asserts that the checker and the sync tool agree on
+  // one number, so it needs the tool to actually run — from whatever checkout
+  // the suite was started in, which the source guard rightly refuses when it is
+  // not clean main. The guard is tested on purpose-built repos in
+  // sync-ui-source.test.mjs; this file is about the number.
+  execFileSync(process.execPath, [join(HUB, "scripts", "sync-ui.mjs"), "--vendor-anyway", site], { encoding: "utf8" });
   const written = manifestSource(readFileSync(join(site, "predictor-ui", "SYNC.json"), "utf8"));
   assert.equal(currentSource(), written, "the guard and the tool disagree about the current version");
 
