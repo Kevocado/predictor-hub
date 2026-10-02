@@ -241,12 +241,30 @@ export function resolveSource({ from, hub, pkgDir = "packages/predictor-ui" }) {
     return { src, hub: resolve(from) };
   }
   const head = short(hub, "HEAD");
-  if (tryGit(hub, ["rev-parse", "--verify", "--quiet", `${from}^{commit}`]) === null) {
+  // Both sides resolved to a full commit id before they are compared, because
+  // `from` is whatever the caller typed and `head` is a 12-character short SHA,
+  // and those two strings are never equal for a name: `--from main`,
+  // `--from HEAD` and `--from <tag>` all name the commit this checkout is at and
+  // all failed a string comparison against it. `git rev-parse` resolves the name
+  // to a commit id, so that id is what gets compared and the caller spelling is free.
+  //
+  // Full SHAs, not short ones: two different commits can share a 12-character
+  // prefix, and this is a check about whether the bytes on disk are the bytes
+  // named. Comparing the resolved ids is also what stops a prefix-shaped input
+  // (`<short-sha>GARBAGE`) from passing a `startsWith` on its way through.
+  const fromSha = tryGit(hub, ["rev-parse", "--verify", "--quiet", `${from}^{commit}`]);
+  if (fromSha === null) {
     return {
       error: `--from ${from} is neither a directory nor a commit in ${hub}. It must be a hub checkout path, or a revision this checkout has`,
     };
   }
-  if (from !== head && !head?.startsWith(from) && !from.startsWith(head ?? "")) {
+  const headSha = tryGit(hub, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
+  if (headSha === null) {
+    return {
+      error: `HEAD in ${hub} could not be resolved to a commit, so --from ${from} cannot be checked against it`,
+    };
+  }
+  if (fromSha !== headSha) {
     return {
       error:
         `--from ${from} names a commit, but this checkout (${hub}) is at ${head}. Naming a commit ` +

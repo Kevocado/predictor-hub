@@ -190,7 +190,15 @@ function guardSource(opts) {
   // A named commit settles which bytes; the tree can still be dirty and there can
   // still be no origin/main, and neither is answered by naming a revision.
   const report = inspectHubSource(resolved.hub);
-  const unsettled = report.findings.filter((f) => !SETTLED_BY_A_NAMED_COMMIT.has(f.code));
+  // ONLY a named commit settles anything. A `--from <path>` is a location, not a
+  // decision: it says where to read and nothing about whether what is there is
+  // current, so it settles none of these. Filtering them for a path was the
+  // original defect one indirection away -- point --from at a checkout on a docs
+  // branch and it vendored silently, which is exactly the state that deleted
+  // InstantBlock and bundleFacts from a site.
+  const unsettled = resolved.namedCommit
+    ? report.findings.filter((f) => !SETTLED_BY_A_NAMED_COMMIT.has(f.code))
+    : report.findings;
   if (unsettled.length && !opts.vendorAnyway) {
     const filtered = { ...report, findings: unsettled };
     console.error(reportFindings(filtered));
@@ -209,7 +217,10 @@ function guardSource(opts) {
  *  so which branch it sits on, whether it is detached and how far it is from
  *  origin/main are all answered. The two that are not are `DIRTY` (a named
  *  commit is not the bytes on disk) and `NO_ORIGIN` (naming a revision says
- *  nothing about whether there is a remote to compare it to). */
+ *  nothing about whether there is a remote to compare it to).
+ *
+ *  Settles only when a COMMIT was named. `--from <path>` does not use this set:
+ *  a path is where to read, not which commit, so it answers none of them. */
 const SETTLED_BY_A_NAMED_COMMIT = new Set(["DETACHED", "NOT_MAIN", "BEHIND", "AHEAD"]);
 
 const args = process.argv.slice(2);

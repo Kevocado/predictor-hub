@@ -502,6 +502,108 @@ test("--from pointing at a path with no package is refused, not crashed on", () 
   assert.match(r.stderr, /predictor-ui|package/i);
 });
 
+// ------------------------------------------- --from <rev>: what a rev can be
+
+test("--from accepts a branch name and HEAD, not only a SHA that happens to match", () => {
+  // The finding that started this: `resolveSource` compares the STRING the caller
+  // typed against the 12-character short SHA of HEAD. A SHA prefix matches by
+  // luck, but a branch name never does -- and the branch name is what the
+  // NOT_MAIN message itself tells people to write:
+  //
+  //   "Check out main, or pass --from docs-nfl-players-decision to name this commit"
+  //
+  // So the guard named a route and then refused it. `git rev-parse` already
+  // resolved that name to a commit one line above; the comparison threw the
+  // answer away and compared the two strings instead.
+  //
+  // The control matters as much as the fix: the same branch named and the same
+  // branch NOT at HEAD have to come out opposite ways, or the fix is just a
+  // blanket accept.
+  const h = buildHub();
+  h.git("checkout", "-q", "-b", "docs-nfl-players-decision");
+  const site = h.site();
+  const at = h.run("--from", "docs-nfl-players-decision", site);
+  assert.equal(at.status, 0, `--from <branch> must be a working route, not advice the guard gives and then refuses.\nstderr: ${at.stderr}`);
+  assert.ok(existsSync(join(vendored(site), "SYNC.json")), "must have actually vendored");
+
+  // HEAD is the same commit by a different name, and has to work the same way.
+  assert.equal(h.run("--from", "HEAD", h.site()).status, 0, "--from HEAD names this very commit");
+});
+
+// A tag is a name for a commit the same way a branch is, so it is the same case.
+test("--from accepts a tag on the current commit", () => {
+  const h = buildHub();
+  h.git("tag", "predictor-ui-1");
+  const r = h.run("--from", "predictor-ui-1", h.site());
+  assert.equal(r.status, 0, `--from <tag> at this commit must work like --from <branch>.\nstderr: ${r.stderr}`);
+});
+
+// The control for the two above, and the reason the fix is not "accept anything":
+// a branch that is NOT at this checkout has to stay refused.
+test("--from still refuses a branch that is not at this checkout", () => {
+  const h = buildHub();
+  h.ship("components/PicksList.tsx"); // HEAD moves; the old branch name does not
+  h.git("branch", "an-older-branch", "HEAD~1");
+  const r = h.run("--from", "an-older-branch", h.site());
+  assert.notEqual(r.status, 0, "--from must not become a way to claim a commit you are not at");
+});
+
+// ------------------------------------------- --from <path>: a path is not a decision
+
+test("--from <path> does not carry a stale or dirty checkout past the guard", () => {
+  // The defect again, one indirection away. `resolveSource` returns
+  // `namedCommit: true` ONLY for the revision form; a path returns no such key.
+  // But the filter that drops DETACHED / NOT_MAIN / BEHIND / AHEAD ran on
+  // `report.findings` unconditionally -- so pointing `--from` at a checkout on a
+  // docs branch silently vendored from it, which is the exact state that deleted
+  // InstantBlock and bundleFacts from a site.
+  //
+  // A path answers WHERE to read. It does not answer WHICH commit is current, and
+  // so it settles nothing. These three are the states the guard exists for, each
+  // as a separate checkout, because one guard that passes on the wrong checkout
+  // is a guard that is not there.
+  const stale = buildHub();
+  stale.git("checkout", "-q", "-b", "docs-nfl-players-decision");
+  const rStale = buildHub().run("--from", stale.hub, buildHub().site());
+  assert.notEqual(
+    rStale.status,
+    0,
+    `--from <path> on a docs branch vendored silently. A path names a location, not a commit, ` +
+      `so it settles nothing about which branch the checkout is on.\nstderr: ${rStale.stderr}`,
+  );
+
+  const behind = buildHub();
+  behind.ship("components/PicksList.tsx");
+  behind.git("checkout", "-q", "-b", "docs-nfl-players-decision");
+  behind.publish(); // origin/main moves on; the checkout falls behind
+  const rBehind = buildHub().run("--from", behind.hub, buildHub().site());
+  assert.notEqual(rBehind.status, 0, `--from <path> at a checkout BEHIND origin/main vendored silently.\nstderr: ${rBehind.stderr}`);
+
+  const dirty = buildHub();
+  writeFileSync(join(dirty.src, "fmt.ts"), "export const fmt = (n) => String(n);\n");
+  const rDirty = buildHub().run("--from", dirty.hub, buildHub().site());
+  assert.notEqual(rDirty.status, 0, `--from <path> at a dirty checkout must still refuse.\nstderr: ${rDirty.stderr}`);
+});
+
+// The control: the guard above must not fire on the checkout it is happy with, or
+// every one of these refusals is indistinguishable from "refuses everything".
+test("--from <path> at a clean checkout on main still vendors (the control)", () => {
+  const other = buildHub();
+  other.git("checkout", "-q", "main");
+  writeFileSync(join(other.src, "components", "OnlyInOther.tsx"), "export const OnlyInOther = () => null;\n");
+  other.git("add", "-A");
+  other.git("commit", "-qm", "hub: OnlyInOther");
+  other.publish();
+
+  const site = buildHub().site();
+  const r = buildHub().run("--from", other.hub, site);
+  assert.equal(r.status, 0, `a clean main checkout must still be a working route.\nstderr: ${r.stderr}`);
+  assert.ok(
+    existsSync(join(vendored(site), "components", "OnlyInOther.tsx")),
+    "must read the named checkout, not the one holding the script",
+  );
+});
+
 // ------------------------------------------------------------- argument rules
 
 test("an unknown flag is refused rather than treated as a site path", () => {
