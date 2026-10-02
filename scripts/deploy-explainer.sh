@@ -271,17 +271,54 @@ EXPLAINER_DEADLINE_IMPL=${EXPLAINER_DEADLINE_IMPL:-auto}
 explainer_watchdog() {
   explainer_wd_limit=$1
   shift
+  # Job control, for the length of one background launch and no longer. `set -m` is
+  # what makes the command a process group of its own; without it the background
+  # command stays in the group of this shell, and a kill on the pid of the child stops
+  # only the process named and none of what that process started. The state is put
+  # back, because a deploy that left job control on for the rest of the remote block
+  # would be a surprise in a shell nobody is sitting at.
+  #
+  # The group is not trusted because job control was asked for: `set -m` fails
+  # SILENTLY where it cannot work -- dash, with no tty, prints a complaint and carries
+  # on -- and then the child shares the group of this shell, so `kill -- -PID` would
+  # signal the deploy along with the build. So the group is probed and used only if it
+  # provably exists. A group id is the pid of the process leading it, so if a group
+  # whose id is the pid of that child can be signalled while the child is alive, then
+  # the child leads it -- no other process could, because pids are unique. Where the
+  # probe says no, the kill falls back to the single pid: a weaker deadline, not a
+  # broken one.
+  case $- in
+    *m*) explainer_wd_had_monitor=1 ;;
+    *) explainer_wd_had_monitor=0 ;;
+  esac
+  set -m 2>/dev/null || true
   "$@" &
   explainer_wd_child=$!
+  if [ "$explainer_wd_had_monitor" -eq 0 ]; then set +m 2>/dev/null || true; fi
+  explainer_wd_group=""
+  if kill -0 "-$explainer_wd_child" 2>/dev/null; then
+    explainer_wd_group=$explainer_wd_child
+  fi
+  # What the watchdog watches. Where there is a group it watches the GROUP, so a
+  # worker the command spawned still counts as running after the command itself is
+  # gone: watching only the pid would end the poll the moment the wrapper died and
+  # report a deadline obeyed while the build carried on.
+  if [ -n "$explainer_wd_group" ]; then
+    explainer_wd_alive() { kill -0 "-$explainer_wd_group" 2>/dev/null; }
+    explainer_wd_signal() { kill "-$1" "-$explainer_wd_group" 2>/dev/null || true; }
+  else
+    explainer_wd_alive() { kill -0 "$explainer_wd_child" 2>/dev/null; }
+    explainer_wd_signal() { kill "-$1" "$explainer_wd_child" 2>/dev/null || true; }
+  fi
   (
     explainer_wd_left=$explainer_wd_limit
-    while kill -0 "$explainer_wd_child" 2>/dev/null; do
+    while explainer_wd_alive; do
       if [ "$explainer_wd_left" -le 0 ]; then
-        kill -TERM "$explainer_wd_child" 2>/dev/null || exit 0
+        explainer_wd_signal TERM
         explainer_wd_grace=0
-        while kill -0 "$explainer_wd_child" 2>/dev/null; do
+        while explainer_wd_alive; do
           if [ "$explainer_wd_grace" -ge "$EXPLAINER_GRACE" ]; then
-            kill -KILL "$explainer_wd_child" 2>/dev/null || true
+            explainer_wd_signal KILL
             exit 0
           fi
           sleep 1
@@ -918,17 +955,54 @@ EXPLAINER_DEADLINE_IMPL=${EXPLAINER_DEADLINE_IMPL:-auto}
 explainer_watchdog() {
   explainer_wd_limit=$1
   shift
+  # Job control, for the length of one background launch and no longer. `set -m` is
+  # what makes the command a process group of its own; without it the background
+  # command stays in the group of this shell, and a kill on the pid of the child stops
+  # only the process named and none of what that process started. The state is put
+  # back, because a deploy that left job control on for the rest of the remote block
+  # would be a surprise in a shell nobody is sitting at.
+  #
+  # The group is not trusted because job control was asked for: `set -m` fails
+  # SILENTLY where it cannot work -- dash, with no tty, prints a complaint and carries
+  # on -- and then the child shares the group of this shell, so `kill -- -PID` would
+  # signal the deploy along with the build. So the group is probed and used only if it
+  # provably exists. A group id is the pid of the process leading it, so if a group
+  # whose id is the pid of that child can be signalled while the child is alive, then
+  # the child leads it -- no other process could, because pids are unique. Where the
+  # probe says no, the kill falls back to the single pid: a weaker deadline, not a
+  # broken one.
+  case $- in
+    *m*) explainer_wd_had_monitor=1 ;;
+    *) explainer_wd_had_monitor=0 ;;
+  esac
+  set -m 2>/dev/null || true
   "$@" &
   explainer_wd_child=$!
+  if [ "$explainer_wd_had_monitor" -eq 0 ]; then set +m 2>/dev/null || true; fi
+  explainer_wd_group=""
+  if kill -0 "-$explainer_wd_child" 2>/dev/null; then
+    explainer_wd_group=$explainer_wd_child
+  fi
+  # What the watchdog watches. Where there is a group it watches the GROUP, so a
+  # worker the command spawned still counts as running after the command itself is
+  # gone: watching only the pid would end the poll the moment the wrapper died and
+  # report a deadline obeyed while the build carried on.
+  if [ -n "$explainer_wd_group" ]; then
+    explainer_wd_alive() { kill -0 "-$explainer_wd_group" 2>/dev/null; }
+    explainer_wd_signal() { kill "-$1" "-$explainer_wd_group" 2>/dev/null || true; }
+  else
+    explainer_wd_alive() { kill -0 "$explainer_wd_child" 2>/dev/null; }
+    explainer_wd_signal() { kill "-$1" "$explainer_wd_child" 2>/dev/null || true; }
+  fi
   (
     explainer_wd_left=$explainer_wd_limit
-    while kill -0 "$explainer_wd_child" 2>/dev/null; do
+    while explainer_wd_alive; do
       if [ "$explainer_wd_left" -le 0 ]; then
-        kill -TERM "$explainer_wd_child" 2>/dev/null || exit 0
+        explainer_wd_signal TERM
         explainer_wd_grace=0
-        while kill -0 "$explainer_wd_child" 2>/dev/null; do
+        while explainer_wd_alive; do
           if [ "$explainer_wd_grace" -ge "$EXPLAINER_GRACE" ]; then
-            kill -KILL "$explainer_wd_child" 2>/dev/null || true
+            explainer_wd_signal KILL
             exit 0
           fi
           sleep 1

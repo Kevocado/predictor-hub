@@ -42,6 +42,7 @@ the VPS is a separate question answered by running the script, not by a regex.
 import os
 import re
 import shutil
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -157,6 +158,21 @@ case "${1:-}" in
     ;;
   build)
     # A build that hangs is the same hang as a hung probe, and it is bounded too.
+    if [ "${FAKE_BUILD_MODE:-ok}" = orphan ]; then
+      # `docker build` is not one process. The client talks to a buildkit/buildx
+      # worker that it spawns and waits on, so killing the client is not the same
+      # as stopping the build: the worker is a separate pid in the same process
+      # group and it keeps running. On the VPS the client reached is `sudo docker`,
+      # which makes it two levels of wrapper between the deadline and the worker.
+      # This is that shape -- a background grandchild that outlives its parent --
+      # so a deadline that kills one pid is visibly not the same as one that
+      # terminates the work. The pid is recorded so the test can ask whether it
+      # is still there afterwards, which is the only thing that distinguishes the
+      # two.
+      sleep "${FAKE_BUILD_HANG:-600}" &
+      printf '%s\n' "$!" >"${FAKE_ORPHAN_PIDFILE:?FAKE_ORPHAN_PIDFILE must be set}"
+      exec sleep "${FAKE_BUILD_HANG:-600}"
+    fi
     [ "${FAKE_BUILD_MODE:-ok}" = hang ] && exec sleep "${FAKE_BUILD_HANG:-600}"
     exit "${FAKE_BUILD_RC:-0}"
     ;;
@@ -1349,6 +1365,94 @@ def test_the_deadline_wrapper_still_applies_when_docker_is_a_function(fake_host,
     )
     # And nothing reached a host: these tests are hermetic, and the log is the proof.
     assert not fake_host["ssh_log"].read_text().strip(), "ssh was called"
+
+
+def _pid_is_running(pid):
+    """Whether PID still exists. `kill -0` sends nothing and is the only portable way.
+
+    Asked rather than assumed, because the claim under test is exactly that the
+    process is gone: a test that concluded "it died" from the absence of output
+    would pass against a wrapper that left the build running and merely stopped
+    waiting for it.
+    """
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # exists, owned by someone else -- still running
+    return True
+
+
+def _wait_for_pid_to_go(pid, timeout_s=15.0):
+    """Poll until PID is gone, so a slow reap is not read as a survivor.
+
+    The kill is already sent by the time the watchdog returns, so this is not
+    waiting for the deadline to expire -- it is waiting for the kernel to finish
+    tearing down a process that has been signalled. A generous ceiling with a
+    short poll: the answer is normally immediate, and a slow machine should be
+    reported as slow rather than as a leak.
+    """
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if not _pid_is_running(pid):
+            return False
+        time.sleep(0.2)
+    return True
+
+
+def test_a_timed_out_deadline_takes_the_whole_process_group_with_it(fake_host, remote_common):
+    """Killing the shell that is waiting on a command is not the same as stopping it.
+
+    The watchdog's job is to make a deadline mean something. `kill $child` stops the
+    process it knows about, and reports the deadline as obeyed -- and for a command
+    that is a single process that is the whole job. It is not the whole job for the
+    shape the VPS has: `docker()` wraps `sudo docker`, the docker CLI is waiting on a
+    build worker it spawned, and that worker is a different pid. Kill the wrapper and
+    the worker keeps going: the deploy reports a build failure, and the worker is
+    still on the host, still writing to the daemon, still able to finish and tag an
+    image that nothing ever health-checked.
+
+    So the test hangs a build that has a grandchild, lets the deadline fire, and then
+    asks the only question that distinguishes the two implementations: is that
+    grandchild still running afterwards. `docker build` really is a client waiting on
+    a worker -- this is the shape, not a contrivance.
+    """
+    pidfile = fake_host["dir"] / "orphan.pid"
+    done, elapsed, shape = run_remote_block(
+        fake_host, remote_common, "explainer_deploy",
+        EXPLAINER_BUILD_DEADLINE=3, EXPLAINER_DEADLINE_IMPL="auto",
+        FAKE_BUILD_MODE="orphan", FAKE_BUILD_HANG=600,
+        EXPLAINER_PROBE_MODE="ok", FAKE_ORPHAN_PIDFILE=pidfile,
+    )
+    # The premise: this only means anything where docker is a function, so say so
+    # rather than letting a pass imply a shape that was never exercised.
+    assert shape == "function", f"docker was {shape!r}, not a function: {done.stdout!r}"
+    assert done.returncode != 0, "a build that hung reported success"
+    assert elapsed < 30, f"a 3s build deadline took {elapsed:.1f}s: the wrapper did not apply"
+    # And the build really did spawn something that outlives it, or there is nothing
+    # here to assert about and the test would pass without ever testing the group.
+    assert pidfile.exists(), (
+        "the fake build did not record a grandchild pid, so this test cannot tell a "
+        f"group kill from a single-pid kill: stdout={done.stdout!r} stderr={done.stderr!r}"
+    )
+    orphan = int(pidfile.read_text().strip())
+    try:
+        survivor = _wait_for_pid_to_go(orphan)
+        assert not survivor, (
+            f"the build's worker (pid {orphan}) was still running after the deadline "
+            "fired. The watchdog killed the shell waiting for the build and reported "
+            "the deadline obeyed, but the work itself is still on the host. A deadline "
+            "has to end the work, not just the wait for it. "
+            f"stdout={done.stdout!r} stderr={done.stderr!r}"
+        )
+    finally:
+        # Do not leak it whether the assertion passed or failed: a 600s sleep that
+        # outlives the suite is a mess the next run has to clean up.
+        try:
+            os.kill(orphan, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
 
 
 def test_a_function_the_wrapper_cannot_exec_fails_loudly_rather_than_running_unbounded(fake_host):
