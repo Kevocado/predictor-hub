@@ -41,6 +41,8 @@ the VPS is a separate question answered by running the script, not by a regex.
 """
 import os
 import re
+import shutil
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -124,6 +126,20 @@ log=${FAKE_DOCKER_LOG:?FAKE_DOCKER_LOG must be set}
 images=${FAKE_IMAGES:?FAKE_IMAGES must be set}
 printf '%s\n' "$*" >>"$log"
 
+# FAKE_DOCKER_NO_GROUP models the VPS login user exactly. That user is not in the
+# docker group, so the bare binary on PATH answers permission denied and exits
+# 126 to everything. The remote block notices this at its first line --
+# `docker ps ... || docker() { command sudo docker "$@"; }` -- and from then on
+# `docker` is a shell FUNCTION that goes through sudo, not the program on PATH.
+#
+# This is the shape every other test here mocks wrongly. Set it and the fakes put
+# the harness in the same shape as the host: bare docker fails, sudo docker works,
+# and a deadline wrapper that cannot call a function has nothing to call.
+if [ "${FAKE_DOCKER_NO_GROUP:-0}" = 1 ] && [ -z "${FAKE_DOCKER_VIA_SUDO:-}" ]; then
+  echo "permission denied while trying to connect to the Docker daemon socket" >&2
+  exit 126
+fi
+
 case "${1:-}" in
   image)
     # `docker image inspect TAG`: does this tag exist on this host
@@ -142,6 +158,21 @@ case "${1:-}" in
     ;;
   build)
     # A build that hangs is the same hang as a hung probe, and it is bounded too.
+    if [ "${FAKE_BUILD_MODE:-ok}" = orphan ]; then
+      # `docker build` is not one process. The client talks to a buildkit/buildx
+      # worker that it spawns and waits on, so killing the client is not the same
+      # as stopping the build: the worker is a separate pid in the same process
+      # group and it keeps running. On the VPS the client reached is `sudo docker`,
+      # which makes it two levels of wrapper between the deadline and the worker.
+      # This is that shape -- a background grandchild that outlives its parent --
+      # so a deadline that kills one pid is visibly not the same as one that
+      # terminates the work. The pid is recorded so the test can ask whether it
+      # is still there afterwards, which is the only thing that distinguishes the
+      # two.
+      sleep "${FAKE_BUILD_HANG:-600}" &
+      printf '%s\n' "$!" >"${FAKE_ORPHAN_PIDFILE:?FAKE_ORPHAN_PIDFILE must be set}"
+      exec sleep "${FAKE_BUILD_HANG:-600}"
+    fi
     [ "${FAKE_BUILD_MODE:-ok}" = hang ] && exec sleep "${FAKE_BUILD_HANG:-600}"
     exit "${FAKE_BUILD_RC:-0}"
     ;;
@@ -150,6 +181,18 @@ case "${1:-}" in
     exit 0
     ;;
   inspect|ps|version)
+    # `docker inspect -f FORMAT NAME` prints a field. The golive block reads the
+    # network name out of one and fails on an empty answer, so the fake has to print
+    # something: a fake host that cannot say what network it is on is not shaped like
+    # the host the block was written for. Only for the -f form; a bare `inspect` is
+    # used for its exit status and prints nothing, which is also what the real one
+    # does when the format string asks for no fields.
+    for arg in "$@"; do
+      if [ "$arg" = -f ]; then
+        printf '%s\n' "${FAKE_NETWORK:-bridge}"
+        break
+      fi
+    done
     exit 0
     ;;
   rm)
@@ -196,8 +239,17 @@ exit 1
 
 # sudo, for the paths that write /etc/predictor. It runs the command, against
 # the tmp_path env file the test points EXPLAINER_ENV_FILE at.
+#
+# It also records what it was asked to run. That log is what proves a command
+# went through the sudo wrapper rather than straight to the binary, which on the
+# VPS is the whole difference between a deploy that works and one that dies with
+# permission denied.
 FAKE_SUDO = r"""#!/usr/bin/env bash
-exec "$@"
+printf 'sudo %s\n' "$*" >>"${FAKE_SUDO_LOG:-/dev/null}"
+# Mark the environment so the fake docker can tell sudo docker from bare docker.
+# The real host tells them apart by uid, and the two take different paths: only
+# one of them is allowed to reach the daemon socket.
+FAKE_DOCKER_VIA_SUDO=1 exec "$@"
 """
 
 # A host curl. Nothing under test calls it; it is here so that a stray one is
@@ -205,6 +257,73 @@ exec "$@"
 FAKE_CURL = r"""#!/usr/bin/env bash
 echo "curl: refused, these tests do not touch the network" >&2
 exit 7
+"""
+
+# A sed that accepts `sed -i EXPR FILE`, which is GNU sed and is what the golive
+# block writes, on EITHER platform. That has to be said carefully, because this fake
+# used to hardcode the BSD spelling and that made it a macOS-only construct: a
+# development run on a macOS was green and the same suite could not run at all on the
+# Linux CI runner.
+#
+# `-i` takes its backup suffix in two incompatible ways. BSD sed (macOS) reads the
+# NEXT argument as the suffix, so it wants `-i '' EXPR FILE`. GNU sed (Linux, and the
+# VPS) only accepts the suffix attached, `-i.bak`, so it reads a bare `-i` as "no
+# suffix" and then takes the argument after it as the SCRIPT. Feed GNU sed the BSD
+# spelling and the empty string becomes the program and the real expression becomes a
+# FILENAME:
+#
+#   /usr/bin/sed: can't read /^OPENROUTER_API_KEY=/d;s/^EXPLAINER_ENABLED=.*/.../
+#
+# That is what the golive block hit on ubuntu. Under the block's `set -e` it killed
+# the whole block on its first edit, so the shell never reached the line that prints
+# the shape this file's premise rests on, and the test reported the host as "docker is
+# not a function" -- a false accusation of the harness, on a runner that has a current
+# bash and needs no adaptation at all.
+#
+# So there is no flag translation here and no `-i` reaches the real sed either. The
+# one form both seds agree on is `sed EXPR FILE`, which writes to stdout everywhere,
+# so the shim takes the last argument as the file, runs the real sed WITHOUT `-i`,
+# and writes the result back over the file. No spelling to guess, nothing to detect,
+# and the edit is still a real edit by the real sed to a real tmp_path file -- which is
+# the only reason this fake exists.
+#
+# Written back with `cat >` rather than `mv`, so the inode, and with it the mode and
+# the ownership, survives the edit. Same reason scripts/deploy-explainer.sh writes its
+# --embed temp back that way.
+FAKE_SED = r"""#!/usr/bin/env bash
+set -u
+inplace=0
+suffix=""
+args=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -i) inplace=1; shift; continue ;;
+    -i*) inplace=1; suffix=${1#-i}; shift; continue ;;
+    *) args+=("$1"); shift; continue ;;
+  esac
+done
+
+# Not asked to edit in place. Pass the arguments through untouched, so `sed -n`,
+# `sed --version` and every other use of this name stays an honest answer.
+if [ "$inplace" != 1 ]; then
+  exec /usr/bin/sed ${args[@]+"${args[@]}"}
+fi
+
+if [ "${#args[@]}" -lt 1 ]; then
+  echo "fake sed: -i with no script and no file" >&2
+  exit 2
+fi
+last=$((${#args[@]} - 1))
+file=${args[$last]}
+program=("${args[@]:0:$last}")
+
+# mktemp WITH a template, unlike a bare `mktemp -d`: the template spelling is the one
+# POSIX actually specifies and the one that cannot change meaning under a platform.
+tmp=$(mktemp "${TMPDIR:-/tmp}/fake-sed.XXXXXXXX") || exit 1
+trap 'rm -f "$tmp"' EXIT
+/usr/bin/sed ${program[@]+"${program[@]}"} "$file" >"$tmp" || exit $?
+[ -n "$suffix" ] && cp "$file" "$file$suffix"
+cat "$tmp" >"$file"
 """
 
 # A GNU timeout(1) for the platforms that have one, so the branch that prefers
@@ -245,10 +364,13 @@ def _write_exec(path: Path, body: str) -> None:
 def fake_host(tmp_path):
     """A PATH of fakes, and the files they answer from.
 
-    PATH is prefixed, not replaced: `sleep`, `kill` and `bash` are real. But the
-    first four entries are fakes, which is what `test_the_fakes_shadow_the_real
-    binaries` asserts, and what makes this harness unable to reach a daemon or a
-    host even if a test asked it to.
+    PATH is prefixed, not replaced: `sleep`, `kill`, `bash`, `tee`, `cp` and `rm` are
+    real. The entries in front are fakes, which is what
+    `test_the_fakes_shadow_every_binary_that_could_reach_a_host_or_a_daemon` asserts,
+    and what makes this harness unable to reach a daemon or a host even if a test asked
+    it to. `sed` is here for a platform reason rather than a safety one, and says so in
+    its own comment: it exists so the golive block can run its in-place edit the way
+    the VPS runs it rather than dying on BSD sed flag syntax.
     """
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -257,10 +379,12 @@ def fake_host(tmp_path):
     _write_exec(bin_dir / "sudo", FAKE_SUDO)
     _write_exec(bin_dir / "curl", FAKE_CURL)
     _write_exec(bin_dir / "timeout", FAKE_TIMEOUT)
+    _write_exec(bin_dir / "sed", FAKE_SED)
     paths = {
         "bin": bin_dir,
         "docker_log": tmp_path / "docker.log",
         "ssh_log": tmp_path / "ssh.log",
+        "sudo_log": tmp_path / "sudo.log",
         "timeout_log": tmp_path / "timeout.log",
         "images": tmp_path / "images",
         "env_file": tmp_path / "explainer.env",
@@ -268,6 +392,7 @@ def fake_host(tmp_path):
     }
     paths["docker_log"].write_text("")
     paths["ssh_log"].write_text("")
+    paths["sudo_log"].write_text("")
     paths["timeout_log"].write_text("")
     # The image the deploy is about to replace, as if a previous deploy left one.
     paths["images"].write_text("predictor-explainer\n")
@@ -275,7 +400,59 @@ def fake_host(tmp_path):
     return paths
 
 
-def run_library(fake_host, body, *, limit_s=180, **overrides):
+_PIPEFAIL_CACHE = {}
+
+
+def _bash4_or_newer():
+    """A bash that is not the macOS system bash, or None.
+
+    The system bash on macOS is 3.2 and it has a bug that matters here exactly:
+    when a shell function whose first command is `command <external>` is invoked
+    with `&`, bash 3.2 EXECs into that external and the rest of the function body
+    is silently discarded. No error, no message. The remote block defines
+    `docker() { command sudo docker "$@"; }`, which is precisely that shape, and
+    the library runs its commands with `&` -- so under bash 3.2 the watchdog runs
+    `docker build`, the sudo wrapper execs, and every line after that call in the
+    function is gone. A test asserts on output that never arrives and reports the
+    library as broken when the library is fine.
+
+    bash 4, bash 5, dash and ksh93 all run it correctly, and the VPS is Linux with
+    a current bash, so the harness prefers any of those. Verified rather than
+    assumed: the probe below runs the failing shape and checks the tail arrives, so
+    a machine with no usable bash falls back to `/bin/bash` and the tests behave the
+    way the platform behaves rather than the way the VPS does.
+    """
+    probe = 'd() { command true; echo TAIL; }\nd & wait\n'
+    for candidate in ("/opt/homebrew/bin/bash", "/usr/local/bin/bash", "/bin/bash"):
+        path = shutil.which(candidate) or (candidate if os.path.exists(candidate) else None)
+        if not path:
+            continue
+        check = subprocess.run([path, "-c", probe], capture_output=True, text=True)
+        if check.returncode == 0 and "TAIL" in check.stdout:
+            return path
+    return None
+
+
+# Resolved once. A missing modern bash is not fatal: the suite then runs on whatever
+# bash the machine has and the section that depends on this documents the difference.
+GOOD_BASH = _bash4_or_newer() or "bash"
+
+
+def _supports_pipefail(shell):
+    """Whether this shell accepts `set -o pipefail`, asked once per shell.
+
+    dash has no pipefail and exits on the attempt, so the harness cannot simply
+    assume it. Probed by running it, not by reading its name: several shells on this
+    list alias each other and the answer has varied across macOS releases.
+    """
+    if shell not in _PIPEFAIL_CACHE:
+        check = subprocess.run([shell, "-c", "set -o pipefail"],
+                               capture_output=True, text=True)
+        _PIPEFAIL_CACHE[shell] = check.returncode == 0
+    return _PIPEFAIL_CACHE[shell]
+
+
+def run_library(fake_host, body, *, limit_s=180, shell=None, **overrides):
     """Run scripts/lib/deploy_safety.sh with BODY appended, against the fakes.
 
     `set -euo pipefail` first, because the remote blocks set those and a library
@@ -290,12 +467,17 @@ def run_library(fake_host, body, *, limit_s=180, **overrides):
     env["PATH"] = f"{fake_host['bin']}{os.pathsep}{os.environ.get('PATH', '/usr/bin:/bin')}"
     env["FAKE_DOCKER_LOG"] = str(fake_host["docker_log"])
     env["FAKE_SSH_LOG"] = str(fake_host["ssh_log"])
+    env["FAKE_SUDO_LOG"] = str(fake_host["sudo_log"])
     env["FAKE_TIMEOUT_LOG"] = str(fake_host["timeout_log"])
     env["FAKE_IMAGES"] = str(fake_host["images"])
     env["EXPLAINER_ENV_FILE"] = str(fake_host["env_file"])
     env["EXPLAINER_PREVIOUS_ENV_FILE"] = str(fake_host["dir"] / "explainer.env.prev")
     env["EXPLAINER_BUILD_CONTEXT"] = str(fake_host["dir"] / "context")
     env["NET"] = "bridge"
+    # GOOD_BASH by default, because of the bash 3.2 bug documented on
+    # _bash4_or_newer: it would silently truncate every block that calls a function
+    # starting with `command`, which is every one of them on this host.
+    shell = shell or GOOD_BASH
     for key, value in overrides.items():
         env[key] = str(value)
     started = time.perf_counter()
@@ -307,8 +489,13 @@ def run_library(fake_host, body, *, limit_s=180, **overrides):
     out = fake_host["dir"] / "stdout"
     err = fake_host["dir"] / "stderr"
     with out.open("w") as out_fh, err.open("w") as err_fh:
+        # `set -euo pipefail` is what the remote blocks use, but pipefail is not
+        # POSIX: dash rejects it outright and the shell dies before it reads a line
+        # of the library. The shells that do not have it get `set -eu`, which is the
+        # part that is actually load-bearing here.
+        strict = "set -euo pipefail" if _supports_pipefail(shell) else "set -eu"
         done = subprocess.run(
-            ["bash", "-c", f'set -euo pipefail\n. "{LIB}"\n{body}\n'],
+            [shell, "-c", f'{strict}\n. "{LIB}"\n{body}\n'],
             env=env, stdout=out_fh, stderr=err_fh, timeout=limit_s,
         )
     done.stdout, done.stderr = out.read_text(), err.read_text()
@@ -317,6 +504,26 @@ def run_library(fake_host, body, *, limit_s=180, **overrides):
 
 def docker_calls(fake_host):
     return [line for line in fake_host["docker_log"].read_text().splitlines() if line.strip()]
+
+
+def sudo_calls(fake_host):
+    """Every command that reached the daemon THROUGH sudo, in docker-log shape.
+
+    This is the observable that separates the VPS failure from a working deploy.
+    On the host, `docker` is a function that wraps `sudo docker`, so a build that
+    reaches the daemon at all is a build that went through sudo. A build that ran
+    the bare binary -- which is what happens when a deadline wrapper execs `docker`
+    instead of calling it -- never appears here, and on the real host it dies with
+    "permission denied while trying to connect to the Docker daemon socket".
+
+    The fake sudo records `sudo <argv>`, so the leading `sudo ` is stripped and the
+    entries read the same way `docker_calls` does. That way a test can write the same
+    predicate against both logs -- `docker build` reached the wrapper or it did not --
+    rather than one test matching "sudo docker build" and another matching
+    "build -q", which is a difference in spelling and not in behaviour.
+    """
+    lines = (line for line in fake_host["sudo_log"].read_text().splitlines() if line.strip())
+    return [line[len("sudo "):] if line.startswith("sudo ") else line for line in lines]
 
 
 def started_images(fake_host):
@@ -856,18 +1063,37 @@ def test_golive_keeps_the_previous_env_file_only_while_it_needs_it(fake_host):
 
 
 def test_the_fakes_shadow_every_binary_that_could_reach_a_host_or_a_daemon(fake_host):
-    """The claim this whole section rests on: no test here can leave the machine.
+    r"""The claim this whole section rests on: no test here can leave the machine.
 
     PATH is prefixed with the fakes, so `docker`, `ssh`, `sudo` and `curl` all
     resolve into tmp_path. If one of them did not, a test could reach a docker
     daemon or the VPS -- and this repository has already had a task run golive
     against that VPS by accident.
+
+    `command -v` is not the check for that, and it is worth saying why because it is
+    the obvious one. For a FUNCTION it prints the bare word `docker`, not a path: the
+    shell has a thing called docker, and that is all `command -v` reports. So it
+    answers "does this name exist", which is not the question. The question is which
+    FILE a bare exec of the name would open, and `type -P` is the one that answers it
+    -- it ignores functions entirely and prints the PATH entry, or nothing at all when
+    the name is not a file. `type -t` alongside it says which KIND it is, which is the
+    distinction this whole file turns on and the one `command -v` cannot express.
+
+    That is the same check the production code now uses, in explainer_path_of and
+    explainer_resolve_kind, and it is the check a reviewer should read the library
+    with: `type -P` for the file, `type -t` for the kind, and never `command -v`.
     """
-    done, _ = run_library(fake_host, 'command -v docker; command -v ssh; command -v curl')
-    found = done.stdout.split()
-    assert found == [str(fake_host["bin"] / name) for name in ("docker", "ssh", "curl")], (
-        f"PATH does not point at the fakes: {found}"
+    done, _ = run_library(
+        fake_host,
+        'type -P docker; type -P ssh; type -P curl; type -P sudo; '
+        'printf "KIND=%s\\n" "$(type -t docker)"',
     )
+    found = done.stdout.split()
+    # docker is a PROGRAM here -- no remote block has run -- so type -P answers for
+    # all four and the kinds line confirms the premise rather than the fakes.
+    wanted = [str(fake_host["bin"] / name) for name in ("docker", "ssh", "curl", "sudo")]
+    wanted.append("KIND=file")
+    assert found == wanted, f"PATH does not point at the fakes: {found}"
     assert not fake_host["ssh_log"].read_text().strip(), "ssh was called"
 
 
@@ -1015,3 +1241,439 @@ def test_a_real_program_still_goes_through_timeout(fake_host):
     done, _ = run_library(fake_host, 'explainer_within 20 true\n', EXPLAINER_DEADLINE_IMPL="timeout")
     assert done.returncode == 0, done.stderr
     assert fake_host["timeout_log"].read_text().strip(), "a plain program no longer reaches timeout(1)"
+
+
+# --------------------------------------------------------------------------
+# The remote block on a host where docker is a FUNCTION.
+#
+# Everything above builds its own shell snippet. That is the gap this section
+# closes: hub#61 passed every test in this file and then failed on the VPS, because
+# these tests all mock `docker` as a PROGRAM on PATH while on the host `docker` is
+#
+#     docker() { command sudo docker "$@"; }
+#
+# `timeout(1)` execs a program. It cannot call a function, so on the VPS the
+# deadline wrapper ran the bare binary, which is not in the docker group, which
+# fails with permission denied -- reported, misleadingly, as a timeout. 655 tests
+# were green because every one of them had a program where the host has a function.
+#
+# So these tests run the REAL remote block text, unmodified, out of the script file,
+# against a fake docker that refuses to work unless it was reached through sudo.
+# Nothing is hand-written here: if the block stops defining the wrapper, or the
+# library stops being able to call one, these fail.
+# --------------------------------------------------------------------------
+
+def run_remote_block(fake_host, block, body, *, shell=None, limit_s=180, **overrides):
+    """Run the actual remote block from the script, then BODY, against the fakes.
+
+    This is the same environment `run_library` builds, but the shell it runs is the
+    text the script SENDS -- `remote_common` verbatim, which includes its own
+    `docker() { command sudo docker "$@"; }` definition and the embedded copy of the
+    library. That is deliberate: the point is to run the shipped text in the shape
+    the VPS runs it, and a test that sourced a hand-written copy would be testing
+    the copy.
+
+    The two blocks are not the same length and do not read the same way. remote_common
+    is a preamble and ends at the library; the golive block goes on to read the API
+    key and the two model names from stdin, rewrite the env file, and end in
+    `explainer_reconfigure || exit 1`. So stdin is fed THREE empty lines, which is
+    what "the operator pressed enter at each prompt" looks like. Three, not two: the
+    third `read` hits EOF instead, and under `set -e` a read that returns non-zero
+    ends the block -- which is the shell being correct, not the harness being wrong.
+
+    No key is invented and none is written anywhere: the env file the golive block
+    rewrites is the tmp_path one, and on a real run the key travels over ssh stdin
+    only. What the block writes into it here is `OPENROUTER_API_KEY=` with nothing
+    after it.
+
+    Returns (CompletedProcess, seconds, shape) where `shape` is what the block left
+    bound to the name `docker` -- "function", "file", or empty. A test that does not
+    look at this can pass without ever having exercised a function, because on a host
+    where the login user IS in the docker group the block leaves `docker` as the
+    program and everything works. The check is `type -t`, which answers the KIND; see
+    the note on test_the_fakes_shadow_every_binary_that_could_reach_a_host_or_a_daemon
+    for why `command -v` is the wrong tool for this and `type -P` is the right one.
+    """
+    env = dict(os.environ)
+    env["PATH"] = f"{fake_host['bin']}{os.pathsep}{os.environ.get('PATH', '/usr/bin:/bin')}"
+    env["FAKE_DOCKER_LOG"] = str(fake_host["docker_log"])
+    env["FAKE_SSH_LOG"] = str(fake_host["ssh_log"])
+    env["FAKE_SUDO_LOG"] = str(fake_host["sudo_log"])
+    env["FAKE_TIMEOUT_LOG"] = str(fake_host["timeout_log"])
+    env["FAKE_IMAGES"] = str(fake_host["images"])
+    env["EXPLAINER_ENV_FILE"] = str(fake_host["env_file"])
+    env["EXPLAINER_PREVIOUS_ENV_FILE"] = str(fake_host["dir"] / "explainer.env.prev")
+    env["EXPLAINER_BUILD_CONTEXT"] = str(fake_host["dir"] / "context")
+    # The block resolves the sport containers and the network before the library
+    # runs. Handing it the answers keeps those lookups out of the way so the test
+    # measures the deadline wrapper, not the container-name guessing.
+    env.setdefault("NET", "bridge")
+    for name, value in (("NFL", "nfl-predictor:8001"), ("CFB", "cfb-predictor:8003"),
+                        ("PL", "pl-predictor:8000"), ("NBA", "nba-predictor:8000"),
+                        ("F1", "f1-predictor:8001")):
+        env.setdefault(name, value)
+    # The defining condition: this user is not in the docker group. Set here rather
+    # than in the fixture so that every other test in this file keeps the host it
+    # already had -- a user who can reach the daemon, where `docker` is a program.
+    # The point of this section is the one host where that is not true.
+    env["FAKE_DOCKER_NO_GROUP"] = "1"
+    for key, value in overrides.items():
+        env[key] = str(value)
+    # GOOD_BASH, not plain "bash": see _bash4_or_newer. bash 3.2 execs into the sudo
+    # wrapper and drops the rest of the block, so on a stock macOS these tests would
+    # be asserting against a shell that does not exist on the VPS.
+    shell = shell or GOOD_BASH
+    script = f'{block}\nprintf "SHAPE:%s\\n" "$(type -t docker 2>/dev/null)"\n{body}\n'
+    out = fake_host["dir"] / "stdout"
+    err = fake_host["dir"] / "stderr"
+    started = time.perf_counter()
+    with out.open("w") as out_fh, err.open("w") as err_fh:
+        done = subprocess.run([shell, "-c", script], env=env, input=b"\n\n\n",
+                              stdout=out_fh, stderr=err_fh, timeout=limit_s)
+    done.stdout, done.stderr = out.read_text(), err.read_text()
+    shape = ""
+    for line in done.stdout.splitlines():
+        if line.startswith("SHAPE:"):
+            shape = line.split(":", 1)[1].strip()
+    return done, time.perf_counter() - started, shape
+
+
+@pytest.mark.parametrize("mode", ["setup", "golive"])
+def test_the_remote_block_leaves_docker_as_a_function_on_a_host_that_needs_sudo(
+        request, fake_host, mode):
+    """The premise, asserted before anything else uses it.
+
+    The remote block's first act is `docker ps >/dev/null 2>&1 || docker() { command
+    sudo docker "$@"; }`. On a host where the login user is not in the docker group
+    the left side fails and the function is defined, and from that point on every
+    `docker` in the library is a FUNCTION. If a test below does not check this, it
+    can pass while exercising a program -- so it is checked here, for both blocks,
+    against a fake docker that refuses to work unless it was reached through sudo.
+    """
+    block = request.getfixturevalue("remote_common" if mode == "setup" else "golive_body")
+    # FAKE_PROBE_MODE=ok because the golive block does not stop after the library: it
+    # runs `explainer_reconfigure || exit 1` and exits the whole shell if the service
+    # does not come up, so a probe left in its default state fails the deploy and the
+    # body below never runs. The probe is not what this test is about, so it is
+    # answered immediately rather than waited out.
+    done, _, shape = run_remote_block(
+        fake_host, block,
+        'explainer_within 20 docker build -q -t predictor-explainer "$EXPLAINER_BUILD_CONTEXT"',
+        EXPLAINER_BUILD_MODE="ok", FAKE_PROBE_MODE="ok",
+    )
+    assert shape == "function", (
+        f"the {mode} block left docker as {shape!r} rather than a shell function, so "
+        f"this host is not shaped like the VPS and the tests below prove nothing. "
+        f"stdout={done.stdout!r} stderr={done.stderr!r}"
+    )
+    assert any(c.startswith("docker build") for c in sudo_calls(fake_host)), (
+        "the build did not go through the sudo wrapper, so docker was not a "
+        f"function here after all: sudo log={sudo_calls(fake_host)} "
+        f"docker log={docker_calls(fake_host)}"
+    )
+    assert not fake_host["ssh_log"].read_text().strip(), "ssh was called"
+
+
+def test_the_deadline_wrapper_still_applies_when_docker_is_a_function(fake_host, remote_common):
+    """The thing hub#61 got wrong, run in the shape that broke it.
+
+    On the host, `docker` is a function wrapping `sudo docker`, and the build is
+    given a 900s deadline. If the deadline wrapper execs `docker` instead of calling
+    it, the bare binary runs, it is not in the docker group, and the deploy dies with
+    permission denied -- which the wrapper then reports as a timeout. 655 tests did
+    not catch that because they all mocked docker as a program.
+
+    So this hangs the build, in a shell where docker really is a function, and
+    asserts BOTH halves of the claim: the deadline bit (killed, ~the limit, not the
+    600s hang), and the wrapper applied (the build reached sudo). Asserting only the
+    first would pass on a bare `docker build` that failed instantly; asserting only
+    the second would pass on an unbounded function call that hung forever.
+    """
+    done, elapsed, shape = run_remote_block(
+        fake_host, remote_common, "explainer_deploy",
+        EXPLAINER_BUILD_DEADLINE=3, EXPLAINER_DEADLINE_IMPL="auto",
+        FAKE_BUILD_MODE="hang", FAKE_BUILD_HANG=600, EXPLAINER_PROBE_MODE="ok",
+    )
+    assert shape == "function", f"docker was {shape!r}, not a function: {done.stdout!r}"
+    # Half one: the deadline actually stopped a hang. The build wanted 600s.
+    assert done.returncode != 0, "a build that hung reported success"
+    assert elapsed < 30, f"a 3s build deadline took {elapsed:.1f}s: the wrapper did not apply"
+    assert not [c for c in docker_calls(fake_host) if c.startswith("run -d")], (
+        f"the deploy restarted the container despite the build failing: {docker_calls(fake_host)}"
+    )
+    # Half two: it got there through the function, i.e. through sudo. This is the
+    # assertion the mocked-as-a-program tests could not make.
+    builds = [c for c in sudo_calls(fake_host) if c.startswith("docker build")]
+    assert builds, (
+        "the build did not go through sudo, so the deadline wrapper ran the bare "
+        "docker program instead of calling the function. On the real host that is "
+        f"permission denied, reported as a timeout. sudo={sudo_calls(fake_host)} "
+        f"docker={docker_calls(fake_host)} stderr={done.stderr!r}"
+    )
+    # And nothing reached a host: these tests are hermetic, and the log is the proof.
+    assert not fake_host["ssh_log"].read_text().strip(), "ssh was called"
+
+
+def _pid_is_running(pid):
+    """Whether PID still exists. `kill -0` sends nothing and is the only portable way.
+
+    Asked rather than assumed, because the claim under test is exactly that the
+    process is gone: a test that concluded "it died" from the absence of output
+    would pass against a wrapper that left the build running and merely stopped
+    waiting for it.
+    """
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # exists, owned by someone else -- still running
+    return True
+
+
+def _wait_for_pid_to_go(pid, timeout_s=15.0):
+    """Poll until PID is gone, so a slow reap is not read as a survivor.
+
+    The kill is already sent by the time the watchdog returns, so this is not
+    waiting for the deadline to expire -- it is waiting for the kernel to finish
+    tearing down a process that has been signalled. A generous ceiling with a
+    short poll: the answer is normally immediate, and a slow machine should be
+    reported as slow rather than as a leak.
+    """
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if not _pid_is_running(pid):
+            return False
+        time.sleep(0.2)
+    return True
+
+
+def test_a_timed_out_deadline_takes_the_whole_process_group_with_it(fake_host, remote_common):
+    """Killing the shell that is waiting on a command is not the same as stopping it.
+
+    The watchdog's job is to make a deadline mean something. `kill $child` stops the
+    process it knows about, and reports the deadline as obeyed -- and for a command
+    that is a single process that is the whole job. It is not the whole job for the
+    shape the VPS has: `docker()` wraps `sudo docker`, the docker CLI is waiting on a
+    build worker it spawned, and that worker is a different pid. Kill the wrapper and
+    the worker keeps going: the deploy reports a build failure, and the worker is
+    still on the host, still writing to the daemon, still able to finish and tag an
+    image that nothing ever health-checked.
+
+    So the test hangs a build that has a grandchild, lets the deadline fire, and then
+    asks the only question that distinguishes the two implementations: is that
+    grandchild still running afterwards. `docker build` really is a client waiting on
+    a worker -- this is the shape, not a contrivance.
+    """
+    pidfile = fake_host["dir"] / "orphan.pid"
+    done, elapsed, shape = run_remote_block(
+        fake_host, remote_common, "explainer_deploy",
+        EXPLAINER_BUILD_DEADLINE=3, EXPLAINER_DEADLINE_IMPL="auto",
+        FAKE_BUILD_MODE="orphan", FAKE_BUILD_HANG=600,
+        EXPLAINER_PROBE_MODE="ok", FAKE_ORPHAN_PIDFILE=pidfile,
+    )
+    # The premise: this only means anything where docker is a function, so say so
+    # rather than letting a pass imply a shape that was never exercised.
+    assert shape == "function", f"docker was {shape!r}, not a function: {done.stdout!r}"
+    assert done.returncode != 0, "a build that hung reported success"
+    assert elapsed < 30, f"a 3s build deadline took {elapsed:.1f}s: the wrapper did not apply"
+    # And the build really did spawn something that outlives it, or there is nothing
+    # here to assert about and the test would pass without ever testing the group.
+    assert pidfile.exists(), (
+        "the fake build did not record a grandchild pid, so this test cannot tell a "
+        f"group kill from a single-pid kill: stdout={done.stdout!r} stderr={done.stderr!r}"
+    )
+    orphan = int(pidfile.read_text().strip())
+    try:
+        survivor = _wait_for_pid_to_go(orphan)
+        assert not survivor, (
+            f"the build's worker (pid {orphan}) was still running after the deadline "
+            "fired. The watchdog killed the shell waiting for the build and reported "
+            "the deadline obeyed, but the work itself is still on the host. A deadline "
+            "has to end the work, not just the wait for it. "
+            f"stdout={done.stdout!r} stderr={done.stderr!r}"
+        )
+    finally:
+        # Do not leak it whether the assertion passed or failed: a 600s sleep that
+        # outlives the suite is a mess the next run has to clean up.
+        try:
+            os.kill(orphan, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+
+def test_a_function_the_wrapper_cannot_exec_fails_loudly_rather_than_running_unbounded(fake_host):
+    r"""The general rule, pinned: a wrapper built on exec degrades SILENTLY.
+
+    `timeout(1)` -- and `exec`, and any wrapper that forks-and-execs -- resolves its
+    target through PATH as a PROGRAM. A shell function, an alias and a builtin are
+    not on PATH, so the wrapper does not run the command that was asked for; it runs
+    a different one with the same name, or nothing. There is no error. That is the
+    dangerous half: a deadline that silently stops applying looks exactly like a
+    command that finished quickly.
+
+    The production code therefore does not let the choice be silent. It works out
+    what the first argument actually is and takes a path that can call it, and when
+    it cannot classify the target at all it says so on stderr instead of guessing.
+    """
+    # A function: the shape the VPS has. `type -t` must classify it, and the
+    # classification must be the one that routes to a caller rather than an execer.
+    done, _ = run_library(
+        fake_host,
+        'docker() { echo VIA-FUNCTION; }\n'
+        'printf "kind=%s\\n" "$(explainer_resolve_kind docker 2>&1)"\n'
+        'explainer_within 20 docker build .\n',
+        EXPLAINER_DEADLINE_IMPL="auto",
+    )
+    assert "kind=function" in done.stdout, (
+        "the wrapper cannot tell a shell function from a program, so it cannot "
+        f"choose a wrapper that can call one: stdout={done.stdout!r} stderr={done.stderr!r}"
+    )
+    assert "VIA-FUNCTION" in done.stdout, (
+        f"the function was not called: stdout={done.stdout!r} stderr={done.stderr!r}"
+    )
+    # A builtin and an alias are the same class of problem and are classified the
+    # same way. `true` is a builtin in every shell, so execvp finds /bin/true
+    # instead -- it happens to work, which is exactly why the class is easy to miss.
+    done, _ = run_library(
+        fake_host,
+        'printf "builtin=%s\\n" "$(explainer_resolve_kind true 2>&1)"\n',
+    )
+    assert "builtin=builtin" in done.stdout, (
+        f"a builtin was not classified as one: stdout={done.stdout!r} stderr={done.stderr!r}"
+    )
+    # A real program is the one case where timeout(1) is correct, and it has to be
+    # recognised as such or every deploy pays for the portable path.
+    done, _ = run_library(
+        fake_host,
+        'printf "prog=%s\\n" "$(explainer_resolve_kind sleep 2>&1)"\n',
+    )
+    assert "prog=file" in done.stdout, (
+        f"a program on PATH was not recognised: stdout={done.stdout!r} stderr={done.stderr!r}"
+    )
+
+
+def test_the_harness_is_not_measuring_a_shell_the_vps_does_not_have():
+    """The harness bug that would have made this whole section lie.
+
+    macOS ships bash 3.2, and bash 3.2 execs into the first command of a function
+    invoked with `&` when that command is `command <external>`, discarding the rest
+    of the body. The remote block defines `docker() { command sudo docker "$@"; }`
+    and the library runs commands with `&`, so under bash 3.2 every block in this
+    section is truncated at its first `command`: the tests would fail while the code
+    was correct, and a later reader would go looking for a bug in the library.
+
+    So the harness resolves its shell once, by running that shape and checking the
+    tail arrives, and this asserts the resolved shell is one that passes. It is a
+    test about the test suite, which is not a strange thing to have: the alternative
+    is a green suite that means nothing on the platform it runs on.
+    """
+    probe = 'docker() { command true; echo TAIL; }\ndocker & wait\n'
+    done = subprocess.run([GOOD_BASH, "-c", probe], capture_output=True, text=True)
+    assert "TAIL" in done.stdout, (
+        f"{GOOD_BASH} drops the rest of a function whose first command is `command` "
+        f"when it is run with &, so this section would be measuring that and not the "
+        f"library. Install a current bash, or run this suite on Linux. "
+        f"stdout={done.stdout!r} stderr={done.stderr!r}"
+    )
+    version = subprocess.run([GOOD_BASH, "--version"], capture_output=True, text=True)
+    assert "bash" in version.stdout.lower()
+
+
+def test_the_classifier_works_on_every_shell_the_library_claims(fake_host):
+    """`type -t` is a bashism, and the library is read by more than bash.
+
+    This is the second half of the failure and the reason it went unnoticed. The
+    merged fix classifies the target with `type -t`, which bash and ksh93 and dash
+    do not all agree on: dash has no `-t` flag and prints an error, and ksh93 maps
+    `type` to `whence` and rejects `-t`. On both, the classification comes back
+    empty, the function is not recognised, and the wrapper goes to `timeout` -- which
+    execs the bare program. The fix that was supposed to stop the VPS failure does
+    not fire on two of the three shells this library is explicitly written for.
+
+    So the classification is asserted in the shells that are present, and a shell
+    that cannot classify a function fails the test rather than silently taking the
+    timeout path. `type -t` in the assertion on purpose: it is the thing that was
+    wrong, and this is where its absence is pinned.
+    """
+    snippet = (
+        'docker() { echo VIA-FUNCTION; }\n'
+        'printf "kind=%s\\n" "$(explainer_resolve_kind docker 2>/dev/null)"\n'
+        'explainer_within 20 docker build .\n'
+    )
+    import shutil
+    for shell in ("bash", "/bin/sh", "dash", "ksh"):
+        path = shutil.which(shell) or (shell if os.path.exists(shell) else None)
+        if not path:
+            continue
+        done, _ = run_library(fake_host, snippet, shell=path,
+                              EXPLAINER_DEADLINE_IMPL="auto")
+        if done.returncode == 126 or not done.stdout:
+            continue  # this build of the shell cannot run the snippet at all
+        assert "kind=function" in done.stdout, (
+            f"{path} cannot classify a shell function (it said "
+            f"{done.stdout!r}), so a deadline wrapper there execs the bare program "
+            f"and the deploy runs without sudo: {done.stderr!r}"
+        )
+        assert "VIA-FUNCTION" in done.stdout, (
+            f"{path} did not call the function: stdout={done.stdout!r} stderr={done.stderr!r}"
+        )
+        fake_host["timeout_log"].write_text("")
+
+
+def test_an_unclassifiable_target_is_refused_loudly_not_guessed(fake_host):
+    """The remaining case: the wrapper cannot tell what it was handed.
+
+    A command that is not on PATH and not a function is not a thing the wrapper can
+    run, whichever implementation it picks. The rule is that this is announced on
+    stderr and refused, because the alternative -- handing it to `timeout` and
+    letting execvp report "not found" -- is a message about a program, on a host
+    where the failure was a function all along.
+    """
+    done, _ = run_library(
+        fake_host,
+        'explainer_within 5 definitely-not-a-command-on-this-host --flag\n',
+        EXPLAINER_DEADLINE_IMPL="auto",
+    )
+    assert done.returncode != 0, "a command that does not exist reported success"
+    assert "not a command" in done.stderr or "not found" in done.stderr, (
+        f"the failure did not say the command does not exist: {done.stderr!r}"
+    )
+
+
+def test_no_test_in_this_file_can_reach_a_host_or_a_daemon(fake_host, remote_common):
+    """The hermetic claim, restated against the section that runs the block.
+
+    The block under test is the remote half of a deploy. Running it locally is safe
+    only because the fakes are in front of it, so this asserts both directions: the
+    fakes shadow the real binaries, and nothing reached ssh. If a future edit to the
+    block ever calls something not on the fake PATH, this is the test that says so.
+    """
+    r"""Both halves, in the shape the VPS runs it.
+
+    `type -P`, not `command -v`, for the reason given on the test above: the block
+    has just defined docker as a function, so `command -v docker` prints the word
+    "docker" and this assertion would be about a name rather than about a path. What
+    has to hold here is that the PROGRAM under the function -- the file that a bare
+    exec of the name would open -- is the fake, and that sudo and ssh, which are not
+    wrapped, are the fakes too.
+    """
+    done, _, shape = run_remote_block(
+        fake_host, remote_common,
+        'type -P docker; type -P sudo; type -P ssh; printf "KIND=%s\\n" "$(type -t docker)"',
+        FAKE_BUILD_MODE="ok",
+    )
+    assert shape == "function", (
+        f"docker is {shape!r} rather than a function here, so this block is not shaped "
+        f"like the VPS and the check below is about something else: {done.stdout!r}"
+    )
+    # The block echoes its own preamble (network=, NFL=, ...) before this body runs,
+    # so the paths are read as the lines after it rather than the whole output.
+    found = [line for line in done.stdout.splitlines() if line.startswith(str(fake_host["bin"]))]
+    assert found == [str(fake_host["bin"] / name) for name in ("docker", "sudo", "ssh")], (
+        f"the block resolved a real binary instead of a fake: {done.stdout!r}"
+    )
+    assert "KIND=function" in done.stdout, done.stdout
+    assert not fake_host["ssh_log"].read_text().strip(), (
+        f"running the remote block reached ssh: {fake_host['ssh_log'].read_text()}"
+    )
