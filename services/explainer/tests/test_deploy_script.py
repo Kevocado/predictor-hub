@@ -260,23 +260,70 @@ exit 7
 """
 
 # A sed that accepts `sed -i EXPR FILE`, which is GNU sed and is what the golive
-# block writes. BSD sed, which is what ships on a macOS, reads the argument after
-# -i as a backup suffix and fails on the expression instead, so on this platform the
-# golive block dies in a way it cannot die on the VPS -- and the test would report a
-# broken block rather than a platform difference. This translates to the local form
-# and delegates to the real sed, so the edit is still a real edit to a real tmp_path
-# file and only the flag syntax is adapted.
+# block writes, on EITHER platform. That has to be said carefully, because this fake
+# used to hardcode the BSD spelling and that made it a macOS-only construct: a
+# development run on a macOS was green and the same suite could not run at all on the
+# Linux CI runner.
+#
+# `-i` takes its backup suffix in two incompatible ways. BSD sed (macOS) reads the
+# NEXT argument as the suffix, so it wants `-i '' EXPR FILE`. GNU sed (Linux, and the
+# VPS) only accepts the suffix attached, `-i.bak`, so it reads a bare `-i` as "no
+# suffix" and then takes the argument after it as the SCRIPT. Feed GNU sed the BSD
+# spelling and the empty string becomes the program and the real expression becomes a
+# FILENAME:
+#
+#   /usr/bin/sed: can't read /^OPENROUTER_API_KEY=/d;s/^EXPLAINER_ENABLED=.*/.../
+#
+# That is what the golive block hit on ubuntu. Under the block's `set -e` it killed
+# the whole block on its first edit, so the shell never reached the line that prints
+# the shape this file's premise rests on, and the test reported the host as "docker is
+# not a function" -- a false accusation of the harness, on a runner that has a current
+# bash and needs no adaptation at all.
+#
+# So there is no flag translation here and no `-i` reaches the real sed either. The
+# one form both seds agree on is `sed EXPR FILE`, which writes to stdout everywhere,
+# so the shim takes the last argument as the file, runs the real sed WITHOUT `-i`,
+# and writes the result back over the file. No spelling to guess, nothing to detect,
+# and the edit is still a real edit by the real sed to a real tmp_path file -- which is
+# the only reason this fake exists.
+#
+# Written back with `cat >` rather than `mv`, so the inode, and with it the mode and
+# the ownership, survives the edit. Same reason scripts/deploy-explainer.sh writes its
+# --embed temp back that way.
 FAKE_SED = r"""#!/usr/bin/env bash
 set -u
+inplace=0
+suffix=""
 args=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    -i) shift; args+=("-i" ""); continue ;;
-    -i*) suffix=${1#-i}; shift; args+=("-i" "$suffix"); continue ;;
+    -i) inplace=1; shift; continue ;;
+    -i*) inplace=1; suffix=${1#-i}; shift; continue ;;
     *) args+=("$1"); shift; continue ;;
   esac
 done
-exec /usr/bin/sed "${args[@]}"
+
+# Not asked to edit in place. Pass the arguments through untouched, so `sed -n`,
+# `sed --version` and every other use of this name stays an honest answer.
+if [ "$inplace" != 1 ]; then
+  exec /usr/bin/sed ${args[@]+"${args[@]}"}
+fi
+
+if [ "${#args[@]}" -lt 1 ]; then
+  echo "fake sed: -i with no script and no file" >&2
+  exit 2
+fi
+last=$((${#args[@]} - 1))
+file=${args[$last]}
+program=("${args[@]:0:$last}")
+
+# mktemp WITH a template, unlike a bare `mktemp -d`: the template spelling is the one
+# POSIX actually specifies and the one that cannot change meaning under a platform.
+tmp=$(mktemp "${TMPDIR:-/tmp}/fake-sed.XXXXXXXX") || exit 1
+trap 'rm -f "$tmp"' EXIT
+/usr/bin/sed ${program[@]+"${program[@]}"} "$file" >"$tmp" || exit $?
+[ -n "$suffix" ] && cp "$file" "$file$suffix"
+cat "$tmp" >"$file"
 """
 
 # A GNU timeout(1) for the platforms that have one, so the branch that prefers
