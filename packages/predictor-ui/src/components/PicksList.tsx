@@ -20,6 +20,16 @@
  * confidence language at all: a probability, a bucket context and a ± are all
  * it renders, so there is no sentence here that could claim an edge, a price
  * or a guarantee — no odds feed exists in any of these repos.
+ *
+ * And a fourth rule, which is not a guard against a careless caller but a
+ * decision about what a row says:
+ *
+ *  4. **A row's `detail` renders only when it says something the category
+ *     heading above it does not already say.** See `detailAddsToHeading` for
+ *     why, for the two readings of "always" that were rejected, and for what
+ *     this costs. The short form: a heading is the list's label, a row's
+ *     `detail` is the row's own, and a label that adds no word is stutter
+ *     rather than information.
  */
 import { pct, stat } from "../fmt";
 import { StatusBadge } from "./StatusBadge";
@@ -39,7 +49,15 @@ export type PickRow = {
   key: string;
   name: string;
   team?: string;
-  /** The category, in words: "Anytime TD", "Rush yds". */
+  /** The category, in words: "Anytime TD", "Rush yds".
+   *
+   *  A row's own label, and rendered only when it adds a word the category
+   *  heading does not already carry — `detailAddsToHeading`, below. NFL's QB
+   *  passing-TD rows are what make this field load-bearing rather than
+   *  decorative: the call is `"Over 2.5"` and the probability is `value`, so
+   *  without the detail the row is a bare "64%" and a reader has no line to
+   *  act on.
+   */
   detail: string;
   /** The model's own number for this category. Never derived here. */
   value: number;
@@ -49,6 +67,27 @@ export type PickRow = {
    *  Absent means there is no error estimate yet, which is said in words
    *  rather than drawn as "± 0" — a zero margin would be a claim. */
   margin?: number;
+  /** What the rendered `detail` IS, in the caller's own words. Defaults to
+   *  `DEFAULT_DETAIL_LABEL`.
+   *
+   *  The qualifier is in the *visible* text, not in a `title` or a hidden
+   *  accessible label, and that is the whole point of it. A detail like
+   *  "Over 2.5" is the shape of a sportsbook price, and nothing on the page
+   *  distinguishes one from the other: there is no odds feed in any of these
+   *  repos, so a reader who assumes a price is reading a line the model chose.
+   *  A `title` cannot carry that on the device this is mostly read on — it
+   *  never appears on touch, and it is not reliably announced from a
+   *  non-focusable span — so the provenance has to be words on the page.
+   *
+   *  "model call" is the default because it is the one noun this component
+   *  can vouch for whatever the caller passed: the caller's words describe
+   *  what the MODEL is picking, and `value` is documented above as the
+   *  model's own number. A caller that knows its detail is a line says so
+   *  (Sports_Predictor's NFL adapter passes `"model line"`, which is the
+   *  plan's wording) — which is also why this is per row and not a prop on
+   *  `PicksListProps`: a list can hold two kinds of row.
+   */
+  detailLabel?: string;
   /** Accepted for compatibility and NOT rendered. Kevin, 2026-10-01: the best calls are
    *  the player and the prediction, nothing else (no record, Brier, calibration or error
    *  prose per row). Callers may stop passing it. */
@@ -67,6 +106,69 @@ export interface PicksListProps {
 
 /** At most this many rows per category. A cap, never a quota. */
 export const MAX_ROWS_PER_CATEGORY = 3;
+
+/** The qualifier that says where a rendered `detail` came from. Exported so a
+ *  site names this constant rather than retyping the string. */
+export const DEFAULT_DETAIL_LABEL = "model call";
+
+/**
+ * Does this row's `detail` say anything its category heading does not already
+ * say?
+ *
+ * **THE RULE.** A row renders its `detail` when at least one word of the
+ * detail is absent from the heading above it. Equality is not the test, and it
+ * cannot be: the harness already builds headings like
+ * `"Rush yds — projections, not probabilities"`, and `"Rush yds" !==` that
+ * string, so an equality test would print the detail three times on every
+ * projection card in the family and call the output a fix. Containment is the
+ * test, word by word, lowercased, with runs of punctuation split and the dot
+ * inside a number kept (`2.5` is one token, not two).
+ *
+ * **WHY, and the two readings of "always" that were rejected.**
+ *
+ * The failure to avoid is a bare percentage: NFL's QB passing-TD category is
+ * specified to read `Over 2.5 · 64%`, and without the detail the page shows
+ * "A. Rodgers · 64%", which is not actionable — a probability with no line.
+ * The cost to avoid is a heading repeated on every row under it, in five
+ * sports' worth of existing data, where `detail` is very often the category
+ * restated ("Pass yds", "Rush yds").
+ *
+ *  * **(a) Always.** Loses nothing — and that is the problem. Every existing
+ *    card prints its heading three more times, and a repeated word cannot be
+ *    read as emphasis or as a mistake, so the reader stops trusting the
+ *    hierarchy: on a card where a word IS new, it looks identical to the noise
+ *    around it. It also spends the row's only spare text slot on information
+ *    already on screen.
+ *  * **(c) Always, de-emphasised.** Keeps the duplication and de-emphasises
+ *    the only actionable thing on the row. Under this rule the detail is
+ *    rendered precisely when it is NEW, so it is the row's most useful text,
+ *    and greying it says the opposite of what the rule just decided. A
+ *    consistent answer ("a detail that adds nothing is dropped") beats an
+ *    inconsistent one ("a detail that adds nothing is drawn quietly") because
+ *    the reader learns it once.
+ *  * **(b) Only when it adds a word — chosen.** A reader of any existing
+ *    category sees exactly today's row, so nothing is taken away from the four
+ *    sports that are live; a reader of the new category gains the line.
+ *
+ * **WHAT IS GIVEN UP.** A detail made entirely of words the heading already
+ * uses is dropped, so a caller cannot disambiguate two rows in one list by a
+ * word the heading already carries — `detail: "passing"` under
+ * `"QB passing TDs"` renders nothing. Accepted: the heading is what the reader
+ * navigates by, and the row's own `value` already separates two rows under one
+ * heading. A caller who needs the distinction puts the distinguishing word in
+ * the heading or in `detail`, where this rule lets it through.
+ *
+ * A row whose detail DOES add a word under a heading that does not mention its
+ * category is the caller's own inconsistency, and saying it out loud is better
+ * than dropping it — the same reason a bad `kind` is refused by name rather
+ * than quietly corrected.
+ */
+export function detailAddsToHeading(detail: string, category: string): boolean {
+  const detailWords = detail.toLowerCase().split(/[^a-z0-9.]+/).filter(Boolean);
+  if (detailWords.length === 0) return false;
+  const headingWords = new Set(category.toLowerCase().split(/[^a-z0-9.]+/).filter(Boolean));
+  return detailWords.some((word) => !headingWords.has(word));
+}
 
 /** A row marked `out` was passed as a ranked row: "removed, not flagged" is a
  *  rule about what reaches the page, and this is the last place that can say no. */
@@ -193,6 +295,19 @@ export function PicksList({ title = "Model's top calls", categories, out }: Pick
                         {figure(row)}
                       </span>
                     </div>
+                    {/* Rule 4, and the whole of it: `detailAddsToHeading` is the
+                        only thing that decides this, so a detail that adds no word
+                        to the heading renders nothing at all rather than a quieter
+                        copy of the heading. Indented past the rank gutter so it
+                        reads as part of the player's row and not as a fourth
+                        column. The label is visible text, not a `title` — see
+                        `detailLabel`. */}
+                    {detailAddsToHeading(row.detail, category) && (
+                      <p data-testid="picks-detail" className="pl-6 text-xs leading-snug text-pr-text-dim">
+                        {row.detail}
+                        <span className="text-pr-text-faint"> · {row.detailLabel ?? DEFAULT_DETAIL_LABEL}</span>
+                      </p>
+                    )}
                     {row.kind === "probability" && <Bar value={row.value} />}
                   </div>
                 ))

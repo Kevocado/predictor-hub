@@ -269,6 +269,43 @@ const PICKS_PROPS: PicksListProps = (() => {
 const never = () => new Promise<unknown>(() => {});
 const noop = () => {};
 
+/**
+ * Case 15's two categories, the pair the new rule has to get right in BOTH
+ * directions: a detail that adds a word, and a detail that adds none.
+ *
+ * These carry their own figures rather than `fixture.ts`'s, and that is a
+ * decision rather than a shortcut. `fixture.ts` is the guard for the 2026-09-30
+ * mocks and its 12 tests are pinned in harness/fixture.test.ts; growing it to
+ * hold a market that did not exist when it was written would change what those
+ * tests check, and a reviewer reading that guard should not have to re-read it
+ * because a screenshot needed three more rows. The same shape over the REAL
+ * fixture — including the proof that every fixture row renders no detail at all
+ * — is pinned in src/components/picksListFixture.test.tsx, which is where a
+ * regression would actually be caught.
+ *
+ * The QB lines follow the plan's rule (nearest half point to the projection,
+ * floor 0.5): 2.4 -> 2.5, 1.1 -> 1.0 -> under 1.5 is the called side for a QB
+ * projected under a point and a half, and so on. `detailLabel: "model line"` is
+ * the caller's own noun, per the plan's "never a sportsbook line".
+ */
+const QB_PASSING_TD_CATEGORY: PicksListProps["categories"][number] = {
+  category: "QB passing TDs",
+  rows: [
+    { key: "pass:rodgers", name: "A. Rodgers", team: "PIT", detail: "Over 2.5", detailLabel: "model line", value: 0.64, kind: "probability" },
+    { key: "pass:allen", name: "J. Allen", team: "BUF", detail: "Over 1.5", detailLabel: "model line", value: 0.58, kind: "probability" },
+    { key: "pass:burrow", name: "J. Burrow", team: "CIN", detail: "Under 2.5", detailLabel: "model line", value: 0.53, kind: "probability" },
+  ],
+};
+
+const PASS_YDS_CATEGORY: PicksListProps["categories"][number] = {
+  category: "Pass yds — projections, not probabilities",
+  rows: [
+    { key: "pass:rodgers", name: "A. Rodgers", team: "PIT", detail: "Pass yds", value: 284, kind: "projection", margin: 41 },
+    { key: "pass:allen", name: "J. Allen", team: "BUF", detail: "Pass yds", value: 271, kind: "projection", margin: 41 },
+    { key: "pass:burrow", name: "J. Burrow", team: "CIN", detail: "Pass yds", value: 262, kind: "projection", margin: 41 },
+  ],
+};
+
 /** The bundle shapes the two live block cases below feed `InstantBlock`, in the
  *  shape each site's adapter already builds. Nothing here is restated as prose:
  *  the block reads the same object the flow did. */
@@ -475,6 +512,31 @@ function App() {
                 },
               ]}
             />
+          </div>
+        </div>
+      </Case>
+
+      <Case id="picks-detail" title="15 · SHIPPED PicksList — a row's own detail, and the rule that draws it"
+        note="Three states of ONE rule: a row renders its detail only when it adds a word the heading above it does not already carry. TOP is the new market — NFL's QB passing TDs, where the call is the detail and the probability is the value, so the row reads 'Over 2.5 · model line' beside 64% instead of a bare percentage with no line. MIDDLE is the existing data: 'Rush yds' under a 'Rush yds — projections' heading, where the detail is a restatement and drawing it would print the heading three more times, so nothing is added and the row is exactly what it was. BOTTOM is an empty list, which renders nothing at all — not the title, not a zero, not a placeholder line. The QB rows carry their own figures rather than a fixture's, because fixture.ts is the guard for the 2026-09-30 mocks and extending it would change what those 12 tests check; the same shape over the real fixture is pinned in src/components/picksListFixture.test.tsx instead.">
+        <div className="flex flex-col gap-6">
+          <div data-shot="qb-passing-tds" className="flex flex-col gap-2">
+            <InstantHead>QB passing TDs — the detail is the call</InstantHead>
+            <PicksList categories={[QB_PASSING_TD_CATEGORY]} />
+          </div>
+          <div data-shot="no-duplication" className="flex flex-col gap-2">
+            <InstantHead>Pass yds — the detail restates the heading, so nothing is drawn</InstantHead>
+            <PicksList categories={[PASS_YDS_CATEGORY]} />
+          </div>
+          <div data-shot="empty-list" className="flex flex-col gap-2">
+            <InstantHead>An empty list</InstantHead>
+            {/* Nothing follows this line but the note. `categories={[]}` returns
+                null, so there is no title, no panel and no figure to screenshot;
+                the label above is what a screenshot of "nothing" needs beside it
+                to be readable as a state rather than as a broken page. */}
+            <PicksList categories={[]} />
+            <p className="text-xs text-pr-text-faint">
+              ↑ nothing rendered. Not the title, not an empty card, not a 0%.
+            </p>
           </div>
         </div>
       </Case>

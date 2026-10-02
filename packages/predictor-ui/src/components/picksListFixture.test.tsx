@@ -84,4 +84,45 @@ describe("the harness fixture, through the real component", () => {
       expect(row.textContent).not.toContain("%");
     }
   });
+
+  it("renders no detail for any fixture row — every one of them restates its heading", () => {
+    // Rule 4, over the one fixture rather than over rows typed here. `rowsFor`
+    // passes `detail: category`, and so does every site adapter that exists
+    // today, so this is the assertion that the shared change is INERT for the
+    // four live sports: the real data draws exactly the rows it drew before.
+    render(<PicksList categories={ALL()} />);
+    expect(screen.getAllByTestId("picks-row").length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("picks-detail")).not.toBeInTheDocument();
+  });
+
+  it("renders the detail the moment a fixture row carries a call instead of a category", () => {
+    // The same real players and the same real `valueOf` figures, with the one
+    // field changed the NFL adapter changes: the call goes in `detail`. So the
+    // line under the heading is the only difference between a card that is
+    // actionable and a bare percentage.
+    render(
+      <PicksList
+        categories={[{
+          category: "QB passing TDs",
+          rows: ranked("Anytime TD").map((p) => ({
+            key: `${p.key}:passing`,
+            name: p.name,
+            team: p.team,
+            detail: p.values["Anytime TD"]! > 0.3 ? "Over 2.5" : "Under 1.5",
+            detailLabel: "model line",
+            value: valueOf(p, "Anytime TD"),
+            kind: "probability" as const,
+          })),
+        }]}
+      />,
+    );
+    const details = screen.getAllByTestId("picks-detail");
+    expect(details).toHaveLength(ranked("Anytime TD").length);
+    expect(details.every((d) => d.textContent?.includes("model line"))).toBe(true);
+    // And the figures are untouched by the label: the row still shows the
+    // probability the fixture says it is.
+    expect(screen.getAllByTestId("picks-value").map((v) => v.textContent)).toEqual(
+      ranked("Anytime TD").map((p) => `${Math.round(valueOf(p, "Anytime TD") * 100)}%`),
+    );
+  });
 });
