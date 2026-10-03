@@ -10,6 +10,8 @@
 > - **F1 `2,919` → `3,080`** rows (**1,452** `resolved=1`), re-derived from the committed blob.
 >   *(Superseded by a further refresh, not retracted — see the dated-measurement note below. As of
 >   blob `e22d8a43` on 2026-10-03 it is **3,172 rows / 1,584 `resolved=1`**.)*
+> - **"the hit rate is **monotone**" was wrong on its own figures.** `0.5-0.6` (75.0%, n=24) sits
+>   above `0.6-0.7` (73.8%, n=42). Monotone only over the bands that clear `n >= 30`, and only just.
 > - **"`trust` has no supporting data in any sport" is FALSE.** F1 `trust` **is** supportable.
 > - **`DROPPED` for NFL/CFB/NBA/PL is retracted → `UNKNOWN`.** Unmeasured is not zero.
 > - **"Hold phases 1-4" is VOID** — it rested on that false claim. **5 of 7 cited SHAs were stale**
@@ -45,9 +47,27 @@ repository cannot answer it* — not that the sport has no data. `origin/main` u
 > cd F1_Predictor
 > BLOB=$(git rev-parse origin/main:data/tracking.db)   # record this SHA with your figures
 > git cat-file blob "$BLOB" > /tmp/tracking.db         # read the BLOB, not the working tree
-> sqlite3 /tmp/tracking.db \
->   "SELECT COUNT(*) FROM session_predictions WHERE resolved=1"
+>
+> # total rows, and resolved rows — the two figures in the measurement table:
+> sqlite3 /tmp/tracking.db "SELECT COUNT(*) FROM session_predictions;"
+> sqlite3 /tmp/tracking.db "SELECT COUNT(*) FROM session_predictions WHERE resolved=1;"
+>
+> # the bucket table, on the bounds signals/trust.py's BUCKET_BOUNDS defines.
+> # same bucketing as store.get_probability_buckets, so this reproduces its bands:
+> sqlite3 -header -column /tmp/tracking.db "
+> SELECT CASE WHEN predicted_prob < 0.3 THEN '0.0-0.3' WHEN predicted_prob < 0.4 THEN '0.3-0.4'
+>             WHEN predicted_prob < 0.5 THEN '0.4-0.5' WHEN predicted_prob < 0.6 THEN '0.5-0.6'
+>             WHEN predicted_prob < 0.7 THEN '0.6-0.7' ELSE '0.7-1.0' END AS bucket,
+>        COUNT(*) AS n,
+>        SUM(actual_outcome) AS hits,
+>        ROUND(100.0 * SUM(actual_outcome) / COUNT(*), 1) AS hit_pct
+>   FROM session_predictions WHERE resolved = 1
+>  GROUP BY bucket ORDER BY MIN(predicted_prob);"
 > ```
+>
+> Verified against blob `da6217d9`: 1,452 resolved, and the six bands below reproduce exactly. Add
+> the band total to the resolved count as a check — every resolved row must land in exactly one
+> band, so they sum to the same number.
 >
 > The other four sports' stores are untracked (below), so they cannot be re-measured this way:
 > their `UNKNOWN`s are permanent rather than stale.
@@ -91,8 +111,10 @@ are not.
 | 0.7-1.0 | 75 | 78.7 | yes |
 
 On these figures **five of six buckets clear the spec's `n >= 30` floor** (spec §`trust`; open
-question 3), and the full six-bucket curve is monotone non-decreasing: 12.5 < 36.3 < 42.5 < 75.0 <
-73.8 < 78.7. F1 `trust` is supported by data.
+question 3). The five are monotone — 12.5 < 36.3 < 42.5 < 73.8 < 78.7 — but the **full** six-bucket
+curve is **not**: the below-floor `0.5-0.6` band realises 75.0%, *above* `0.6-0.7`'s 73.8%. So the
+original "the hit rate is **monotone**" claim was overstated even on its own figures; it holds only
+over the bands the floor renders. F1 `trust` is supported by data.
 
 ### Measured 2026-10-03 — blob `e22d8a43` at F1 `origin/main` `61ac4c65` (1,584 `resolved=1`)
 
@@ -160,7 +182,7 @@ Three places, all **product decisions for Kevin** — unchanged by this correcti
 ## Recommendation
 
 **F1 `trust` can proceed now.** The data supports it (5/6 buckets over the floor; monotone across
-the bands that render). Only the bucket adapter was missing, and **PR #34** has since shipped it —
+the bands that render, with the one inversion below the floor). Only the bucket adapter was missing, and **PR #34** has since shipped it —
 `signals/trust.py` owns the bounds and the floor over `store.get_probability_buckets`, so this
 recommendation is now spent rather than open. The one qualifier: the curve is monotone **over the
 rendered bands only**, with one inversion below the floor (2026-10-03, blob `e22d8a43`).
