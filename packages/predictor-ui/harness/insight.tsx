@@ -7,13 +7,14 @@
  * layout, tokens and type carry over to implementation. The callout /
  * player-pick / filter pieces are static proposal markup (marked
  * PROPOSAL): they show intent for the spec's screenshots, not a
- * component to import.
+ * component to import. Case 16 (`signals`) is SHIPPED, like cases 13-15.
  *
  * ONE FIXTURE feeds every NFL mock below (spec §2 correction round):
  * GB at ATL, week 6. Change a number here and every mock follows, so two
  * mocks can never disagree about the same game the way the first draft's
  * callouts ("model −6.1") and tiles did.
  */
+import { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import {
   StatusBadge,
@@ -24,18 +25,29 @@ import {
   SummaryButton,
   InstantBlock,
   PicksList,
+  SignalRows,
+  SPEC_MIN_N,
+  MAX_HEADLINE_WORDS,
+  signalIsDrawn,
+  UndrawableSignalVisualError,
   type MarketTile,
   type Segment,
   type BoxScoreGroup,
   type PickRow,
   type OutPlayer,
   type PicksListProps,
+  type Signal,
 } from "../src/index";
 import {
   FIX,
   PLAYERS,
   LISTS,
   CATEGORY_KIND,
+  SIGNALS,
+  BELOW_FLOOR_SIGNAL,
+  LONG_HEADLINE_SIGNAL,
+  BUCKET,
+  trustRate,
   ranked,
   outPlayers,
   valueOf,
@@ -103,6 +115,49 @@ function Case({ id, title, note, children }: { id: string; title: string; note?:
       {note && <p className="-mt-1 max-w-[70ch] text-xs text-pr-text-faint">{note}</p>}
       <div className="max-w-[46rem]">{children}</div>
     </section>
+  );
+}
+
+/** The real `SignalRows` with every disclosure opened, so the shot shows the
+ *  evidence line rather than the control that hides it.
+ *
+ *  Done by clicking the real buttons the component rendered — the same event a
+ *  keyboard Enter raises on a button — rather than by reaching into the DOM to
+ *  unhide a node, which would photograph a state nothing produces. The
+ *  `aria-expanded` transition and the Tab-then-Enter path are asserted in
+ *  `src/components/SignalRows.test.tsx`; this is the pixels. */
+function OpenEvidence({ signals }: { signals: Signal[] }) {
+  const host = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    host.current
+      ?.querySelectorAll<HTMLButtonElement>('[data-testid="signal-evidence-toggle"]')
+      .forEach((b) => b.click());
+  }, [signals]);
+  return <div ref={host}><SignalRows signals={signals} /></div>;
+}
+
+/** What the refusal looks like, on the page: the error's own words, which is all
+ *  a reader would ever get, since nothing renders.
+ *
+ *  Called through the exported `signalIsDrawn` rather than through a render,
+ *  because React's own render path is not a thing a harness can catch
+ *  synchronously — a `try` around `createRoot().render()` reads as though it
+ *  were testing the refusal and tests nothing at all. The exported predicate is
+ *  the guard `SignalRows` filters on, so exercising it exercises the gate; the
+ *  render-time throw is asserted in `SignalRows.test.tsx`. */
+function RefusedVisual() {
+  const absence: Signal = { ...BELOW_FLOOR_SIGNAL, kind: "absence", visual: "absence_strip" };
+  let message: string;
+  try {
+    signalIsDrawn(absence);
+    message = "NOT REFUSED — this is the defect the case exists to catch.";
+  } catch (err) {
+    message = err instanceof UndrawableSignalVisualError ? err.message : `${String(err)}`;
+  }
+  return (
+    <p data-testid="signals-refusal" className="max-w-[70ch] rounded-pr border border-pr-loss p-3 text-xs leading-snug text-pr-loss">
+      {message}
+    </p>
   );
 }
 
@@ -557,6 +612,91 @@ function App() {
             <PicksList categories={[]} />
             <p className="text-xs text-pr-text-faint">
               ↑ nothing rendered. Not the title, not an empty card, not a 0%.
+            </p>
+          </div>
+        </div>
+      </Case>
+
+      <Case id="signals" title="16 · SHIPPED SignalRows — the shared contract, every state"
+        note="src/components/SignalRows.tsx, the real component on the fixture's own signals. One compact row per finding: a headline of at most 12 words and a collapsed evidence line carrying n, the date and the source. The chip is neutral on purpose — a disagreement with the line is not an outcome, so it is never green. Every figure is read from harness/fixture.ts (the gap is FIX.edgePts, the rate is BUCKET.hits / BUCKET.n), so a signal mock cannot disagree with the tiles about the same game; fixture.test.ts holds that.">
+        <div className="flex flex-col gap-6">
+          <div data-shot="signals-populated" className="flex flex-col gap-2">
+            <InstantHead>Populated — both visuals, evidence collapsed</InstantHead>
+            <SignalRows signals={SIGNALS} />
+            <p className="max-w-[70ch] text-xs text-pr-text-faint">
+              Two rows, in the order the endpoint ranked them by <code>strength</code>. The bar is the
+              trust row&apos;s rate ({Math.round(trustRate * 100)}% of {BUCKET.n} games); the chip is
+              the gap ({FIX.edgePts} pts) with the sign in the figure, not in the colour.
+            </p>
+          </div>
+
+          <div data-shot="signals-empty" className="flex flex-col gap-2">
+            <InstantHead>Empty list</InstantHead>
+            {/* Nothing follows this line but the note. `signals={[]}` returns null,
+                so there is no heading, no panel and no figure — not even a "no
+                signals" line, which would be an empty state and spec §2 rules
+                those out. */}
+            <SignalRows signals={[]} />
+            <p className="max-w-[70ch] text-xs text-pr-text-faint">
+              ↑ nothing rendered. Not the heading, not an empty card, not a 0%.
+            </p>
+          </div>
+
+          <div data-shot="signals-below-floor" className="flex flex-col gap-2">
+            <InstantHead>A rate below the floor (n={BELOW_FLOOR_SIGNAL.n}, floor {SPEC_MIN_N})</InstantHead>
+            {/* The trust row with n under the floor and nothing else changed. The
+                WHOLE row goes, not just the bar: a headline reading "has been
+                right 67% of the time" with the n and the bar removed is a worse
+                row than no row, and spec §4 says "below that the row says
+                nothing". */}
+            <SignalRows signals={[BELOW_FLOOR_SIGNAL]} />
+            <p className="max-w-[70ch] text-xs text-pr-text-faint">
+              ↑ nothing rendered. The populated case above with{" "}
+              <code>n = {BELOW_FLOOR_SIGNAL.n}</code> instead of {BUCKET.n} would have drawn a{" "}
+              {Math.round(BELOW_FLOOR_SIGNAL.headline.figures.rate * 100)}% bar under 12 games — which is
+              the rate from a handful of games that spec §4 forbids.
+            </p>
+          </div>
+
+          <div data-shot="signals-evidence-open" className="flex flex-col gap-2">
+            <InstantHead>Evidence expanded — n and date always, source revealed, by keyboard</InstantHead>
+            {/* The disclosure below opens itself on mount with a real click on a
+                real button, which is the same event a keyboard Enter produces —
+                the shot script does not reach in, so the captured state is one a
+                reader reached rather than one a harness forced into the DOM. The
+                `aria-expanded` and the keyboard path are asserted in
+                src/components/SignalRows.test.tsx. */}
+            <OpenEvidence signals={SIGNALS} />
+            <p className="max-w-[70ch] text-xs text-pr-text-faint">
+              <code>n</code> and the date are in the row without opening anything; the control reveals{" "}
+              <code>source</code>, the one field long enough to be why the line collapses at 390px. It is a
+              real button carrying <code>aria-expanded</code>, so it is reachable by Tab and Enter with no
+              pointer — pinned by a test that tabs to it and presses Enter rather than clicking.
+            </p>
+          </div>
+
+          <div data-shot="signals-long-headline" className="flex flex-col gap-2">
+            <InstantHead>A headline over {MAX_HEADLINE_WORDS} words — clipped, not refused</InstantHead>
+            <SignalRows signals={[LONG_HEADLINE_SIGNAL]} />
+            <p className="max-w-[70ch] text-xs text-pr-text-faint">
+              Clipping keeps the first 12 ordinary words PLUS every word stating a drawn figure, so
+              the {Math.round(trustRate * 100)}% survives and the bar below still draws the same{" "}
+              {Math.round(trustRate * 100)}% the populated case does. A plain 12-word clip would cut
+              here and leave a bar under words that no longer mention it — the honesty rule broken by
+              the cap that enforces §6. The cap is therefore on the sentence AROUND the figure: a
+              clipped row can run past 12 words, and the fix for that is the adapter&apos;s shorter
+              wording, not a longer row.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <InstantHead>Not drawable yet — refused, not silently dropped</InstantHead>
+            <RefusedVisual />
+            <p className="max-w-[70ch] text-xs text-pr-text-faint">
+              Phase 2&apos;s <code>absence_strip</code> and phase 3&apos;s <code>projected_vs_actual</code>{" "}
+              are in the type and are not drawable yet. Rendering the words without the marker is a
+              defect no test and no screenshot of a correct-looking row would catch, so the component
+              throws a named error instead.
             </p>
           </div>
         </div>

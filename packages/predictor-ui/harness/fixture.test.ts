@@ -11,12 +11,19 @@ import {
   LISTS,
   PLAYERS,
   CATEGORY_KIND,
+  BUCKET,
+  SIGNALS,
+  LONG_HEADLINE_SIGNAL,
+  BELOW_FLOOR_SIGNAL,
+  FIX,
+  trustRate,
   outPlayers,
   ranked,
   valueOf,
   assertFixtureConsistency,
   type Category,
 } from "./fixture";
+import { SPEC_MIN_N, clipHeadline } from "../src";
 
 const boxRows = () =>
   ["wilson", "robinson"].map((k) => ({
@@ -117,6 +124,95 @@ describe("one category per list", () => {
     for (const { category, keys } of LISTS) {
       for (const p of ranked(category)) expect(keys).toContain(p.key);
     }
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * The signal mocks, held to the same rule as the player mocks: one fixture, one
+ * number, and the figures a signal shows are the fixture's own.
+ *
+ * These are 4 of the harness's tests, and the count matters — `fixture.test.ts`
+ * is the guard whose size is quoted when it is extended, so it is pinned here by
+ * the count it had (12) plus these four.
+ * --------------------------------------------------------------------------- */
+
+describe("a signal's figures come from the one fixture", () => {
+  it("states the model's gap as the fixture's own arithmetic, magnitude not signed", () => {
+    // The tile above says `model GB -6.1` against `line GB -4.5`. The gap is
+    // 1.6 either way round; `FIX.edge` is -1.6 because the home frame signs it,
+    // and the chip signs its own copy with `fmt.signed`. Asserted on both so a
+    // change to either getter is a failure rather than a screenshot nobody reads.
+    //
+    // `toBeCloseTo`, not `toBe`: -6.1 - -4.5 is -1.5999999999999996 in binary
+    // floating point, and `FIX.edge` is exactly that difference rounded to one
+    // decimal. Pinning the raw subtraction to a literal would be a false claim
+    // about what floats do.
+    expect(FIX.modelMargin - FIX.spreadLine).toBeCloseTo(-1.6, 10);
+    expect(FIX.edge).toBe(-1.6);
+    expect(FIX.edgePts).toBe(1.6);
+    const gap = SIGNALS.find((s) => s.kind === "line_gap")!;
+    expect(gap.headline.figures.gap).toBe(FIX.edgePts);
+    expect(gap.headline.figures.model_margin).toBe(FIX.modelMargin);
+    expect(gap.headline.figures.line).toBe(FIX.spreadLine);
+  });
+
+  it("selects the bucket from FIX's own probability, never a second number", () => {
+    // CodeRabbit review comment 4171773474. The first draft typed `model_prob:
+    // 0.66` beside a tile that says 72% — both plausible, and the mock claiming
+    // the model sits in the 60s while the tile above it said 70%. That is exactly
+    // the drift this file exists to end, found in a file written to prevent it.
+    expect(BUCKET.model_prob).toBe(FIX.homeWinProb);
+    // And the label is DERIVED from that, not typed beside it.
+    const low = Math.floor(FIX.homeWinProb * 10);
+    expect(BUCKET.label).toBe(`${(low / 10).toFixed(1)}-${((low + 1) / 10).toFixed(1)}`);
+    const trust = SIGNALS.find((s) => s.kind === "trust")!;
+    expect(trust.source).toContain(BUCKET.label);
+    // The headline's own probability is the tile's, so the two agree on the page.
+    expect(trust.headline.text).toContain(`${Math.round(FIX.homeWinProb * 100)}%`);
+  });
+
+  it("states the trust rate as its own bucket's hits over n, computed once", () => {
+    expect(trustRate).toBe(BUCKET.hits / BUCKET.n);
+    const trust = SIGNALS.find((s) => s.kind === "trust")!;
+    // A rate, so the [0,1] guard is a real assertion here and not a tautology.
+    expect(trust.headline.figures.rate).toBeGreaterThan(0);
+    expect(trust.headline.figures.rate).toBeLessThanOrEqual(1);
+    expect(trust.headline.figures.rate).toBe(trustRate);
+    expect(trust.n).toBe(BUCKET.n);
+    // And that bucket clears the floor, so the populated mock actually renders.
+    expect(BUCKET.n).toBeGreaterThanOrEqual(SPEC_MIN_N);
+  });
+
+  it("every figure a visual DRAWS is stated in its headline's own words", () => {
+    // The honesty property, at the fixture level: the harness mock must not be
+    // the thing that teaches a reader to expect a figure the words do not carry.
+    //
+    // Scoped to the DRAWN figure, deliberately. `figures` is an open record
+    // (spec §3 writes `{figures...}`), so a signal also carries figures nothing
+    // draws — `model_margin` and `line` here, `model_prob` in the trust row —
+    // and they are the evidence behind the sentence rather than claims on it.
+    // Requiring all of them in a 12-word headline would be the same rule as
+    // "no sentence may have evidence", and would push the adapters to drop the
+    // provenance a future "so what" step needs.
+    const DRAWN: Record<string, string> = { reliability_bar: "rate", delta_chip: "gap" };
+    for (const signal of SIGNALS) {
+      const name = DRAWN[signal.visual];
+      const value = signal.headline.figures[name];
+      expect(value, `${signal.kind}: nothing to draw`).toBeTypeOf("number");
+      const word = signal.visual === "reliability_bar" ? `${Math.round(value * 100)}%` : `${value}`;
+      expect(signal.headline.text, `${signal.kind}: figures.${name} is not in the headline`).toContain(word);
+    }
+  });
+
+  it("the below-floor and long-headline states are states of THIS row, not new ones", () => {
+    // Both keep the populated row's figures, so a screenshot of either cannot
+    // show a number the other states do not.
+    expect(BELOW_FLOOR_SIGNAL.n).toBeLessThan(SPEC_MIN_N);
+    expect(BELOW_FLOOR_SIGNAL.game_id).toBe(SIGNALS[0].game_id);
+    expect(clipHeadline(BELOW_FLOOR_SIGNAL.headline.text).clipped).toBe(false);
+    // The long one keeps the SAME rate and is over the cap.
+    expect(LONG_HEADLINE_SIGNAL.headline.figures.rate).toBe(SIGNALS[0].headline.figures.rate);
+    expect(clipHeadline(LONG_HEADLINE_SIGNAL.headline.text).clipped).toBe(true);
   });
 });
 
