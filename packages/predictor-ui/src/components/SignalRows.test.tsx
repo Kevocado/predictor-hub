@@ -337,6 +337,55 @@ describe("5 · a headline over 12 words is clipped by a stated rule", () => {
     expect(screen.getByTestId("signal-delta")).toHaveTextContent("+1.6");
   });
 
+  // RED-CHECK: the protected-word set reduced to `[pct(figure)]` alone —
+  // "2 failed | 40 passed (42)".
+  it("KEEPS a boundary rate in either of the forms a headline can use", () => {
+    // `fmt.pct` prints `<1%` at p <= 0.005 and `>99%` at p >= 0.995, never `0%`
+    // or `100%`. A headline written by a hand says the plain thing, so protecting
+    // only the formatter's output would let the drawn boundary rate be the one
+    // thing the clip removes. CodeRabbit review comment 4171835614.
+    for (const [rate, words] of [[0.004, "0%"], [0.996, "100%"]] as const) {
+      // The figure must sit PAST word 12 or the plain cap keeps it and the test
+      // passes for the wrong reason — this was the bug in the first version of
+      // this case, which is why the word count is asserted.
+      const late =
+        `Across every stored pre-kickoff pick in this bucket here the model was right ` +
+        `${words} of the time across the whole season's record so far.`;
+      expect(late.split(" ").indexOf(words)).toBeGreaterThan(MAX_HEADLINE_WORDS);
+      const { unmount } = render(
+        <SignalRows signals={[trust({ headline: { text: late, figures: { rate } } })]} />,
+      );
+      expect(screen.getByTestId("signal-headline").textContent).toContain(words);
+      unmount();
+    }
+  });
+
+  it("does NOT protect a percentage that merely ENDS with the drawn rate", () => {
+    // The whole-word half of the same finding: protecting `1%` by substring would
+    // also protect `61%`, so a headline could keep an unrelated clause and still
+    // lose the one carrying the figure.
+    // Both percentages sit PAST the cap, so which one survives is decided purely by
+    // the whole-word match: substring matching on "1%" would keep the 61% clause
+    // too and the assertion below would be passing for the wrong reason.
+    const late =
+      "Across every stored pre-kickoff pick in the league this season the model was " +
+      "right 61% of the time and its margin came in at 1% on each game recorded.";
+    const { unmount } = render(
+      <SignalRows signals={[trust({ headline: { text: late, figures: { rate: 0.01 } } })]} />,
+    );
+    const headline = screen.getByTestId("signal-headline");
+    expect(headline).toHaveAttribute("data-clipped", "true");
+    // The drawn 1% is protected and survives even though it is the 25th word; the
+    // 61% is past the cap, unprotected, and goes. Both percentages sit past word
+    // 12, so which one survives is decided purely by the whole-word match.
+    // The trailing ellipsis is `aria-hidden` but still in `textContent`, so it is
+    // stripped before the endsWith assertion.
+    const words = headline.textContent!.replace(" …", "").trim().split(/\s+/);
+    expect(words[words.length - 1]).toBe("1%");
+    expect(headline.textContent).not.toContain("61%");
+    unmount();
+  });
+
   it("counts the cap on ordinary words, so a protected one does not spend it", () => {
     // The stated cost: a clipped row may exceed 12 words, and the cap is on the
     // sentence around the figure rather than on the figure.
@@ -358,6 +407,12 @@ describe("5 · a headline over 12 words is clipped by a stated rule", () => {
     expect(clipHeadline("a b 74% c", 2, ["74%"])).toEqual({ text: "a b 74%", clipped: true });
     // A protected form that appears nowhere drops nothing and changes nothing.
     expect(clipHeadline("a b c d", 2, ["99%"])).toEqual({ text: "a b", clipped: true });
+    // Surrounding punctuation is not part of the figure, so a sentence-final
+    // "74%." is still the protected word.
+    expect(clipHeadline("a b 74%. c d", 2, ["74%"])).toEqual({ text: "a b 74%.", clipped: true });
+    // A PARENTHESIS closes too, which is the shape a "(74% of 61 games)" aside
+    // takes.
+    expect(clipHeadline("a b 74%) d e", 2, ["74%"])).toEqual({ text: "a b 74%)", clipped: true });
     // Whitespace-delimited, so a decimal is one word to a reader.
     expect(clipHeadline("Model margin −6.1 vs line −4.5", 4)).toEqual({
       text: "Model margin −6.1 vs",

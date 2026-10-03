@@ -314,10 +314,18 @@ export function signalIsDrawn(signal: Signal, minN: number = SPEC_MIN_N): boolea
  * make impossible, reintroduced by the cap.
  *
  * So the rule is now: **keep the first `max` ORDINARY words, plus every word
- * that states a protected figure, in document order.** The protected form is
+ * that states a protected figure, in document order.** The protected forms are
  * passed in by the caller from the figure it is about to draw — this function
  * does not format, because the two formatters (`fmt.signed` for a gap,
  * `fmt.pct` for a rate) differ and guessing here would protect the wrong string.
+ *
+ * **Two forms are protected for a rate, because `fmt.pct` has boundaries.** At
+ * `p <= 0.005` and `p >= 0.995` it prints `<1%` and `>99%` rather than `0%` and
+ * `100%`, so a headline written by hand can say `0%` or `100%` where the chip
+ * says `<1%` and the two forms would not match. Both are protected (CodeRabbit
+ * review comment 4171835614). The match is on a WHOLE word, never a substring:
+ * protecting `1%` must not also protect `61%`, which would keep a clause
+ * unrelated to the figure and could still drop the one that carries it.
  *
  * **What is given up.** A clipped row can exceed `max` words, so the cap is
  * "12 ordinary words" rather than "12 words", and a headline that names its
@@ -340,8 +348,18 @@ export function clipHeadline(
   const trimmed = text.trim();
   const words = trimmed.split(/\s+/).filter(Boolean);
   if (words.length <= max) return { text: trimmed, clipped: false };
-  const marks = protectedWords.filter(Boolean).map((w) => w.trim());
-  const protectedIndex = (word: string): boolean => marks.some((m) => word.includes(m));
+  // WHOLE-WORD matching, not `includes`.
+  //
+  // Substring matching protects the wrong word: protecting the rate `1%` would
+  // also protect `61%`, `21%` and every other word ending in it, so a headline
+  // could keep a clause that has nothing to do with the figure and lose the one
+  // that does. (CodeRabbit review comment 4171835614 raised this and the boundary
+  // form below; both are here.)
+  const marks = new Set(protectedWords.filter(Boolean).map((w) => w.trim()));
+  // A word is compared with its surrounding punctuation off, so "74%." and
+  // "74%" are the same word — punctuation is not part of a figure.
+  const bare = (w: string) => w.replace(/^[^\w.+-]+|[^\w%]+$/g, "");
+  const protectedIndex = (word: string): boolean => marks.has(bare(word));
   const kept: string[] = [];
   let ordinary = 0;
   for (const word of words) {
@@ -390,12 +408,24 @@ function SignalRow({ signal, rowId }: { signal: Signal; rowId: string }) {
   // never read "of null games"; the floor means a bar-drawing row always has one.
   const count = n === null ? "" : `n=${n}`;
   const figure = signalFigure(signal, signal.visual);
-  // Clipped with the figure PROTECTED, and the protected string is the one this
-  // row is about to draw: `fmt.pct` for a rate, `fmt.signed` for a gap. The sign
-  // is dropped from the protected form because a headline says "1.6" where the
+  // Clipped with the figure PROTECTED, and the protected forms are the ones this
+  // row is about to draw.
+  //
+  // A rate has THREE forms, because `fmt.pct` is not injective: `0.004` draws
+  // as `<1%`, `1` draws as `>99%`, and a headline written by a human says `0%`
+  // or `100%` for those. Protecting only `pct(figure)` would let the drawn
+  // boundary rate be the one thing the clip removes. So the rounded plain form
+  // and the rounded percent are protected alongside the formatter's own, and the
+  // match is whole-word so `1%` cannot also match `61%` (CodeRabbit review
+  // comment 4171835614).
+  //
+  // A gap has TWO: the sign is dropped because a headline says "1.6" where the
   // chip says "+1.6", and protecting "+1.6" would protect nothing.
-  const drawn = signal.visual === "reliability_bar" ? pct(figure) : signed(figure).replace(/^[+−-]/, "");
-  const { text, clipped } = clipHeadline(signal.headline.text, MAX_HEADLINE_WORDS, [drawn]);
+  const protectedForms: string[] =
+    signal.visual === "reliability_bar"
+      ? [pct(figure), `${Math.round(figure * 100)}%`, `${Math.floor(figure * 100)}%`]
+      : [signed(figure).replace(/^[+−-]/, "")];
+  const { text, clipped } = clipHeadline(signal.headline.text, MAX_HEADLINE_WORDS, protectedForms);
 
   return (
     <li
