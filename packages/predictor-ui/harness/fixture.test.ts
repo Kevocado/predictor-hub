@@ -23,7 +23,8 @@ import {
   assertFixtureConsistency,
   type Category,
 } from "./fixture";
-import { SPEC_MIN_N, clipHeadline } from "../src";
+import type { Signal } from "../src";
+import { SPEC_MIN_N, clipHeadline, signalIsDrawn } from "../src";
 
 const boxRows = () =>
   ["wilson", "robinson"].map((k) => ({
@@ -171,6 +172,20 @@ describe("a signal's figures come from the one fixture", () => {
     expect(trust.headline.text).toContain(`${Math.round(FIX.homeWinProb * 100)}%`);
   });
 
+  // The harness mock is a REAL payload as far as `signalIsDrawn` is concerned, so
+  // a fixture that mis-stated its figure would now throw and take the whole
+  // insight page down. Asserted here so the failure is a named test rather than a
+  // blank screenshot.
+  it("every harness signal passes the same check the component makes on a site payload", () => {
+    const check = (s: Signal, what: string) => {
+      expect(() => signalIsDrawn(s), `${what} would be refused by SignalRows`).not.toThrow();
+    };
+    for (const s of SIGNALS) check(s, `${s.kind} in SIGNALS`);
+    check(LONG_HEADLINE_SIGNAL, "LONG_HEADLINE_SIGNAL");
+    // Below the floor: dropped, not refused — the verdict the component gives.
+    expect(signalIsDrawn(BELOW_FLOOR_SIGNAL)).toBe(false);
+  });
+
   it("states the trust rate as its own bucket's hits over n, computed once", () => {
     expect(trustRate).toBe(BUCKET.hits / BUCKET.n);
     const trust = SIGNALS.find((s) => s.kind === "trust")!;
@@ -183,6 +198,11 @@ describe("a signal's figures come from the one fixture", () => {
     expect(BUCKET.n).toBeGreaterThanOrEqual(SPEC_MIN_N);
   });
 
+  // The component now ENFORCES this rather than trusting a test to catch it, so
+  // this guard is the mock's own half of the contract: the harness payloads are
+  // built from the fixture, and if one of them ever stopped stating the figure it
+  // draws, the harness would stop rendering — which a screenshot of an empty case
+  // would show as a design choice rather than as a broken mock.
   it("every figure a visual DRAWS is stated in its headline's own words", () => {
     // The honesty property, at the fixture level: the harness mock must not be
     // the thing that teaches a reader to expect a figure the words do not carry.
