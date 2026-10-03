@@ -337,10 +337,20 @@ function drawnAs(signal: Signal, figure: number): DrawnBar {
  *    `pct`'s whole percent AND its floored percent, because at `0.738` the chip
  *    says 74% and a writer may say 73% — both are the same rate at the precision
  *    the page shows.
- *  - **A stated boundary must agree with the drawn one.** The chip's `<1%` and
+ *  - **A stated boundary must be TRUE OF THE DRAWN RATE.** The chip's `<1%` and
  *    `>99%` are not decoration: `<1%` means *less than* one percent, so a
  *    headline claiming `1%` states a rate the bar does not draw and is refused
  *    (4172215626). A boundaryless `0%` is consistent with `<1%` and is accepted.
+ *    **The test is truth, not equality with the drawn bound** — a rate of 0.004
+ *    drawn as `<1%` also makes `<5%` and `<0.5%` true, and both are accepted.
+ *    Requiring the bounds to be *equal* (review comment 4172902588) would reject
+ *    those two true claims, which trades a false positive for a false negative:
+ *    the defect this file exists to prevent is a headline stating something
+ *    untrue of the drawn figure, and an over-tight rule manufactures exactly that
+ *    by rejecting what is merely more precise than the display's granularity.
+ *    The claims that genuinely cannot be true of a share — `<0%` and `>100%` —
+ *    are refused earlier on the domain, where `drawn.pct` is known, so they never
+ *    reach the comparator branches at all.
  *  - **A stated sign must agree with the drawn one, for a gap.** The chip reads
  *    `+1.6`; a headline saying `−1.6` is claiming the opposite direction and is
  *    refused (4172215630). An UNSIGNED `1.6` is accepted, because a chip figure
