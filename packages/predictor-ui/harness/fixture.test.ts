@@ -156,6 +156,21 @@ describe("a signal's figures come from the one fixture", () => {
     expect(gap.headline.figures.line).toBe(FIX.spreadLine);
   });
 
+  it("selects the bucket from FIX's own probability, never a second number", () => {
+    // CodeRabbit review comment 4171773474. The first draft typed `model_prob:
+    // 0.66` beside a tile that says 72% — both plausible, and the mock claiming
+    // the model sits in the 60s while the tile above it said 70%. That is exactly
+    // the drift this file exists to end, found in a file written to prevent it.
+    expect(BUCKET.model_prob).toBe(FIX.homeWinProb);
+    // And the label is DERIVED from that, not typed beside it.
+    const low = Math.floor(FIX.homeWinProb * 10);
+    expect(BUCKET.label).toBe(`${(low / 10).toFixed(1)}-${((low + 1) / 10).toFixed(1)}`);
+    const trust = SIGNALS.find((s) => s.kind === "trust")!;
+    expect(trust.source).toContain(BUCKET.label);
+    // The headline's own probability is the tile's, so the two agree on the page.
+    expect(trust.headline.text).toContain(`${Math.round(FIX.homeWinProb * 100)}%`);
+  });
+
   it("states the trust rate as its own bucket's hits over n, computed once", () => {
     expect(trustRate).toBe(BUCKET.hits / BUCKET.n);
     const trust = SIGNALS.find((s) => s.kind === "trust")!;

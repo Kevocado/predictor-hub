@@ -302,23 +302,59 @@ export function signalIsDrawn(signal: Signal, minN: number = SPEC_MIN_N): boolea
  * prose — and the sample size survives regardless, because `n` is on the evidence
  * line whether or not the headline is clipped. A refused row, by contrast, loses
  * its whole finding because an adapter miscounted a word, which is a worse
- * outcome than a shorter sentence and a `data-clipped="true"` in the DOM. What
- * would have made refusal right is a clip that could corrupt a figure or a
- * negation ("Out: J. Jacobs is **not** projected", clipped to "Out: J. Jacobs
- * is"). It cannot: the figures are not in the text this function rewrites, and a
- * clipped clause is visibly clipped, with the ellipsis and the attribute. **If a
- * future headline format puts its figures inline instead of in `figures`, that
- * argument stops being true and this must become a refusal** — the note is here
- * so the next person reads it before making that change.
+ * outcome than a shorter sentence and a `data-clipped="true"` in the DOM.
+ *
+ * **A drawn figure is PROTECTED, and this was a real defect until it was.**
+ * The first version claimed a clip "cannot corrupt a figure" on the grounds that
+ * the figures are not in the text this function rewrites. That was wrong, and
+ * CodeRabbit review comment 4171773475 caught it: the headline *does* speak them
+ * — that is the whole honesty rule above — and "was right 74% of the time" can
+ * sit at word 14. Clipping to 12 then left a bar at 74% under a sentence that no
+ * longer mentioned 74%: exactly the dishonesty the split `headline` exists to
+ * make impossible, reintroduced by the cap.
+ *
+ * So the rule is now: **keep the first `max` ORDINARY words, plus every word
+ * that states a protected figure, in document order.** The protected form is
+ * passed in by the caller from the figure it is about to draw — this function
+ * does not format, because the two formatters (`fmt.signed` for a gap,
+ * `fmt.pct` for a rate) differ and guessing here would protect the wrong string.
+ *
+ * **What is given up.** A clipped row can exceed `max` words, so the cap is
+ * "12 ordinary words" rather than "12 words", and a headline that names its
+ * figure on every one of forty words stays forty words long. That is an adapter
+ * copy bug rather than something this component can repair, and `data-clipped`
+ * is the signal for it — the fix is the adapter's shorter wording.
+ *
+ * **What would make this a refusal instead: a NEGATION.** "Out: J. Jacobs is
+ * **not** projected" clipped to "Out: J. Jacobs is" inverts the claim, and no
+ * amount of figure-protection helps. None of the four spec §4 signals can produce
+ * one from their own fields — `kind` says which claim a row is making — so it is
+ * not reachable here. The note is here so the next person checks it before
+ * adding a `kind` that can.
  */
 export function clipHeadline(
   text: string,
   max: number = MAX_HEADLINE_WORDS,
+  protectedWords: readonly string[] = [],
 ): { text: string; clipped: boolean } {
   const trimmed = text.trim();
   const words = trimmed.split(/\s+/).filter(Boolean);
   if (words.length <= max) return { text: trimmed, clipped: false };
-  return { text: words.slice(0, max).join(" "), clipped: true };
+  const marks = protectedWords.filter(Boolean).map((w) => w.trim());
+  const protectedIndex = (word: string): boolean => marks.some((m) => word.includes(m));
+  const kept: string[] = [];
+  let ordinary = 0;
+  for (const word of words) {
+    // A protected word is kept wherever it is and does not spend the budget: the
+    // cap is on the sentence AROUND the figure, not on the figure.
+    if (protectedIndex(word)) {
+      kept.push(word);
+      continue;
+    }
+    if (ordinary < max) kept.push(word);
+    ordinary++;
+  }
+  return { text: kept.join(" "), clipped: ordinary > max };
 }
 
 /** The heading a list of rows carries. Plain words and no developer term:
@@ -346,19 +382,25 @@ export interface SignalRowsProps {
 
 /** One row. Not exported, so every path into it goes through `signalIsDrawn`
  *  first and no caller can mount a row the floor has not cleared. */
-function SignalRow({ signal }: { signal: Signal }) {
+function SignalRow({ signal, rowId }: { signal: Signal; rowId: string }) {
   const [open, setOpen] = useState(false);
-  const { text, clipped } = clipHeadline(signal.headline.text);
   const isBar = signal.visual === "reliability_bar";
   const n = signal.n;
   // The count as evidence words. Empty when the row states none, so a label can
   // never read "of null games"; the floor means a bar-drawing row always has one.
   const count = n === null ? "" : `n=${n}`;
   const figure = signalFigure(signal, signal.visual);
+  // Clipped with the figure PROTECTED, and the protected string is the one this
+  // row is about to draw: `fmt.pct` for a rate, `fmt.signed` for a gap. The sign
+  // is dropped from the protected form because a headline says "1.6" where the
+  // chip says "+1.6", and protecting "+1.6" would protect nothing.
+  const drawn = signal.visual === "reliability_bar" ? pct(figure) : signed(figure).replace(/^[+−-]/, "");
+  const { text, clipped } = clipHeadline(signal.headline.text, MAX_HEADLINE_WORDS, [drawn]);
 
   return (
     <li
       data-testid="signal-row"
+      data-row={rowId}
       data-kind={signal.kind}
       data-visual={signal.visual}
       className="flex min-w-0 flex-col gap-1.5 border-t border-pr-rule pt-3 first:border-t-0 first:pt-0"
@@ -478,8 +520,34 @@ export function SignalRows({ signals, title = DEFAULT_SIGNAL_TITLE, minN }: Sign
         {title}
       </h3>
       <ul data-testid="signal-rows" className="flex min-w-0 flex-col gap-3">
-        {drawn.map((signal) => (
-          <SignalRow key={`${signal.game_id}:${signal.kind}`} signal={signal} />
+        {/* The key is `game_id:kind:index`, and the index is in it on purpose.
+         *
+         * Spec §3 carries no row id, and this component does not add one: the
+         * type is the contract and inventing a field no adapter has to populate
+         * would be a field every real payload leaves undefined.
+         *
+         * `game_id:kind` alone is not a key. CodeRabbit review comment
+         * 4171773477 is right that §3 does not make those unique, and two
+         * signals sharing one is a real possibility (two `trust` buckets on one
+         * game is plausible). React would then reuse one `SignalRow`'s
+         * `useState` for both, which is the row's disclosure state showing on
+         * the wrong signal.
+         *
+         * The index's own weakness is named here rather than glossed: a reorder
+         * would carry the open disclosure with the position rather than the
+         * signal. That is accepted because rows render in the order the endpoint
+         * ranked them (see the file header), a reorder between two renders of
+         * the same fixture is not a case this component produces, and the
+         * alternative — a key of `(game_id, kind)` alone — is wrong NOW rather
+         * than wrong in a case that has not happened. What would remove both
+         * costs is an `id` in §3; that is a spec change, so it is reported
+         * rather than taken here. */}
+        {drawn.map((signal, i) => (
+          <SignalRow
+            key={`${signal.game_id}:${signal.kind}:${i}`}
+            signal={signal}
+            rowId={`${signal.game_id}:${signal.kind}:${i}`}
+          />
         ))}
       </ul>
     </section>

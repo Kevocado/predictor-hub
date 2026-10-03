@@ -109,6 +109,43 @@ describe("1 · renders each visual: chip, bar, headline, evidence", () => {
     render(<SignalRows signals={[trust({ strength: 0.9 }), lineGap({ strength: 0.4 })]} />);
     expect(screen.getAllByTestId("signal-row").map((r) => r.dataset.kind)).toEqual(["trust", "line_gap"]);
   });
+
+  // RED-CHECK: the index dropped from the row key — "1 failed | 37 passed (38)".
+  it("gives two signals that share a game_id and kind DISTINCT row keys", () => {
+    // Spec §3 carries no row id, and it does not make `(game_id, kind)` unique —
+    // two trust buckets on one game is plausible. CodeRabbit review comment
+    // 4171773477 is right that a shared key makes React reuse one `SignalRow`'s
+    // `useState` for both rows, so the first row's open disclosure would appear
+    // on the second. Asserted on the DOM, which is where the collision shows.
+    render(
+      <SignalRows
+        signals={[
+          trust({ headline: { text: "First bucket: right 74% of the time.", figures: { rate: 0.738 } } }),
+          trust({ headline: { text: "Second bucket: right 61% of the time.", figures: { rate: 0.61 } } }),
+        ]}
+      />,
+    );
+    const rows = screen.getAllByTestId("signal-row");
+    expect(rows.map((r) => r.dataset.row)).toEqual(["401671829:trust:0", "401671829:trust:1"]);
+    expect(new Set(rows.map((r) => r.dataset.row)).size).toBe(2);
+  });
+
+  it("each row's disclosure is its own, when two rows share a game_id and kind", async () => {
+    // The behaviour behind the key: opening one row must not open the other.
+    const user = userEvent.setup();
+    render(
+      <SignalRows
+        signals={[
+          trust({ headline: { text: "First bucket: right 74% of the time.", figures: { rate: 0.738 } } }),
+          trust({ headline: { text: "Second bucket: right 61% of the time.", figures: { rate: 0.61 } } }),
+        ]}
+      />,
+    );
+    const toggles = screen.getAllByTestId("signal-evidence-toggle");
+    await user.click(toggles[0]);
+    expect(toggles.map((t) => t.getAttribute("aria-expanded"))).toEqual(["true", "false"]);
+    expect(screen.getAllByTestId("signal-evidence")[1].textContent).not.toContain("stored pre-kickoff");
+  });
 });
 
 describe("2 · renders nothing at all for an empty list", () => {
@@ -251,7 +288,12 @@ describe("5 · a headline over 12 words is clipped by a stated rule", () => {
     );
     const headline = screen.getByTestId("signal-headline");
     expect(headline).toHaveAttribute("data-clipped", "true");
-    expect(headline.textContent!.replace(" …", "").trim().split(/\s+/)).toHaveLength(MAX_HEADLINE_WORDS);
+    const words = headline.textContent!.replace(" …", "").trim().split(/\s+/);
+    // 12 ordinary words, and the rate is a 13th because it is protected — the
+    // stated cost of protecting it, and the reason the cap is on the sentence
+    // around the figure rather than on the figure.
+    expect(words).toHaveLength(MAX_HEADLINE_WORDS + 1);
+    expect(words.filter((w) => w.includes("74%"))).toHaveLength(1);
     // Clipping removes words and never edits a figure: the bar is still 73.8%.
     expect(screen.getByTestId("signal-bar-fill")).toHaveStyle({ width: "73.8%" });
   });
@@ -264,6 +306,46 @@ describe("5 · a headline over 12 words is clipped by a stated rule", () => {
     expect(screen.getByTestId("signal-headline").textContent).toBe(exact);
   });
 
+  // RED-CHECK: the protected-word branch in `clipHeadline` deleted —
+  // "1 failed | 35 passed (36)".
+  it("KEEPS the figure when it sits past the cap, because clipping must not drop it", () => {
+    // The defect CodeRabbit review comment 4171773475 found, as a test. The rate
+    // is at word 14, so a plain 12-word clip leaves a bar at 74% under words that
+    // never said 74% — the honesty rule, broken by the cap that enforces §6.
+    const late = "The model has been right 74% of the time on this bucket of picks across the stored record.";
+    expect(late.trim().split(/\s+/).length).toBeGreaterThan(MAX_HEADLINE_WORDS);
+    render(
+      <SignalRows
+        signals={[trust({ headline: { text: late, figures: { rate: 0.738 } } })]}
+      />,
+    );
+    const headline = screen.getByTestId("signal-headline");
+    expect(headline).toHaveAttribute("data-clipped", "true");
+    expect(headline.textContent).toContain("74%");
+    expect(screen.getByTestId("signal-bar-fill")).toHaveStyle({ width: "73.8%" });
+  });
+
+  it("KEEPS a chip's figure past the cap, and matches the headline's unsigned form", () => {
+    // The protected string is `signed(gap)` with the sign dropped, because the
+    // chip prints "+1.6" and a headline says "1.6". Protecting "+1.6" would
+    // protect nothing and the row would silently lose its number.
+    const late = "Across this season the model has wanted 1.6 more than the market on this fixture.";
+    render(<SignalRows signals={[lineGap({ headline: { text: late, figures: { gap: 1.6 } } })]} />);
+    const headline = screen.getByTestId("signal-headline");
+    expect(headline).toHaveAttribute("data-clipped", "true");
+    expect(headline.textContent).toContain("1.6");
+    expect(screen.getByTestId("signal-delta")).toHaveTextContent("+1.6");
+  });
+
+  it("counts the cap on ordinary words, so a protected one does not spend it", () => {
+    // The stated cost: a clipped row may exceed 12 words, and the cap is on the
+    // sentence around the figure rather than on the figure.
+    const out = clipHeadline("a b c 74% d e f g h i j k l m n", 4, ["74%"]);
+    expect(out.clipped).toBe(true);
+    expect(out.text.split(/\s+/)).toHaveLength(5);
+    expect(out.text).toContain("74%");
+  });
+
   it("clipHeadline, edge by edge", () => {
     // Un-clipped copy comes back byte for byte: only the ends are trimmed, so a
     // headline the adapter spaced deliberately is not rewritten by this file.
@@ -271,6 +353,11 @@ describe("5 · a headline over 12 words is clipped by a stated rule", () => {
     expect(clipHeadline("  a  b  ")).toEqual({ text: "a  b", clipped: false });
     expect(clipHeadline("")).toEqual({ text: "", clipped: false });
     expect(clipHeadline("a b c", 2)).toEqual({ text: "a b", clipped: true });
+    // Protection is opt-in: with nothing protected this is the plain 12-word clip
+    // it has always been.
+    expect(clipHeadline("a b 74% c", 2, ["74%"])).toEqual({ text: "a b 74%", clipped: true });
+    // A protected form that appears nowhere drops nothing and changes nothing.
+    expect(clipHeadline("a b c d", 2, ["99%"])).toEqual({ text: "a b", clipped: true });
     // Whitespace-delimited, so a decimal is one word to a reader.
     expect(clipHeadline("Model margin −6.1 vs line −4.5", 4)).toEqual({
       text: "Model margin −6.1 vs",

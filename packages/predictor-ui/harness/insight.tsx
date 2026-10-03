@@ -651,8 +651,10 @@ function App() {
                 nothing". */}
             <SignalRows signals={[BELOW_FLOOR_SIGNAL]} />
             <p className="max-w-[70ch] text-xs text-pr-text-faint">
-              ↑ nothing rendered — the same <code>n = {BELOW_FLOOR_SIGNAL.n}</code> row on the left of
-              the case above would have been {Math.round((BELOW_FLOOR_SIGNAL.headline.figures.rate) * 100)}%.
+              ↑ nothing rendered. The populated case above with{" "}
+              <code>n = {BELOW_FLOOR_SIGNAL.n}</code> instead of {BUCKET.n} would have drawn a{" "}
+              {Math.round(BELOW_FLOOR_SIGNAL.headline.figures.rate * 100)}% bar under 12 games — which is
+              the rate from a handful of games that spec §4 forbids.
             </p>
           </div>
 
@@ -677,10 +679,13 @@ function App() {
             <InstantHead>A headline over {MAX_HEADLINE_WORDS} words — clipped, not refused</InstantHead>
             <SignalRows signals={[LONG_HEADLINE_SIGNAL]} />
             <p className="max-w-[70ch] text-xs text-pr-text-faint">
-              Clipping removes words and never a figure: the bar below is still the same{" "}
-              {Math.round(trustRate * 100)}% the populated case draws, and the n is on the evidence line
-              whichever way the headline falls. A refused row would lose the whole finding over a
-              miscounted word, which is worse than a shorter sentence.
+              Clipping keeps the first 12 ordinary words PLUS every word stating a drawn figure, so
+              the {Math.round(trustRate * 100)}% survives and the bar below still draws the same{" "}
+              {Math.round(trustRate * 100)}% the populated case does. A plain 12-word clip would cut
+              here and leave a bar under words that no longer mention it — the honesty rule broken by
+              the cap that enforces §6. The cap is therefore on the sentence AROUND the figure: a
+              clipped row can run past 12 words, and the fix for that is the adapter&apos;s shorter
+              wording, not a longer row.
             </p>
           </div>
 

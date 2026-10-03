@@ -147,19 +147,46 @@ export const CATEGORY_KIND: Record<Category, "probability" | "projection"> = {
  * player lists follow, so a signal mock cannot disagree with the tiles about the
  * same game. That is why `gap` is `FIX.edge` and not a retyped `1.6`.
  *
- * The `trust` row's rate is the one figure `FIX` does not already carry — a
+ * The `trust` row's RATE is the one figure `FIX` does not already carry — a
  * historical hit rate is not a property of this fixture — so it is declared here
- * with its own bucket, and the `n` that goes with it, for the same reason
- * `PLAYERS[].bucket` exists.
+ * with the bucket and the `n` that produce it, for the same reason
+ * `PLAYERS[].bucket` exists. The bucket's own `model_prob` is NOT declared: it
+ * is `FIX.homeWinProb`, because the probability is what selects the bucket and a
+ * second copy of it is how the mock ended up claiming 66% under a tile that
+ * said 72%.
  *
  * `BUCKET` is exported because the below-floor case is this row with a smaller
  * `n` and nothing else changed: a state of one fixture, not a second fixture.
  */
 export const BUCKET = {
-  /** "at 60-70%" in the spec's own wording: the bucket this model's pick sits in. */
-  label: "60-70%",
-  /** The model's own probability for this fixture, which is what picks the bucket. */
-  model_prob: 0.66,
+  /**
+   * The model's own probability for this fixture — which is what SELECTS the
+   * bucket, so it is `FIX.homeWinProb` and not a second number.
+   *
+   * A first draft put `0.66` here and labelled the bucket `60-70%` while the
+   * tile above the signals says 72%. Both were "plausible" and they disagreed
+   * about the same fixture, which is the one thing this file exists to prevent:
+   * a reader comparing the two rows would find the mock claiming the model sits
+   * in the 60s when the tile says it does not. CodeRabbit found it
+   * (review comment 4171773474), and it was right.
+   */
+  model_prob: FIX.homeWinProb,
+  /**
+   * The bucket that probability falls in, DERIVED from it.
+   *
+   * Derived rather than typed so the two cannot drift again: the bounds are the
+   * spec's own `n >= 30` bucket language read as ranges, and the edges are the
+   * same ones `NFL_Predictor`'s `_TD_CONFIDENCE_BUCKETS` and `CFB_Predictor`'s
+   * `_td_confidence_buckets` ship (the spike's open question 3 measured against
+   * exactly those bounds).
+   */
+  // `toFixed(1)`, not `/ 10`: `0.8` from `(0.7 + 1) / 10` is `0.7999999999999999`,
+  // and a bucket label is a word on the page, not a float. Rounding here is what
+  // keeps the derived label equal to the one a test recomputes from `FIX`.
+  label: (() => {
+    const low = Math.floor(FIX.homeWinProb * 10);
+    return `${(low / 10).toFixed(1)}-${((low + 1) / 10).toFixed(1)}`;
+  })(),
   /** Hits over settled picks in that bucket. 5 of the 6 F1 buckets in the spike clear 30. */
   hits: 42,
   n: 61,
@@ -177,7 +204,7 @@ export const SIGNALS: Signal[] = [
     headline: {
       // 12 words exactly, so the harness shows the rule's own boundary and the
       // clipped case beside it is visibly a different thing.
-      text: `On ${pctWord(BUCKET.model_prob)} calls this model has been right ${pctWord(trustRate)} of the time.`,
+      text: `At ${pctWord(BUCKET.model_prob)} this model has been right ${pctWord(trustRate)} of the time.`,
       // The figures the visual draws, plus the ones the headline only speaks.
       // `rate` is what the bar's width is; `model_prob` is not drawn by any
       // visual and exists so the headline's own number is in the payload.
@@ -216,7 +243,7 @@ export const SIGNALS: Signal[] = [
 export const LONG_HEADLINE_SIGNAL: Signal = {
   ...SIGNALS[0],
   headline: {
-    text: `On ${pctWord(BUCKET.model_prob)} calls this model has been right ${pctWord(trustRate)} of the time across every stored pre-kickoff pick in this bucket to date.`,
+    text: `At ${pctWord(BUCKET.model_prob)} this model has been right ${pctWord(trustRate)} of the time across every stored pre-kickoff pick in this bucket to date.`,
     figures: SIGNALS[0].headline.figures,
   },
 };
@@ -227,7 +254,7 @@ export const BELOW_FLOOR_SIGNAL: Signal = {
   ...SIGNALS[0],
   n: 12,
   headline: {
-    text: `On ${pctWord(BUCKET.model_prob)} calls this model has been right ${pctWord(8 / 12)} of the time.`,
+    text: `At ${pctWord(BUCKET.model_prob)} this model has been right ${pctWord(8 / 12)} of the time.`,
     figures: { rate: 8 / 12, model_prob: BUCKET.model_prob },
   },
 };
