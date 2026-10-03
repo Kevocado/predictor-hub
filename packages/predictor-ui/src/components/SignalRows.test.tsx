@@ -369,6 +369,25 @@ describe("4 · the figures drawn are the figures the headline states", () => {
     expect(figureRange(twice, bar(0.738), 0.738)).toEqual({ start: 0, end: 3 });
   });
 
+  // 4172902590: the range must be offsets into the TRIMMED headline, which is the
+  // string the clipper walks. Untrimmed, every offset shifts by the length of the
+  // lead and the range can protect the wrong word.
+  //
+  // The lead is three spaces and the word before the figure is one character, so
+  // the drift lands exactly on the figure's word and MISSES it. A three-space lead
+  // in front of long words drifts inside a neighbour and still overlaps the
+  // figure, which is why a looser version of this case passed with the bug in
+  // place — measured, not guessed.
+  it("figureRange offsets into the trimmed headline, not the raw one", () => {
+    const padded = "   x 74% here";
+    const covers = (t: string, r: { start: number; end: number } | null) =>
+      r ? t.trim().slice(r.start, r.end).trim() : null;
+    expect(covers(padded, figureRange(padded, bar(0.738), 0.738))).toBe("74%");
+    // And through the clipper: the figure must survive at the position a drifted
+    // range would have missed.
+    expect(clipHeadline(padded, 1, figureRange(padded, bar(0.738), 0.738)).text).toContain("74%");
+  });
+
   it("clips a straddling comparator figure, keeping both its words", () => {
     // The component-level half of 4172337760: through the real clipper, where the
     // figure sits PAST the budget and must survive as two words.
@@ -465,6 +484,37 @@ describe("4 · the figures drawn are the figures the headline states", () => {
     expect(says("right 73% here", bar(0.738), 0.738)).toBe(true);
     // A rate has no direction, so a sign on it is not a contradiction.
     expect(says("right +74% here", bar(0.738), 0.738)).toBe(true);
+
+    // 4172902588: a headline that states an inequality must state one about the
+    // SAME bound. `<0%` under a `<1%` bar has the right direction and a bound that
+    // admits it, and it is a false claim about a rate that is never negative;
+    // `>100%` under a `>99%` bar says the same about one that is never above 100%.
+    // A direction-only check waved both through.
+    expect(says("Right <0% here", bar(0.004), 0.004)).toBe(false);
+    expect(says("Right >100% here", bar(0.996), 0.996)).toBe(false);
+    // A share is never negative and never above 100%, so these are not rates at
+    // all. Both were accepted before the bound cases, because the inequality
+    // branches read the magnitude and drop the sign and the ceiling.
+    expect(says("Right <\u22125% here", bar(0.004), 0.004)).toBe(false);
+    expect(says("Right \u22120% here", bar(0.004), 0.004)).toBe(false);
+    expect(says("Right >101% here", bar(0.996), 0.996)).toBe(false);
+    // The other direction against the drawn one, EVALUATED rather than
+    // pattern-matched: a rate of 0.4 is not above 50%, however true ">50%" is
+    // of some other rate. And it IS above 0%.
+    expect(says("Right >50% here", bar(0.004), 0.004)).toBe(false);
+    expect(says("Right >0% here", bar(0.004), 0.004)).toBe(true);
+    // An UNBOUNDED bar refuses any stated comparator, because there is no drawn
+    // bound for it to be weaker than and this component cannot tell a hedge from a
+    // wrong number. `<90%` is TRUE of 73.8% and is still refused: the rule is that
+    // the words state what the bar draws, not that they are consistent with it.
+    expect(says("Right <90% here", bar(0.738), 0.738)).toBe(false);
+    expect(says("Right <50% here", bar(0.738), 0.738)).toBe(false);
+    // The same direction on a bound INSIDE the drawn one states less, which is not
+    // a different claim.
+    expect(says("Right <0.5% here", bar(0.004), 0.004)).toBe(true);
+    expect(says("Right >99.5% here", bar(0.996), 0.996)).toBe(true);
+    // And the identical inequality is the identical claim.
+    expect(says("Right <1% here", bar(0.004), 0.004)).toBe(true);
   });
 
   it("a refusal takes the WHOLE list down, before any row renders", () => {

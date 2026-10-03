@@ -212,6 +212,13 @@ const FIGURE: Record<SignalVisual, "gap" | "rate" | null> = {
  */
 type StatedFigure = { value: number; pct: boolean; cmp: "<" | ">" | null; sign: number };
 
+/** The rate a bar row is about, in percent. Carried alongside `StatedFigure`
+ *  because a drawn `<1%` needs BOTH its bound (what the reader sees) and the rate
+ *  behind it (0.4) to judge a stated inequality: "is this claim true of the rate
+ *  the bar draws" is a different question from "does this bound match that
+ *  bound", and only the first one is the property the file cares about. */
+type DrawnBar = StatedFigure & { rate: number };
+
 /**
  * Every number in a piece of text, with its boundary and sign.
  *
@@ -287,7 +294,7 @@ function statedFigures(text: string): StatedFigure[] {
  * does not. A gap is compared as drawn, in the sport's own units, and its SIGN is
  * part of the figure — the chip reads `+1.6`, so `−1.6` is a different claim.
  */
-function drawnAs(signal: Signal, figure: number): StatedFigure {
+function drawnAs(signal: Signal, figure: number): DrawnBar {
   if (signal.visual !== "reliability_bar") {
     // A gap's magnitude is its ABSOLUTE value and its sign is separate, because
     // "wants 1.6 fewer" states −1.6 with no minus sign in front of the number.
@@ -298,6 +305,9 @@ function drawnAs(signal: Signal, figure: number): StatedFigure {
       pct: false,
       cmp: null,
       sign: figure > 0 ? 1 : figure < 0 ? -1 : 0,
+      // Unused for a gap — it has no rate and no bound — but present so
+      // `denotes` reads one shape rather than narrowing on `visual`.
+      rate: Math.abs(figure),
     };
   }
   // A rate's own display carries the boundary: `pct` prints `<1%` and `>99%` at
@@ -311,7 +321,11 @@ function drawnAs(signal: Signal, figure: number): StatedFigure {
   const shown = pct(figure);
   const cmp = shown.startsWith("<") ? ("<" as const) : shown.startsWith(">") ? (">" as const) : null;
   const bound = cmp === null ? null : Number(shown.replace(/^[<>]/, "").replace("%", ""));
-  return { value: cmp === null ? figure * 100 : (bound as number), pct: true, cmp, sign: 0 };
+  // `rate` is the rate itself in percent, ALWAYS present for a bar row. `value` is
+  // the BOUND when the display is an inequality and the percent otherwise, and
+  // having both is what lets a stated inequality be evaluated rather than
+  // pattern-matched — see `denotes`.
+  return { value: cmp === null ? figure * 100 : (bound as number), pct: true, cmp, sign: 0, rate: figure * 100 };
 }
 
 /**
@@ -333,23 +347,56 @@ function drawnAs(signal: Signal, figure: number): StatedFigure {
  *    is routinely stated without its sign in prose and that is not a
  *    contradiction.
  */
-function denotes(drawn: StatedFigure, stated: StatedFigure): boolean {
+function denotes(drawn: DrawnBar, stated: StatedFigure): boolean {
   // A percent and a bare number are different quantities. "Right 74%" does not
   // state a gap of 74, and "Wants 1.6 more" does not state a rate.
   if (drawn.pct !== stated.pct) return false;
 
+  // A RATE is a share, so it is never negative. A headline stating `<−5%` or
+  // `−0%` is describing a rate that cannot exist, and the inequality branches
+  // below read `stated.value` without its sign — which is why this is checked
+  // here rather than folded into them.
+  if (drawn.pct && stated.sign < 0) return false;
+  // Nor above 100%. `<1%`'s mirror image, and the same class as the bound cases.
+  if (drawn.pct && stated.value > 100) return false;
+
   if (drawn.cmp !== null) {
-    // A BOUNDED rate is compared against its BOUND — the number inside the `<` or
-    // `>` that `pct` printed — and not against the rate itself. The page states an
-    // inequality, so a headline stating the same inequality states the same thing,
-    // and one stating a value strictly inside the bound states something weaker
-    // but not wrong (`0%` under `<1%`). A headline stating the bound with NO
-    // comparator states the value AT the bound, which the drawn inequality denies
-    // — that is 4172215626, and it is why `stated.cmp` is compared below rather
-    // than only its value here.
-    const inside = drawn.cmp === "<" ? stated.value < drawn.value : stated.value > drawn.value;
-    const atBound = Math.abs(stated.value - drawn.value) < 0.5;
-    if (!inside && !(atBound && stated.cmp === drawn.cmp)) return false;
+    // **A bounded rate is EVALUATED, not pattern-matched.** The question is
+    // whether the headline's claim is TRUE OF THE RATE THE BAR DRAWS, and the bar
+    // draws `drawn.rate` — which is why `DrawnBar` carries the rate and not only
+    // the bound. Three earlier shapes of this rule compared the drawn bound with
+    // the stated one, and each admitted a claim that is false of the rate:
+    //
+    //  - value-inside-bound accepted `<0%` under `<1%` (0 is inside 1) and
+    //    `>100%` under `>99%` (100 is outside 99, read as "more"). Both are
+    //    impossible for a share: a rate is never negative and never above 100%
+    //    (CodeRabbit review comment 4172902588).
+    //  - accepting the bound with the same direction accepted `<0%`, because
+    //    `<` matched `<`.
+    //  - accepting any bound that was not WEAKER accepted `<50%` under `<1%`,
+    //    which is a different rate entirely.
+    //
+    // So the stated figure is checked as a claim:
+    //
+    //  - **with the drawn comparator** — `<1%` — it must be TRUE of the rate,
+    //    which for a rate of 0.4 means the bound must exceed it.
+    //  - **with the other comparator** — `>0%` under a `<1%` bar — the rate is not
+    //    above the stated bound, so the claim is false. A share is never above
+    //    100%, which is why `>100%` is refused here rather than by a special case.
+    //  - **unsigned** — it must be inside the drawn bound at display precision,
+    //    which is what makes `0%` acceptable under `<1%` and `1%` not.
+    const rate = drawn.rate;
+    if (stated.cmp === drawn.cmp) {
+      const holds = drawn.cmp === "<" ? rate < stated.value : rate > stated.value;
+      if (!holds) return false;
+    } else if (stated.cmp !== null) {
+      // The opposite inequality, evaluated against the same rate.
+      const holds = stated.cmp === "<" ? rate < stated.value : rate > stated.value;
+      if (!holds) return false;
+    } else {
+      const inside = drawn.cmp === "<" ? stated.value < drawn.value : stated.value > drawn.value;
+      if (!inside) return false;
+    }
   } else if (drawn.pct) {
     // An unbounded RATE is compared at the display's own precision, and BOTH the
     // rounded and the floored value are reachable: `0.738` draws as `74%` and a
@@ -376,10 +423,14 @@ function denotes(drawn: StatedFigure, stated: StatedFigure): boolean {
     if (Math.round(stated.value * scale) !== Math.round(drawn.value * scale)) return false;
   }
 
-  // A boundary the writer states must agree with the drawn one, and a boundary
-  // with nothing to compare against is refused: `<2` on a chip that draws `2`
-  // narrows the claim, and this component cannot tell a hedge from a wrong number.
-  if (stated.cmp !== null && stated.cmp !== drawn.cmp) return false;
+  // A stated comparator on an UNBOUNDED drawn rate is refused outright: `<2` on a
+  // chip that draws `2` narrows the claim, and this component cannot tell a
+  // legitimate hedge from a wrong number. The bounded branch above has already
+  // handled the other direction, by evaluating the claim against the rate rather
+  // than requiring the symbols to match — which is why this is not simply
+  // `stated.cmp !== drawn.cmp`: that refused `>0%` under a `<1%` bar, which is a
+  // true statement about a rate of 0.4.
+  if (drawn.cmp === null && stated.cmp !== null) return false;
 
   // A gap's sign is the direction; a rate's is not (a rate has no direction).
   if (!drawn.pct && stated.sign !== 0 && stated.sign !== drawn.sign) return false;
@@ -430,10 +481,21 @@ export function headlineStatesFigure(text: string, signal: Signal, figure: numbe
  * keeping the second would cost prose for nothing.
  */
 export function figureRange(
-  text: string,
+  headline: string,
   signal: Signal,
   figure: number,
 ): { start: number; end: number } | null {
+  // **Offsets are into the TRIMMED headline**, because that is the string
+  // `clipHeadline` walks. The first version took the caller's text and returned
+  // offsets into it, and `clipHeadline` applied them to `text.trim()` — so a
+  // headline with a leading space had every offset shifted by one and the range
+  // could protect `tail` instead of `74%`, silently clipping away the figure the
+  // validator had just accepted (CodeRabbit review comment 4172902590).
+  //
+  // Trimming HERE is what makes the two agree, and `clipHeadline` trims the same
+  // way for the same reason. The alternative — passing the untrimmed string in and
+  // having the clipper re-derive the offset — is a second place to get it wrong.
+  const text = headline.trim();
   const drawn = drawnAs(signal, figure);
   const matches = [...text.matchAll(STATED_FIGURE)];
   for (let i = 0; i < matches.length; i++) {
