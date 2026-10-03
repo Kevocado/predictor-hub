@@ -14,6 +14,13 @@
  * `assertFixtureConsistency()` runs at load in insight.tsx and throws,
  * naming every problem, rather than rendering a mock that lies.
  */
+import type { Signal } from "../src";
+
+/** A percentage in the words a headline uses, not the `pct()` dash form. `pct()`
+ *  is for a live probability on a page, and it would turn the fixture's 0.6667
+ *  into "67%" here and again in the component — two formats for one number in
+ *  one file, which is how a mock starts disagreeing with the thing it mocks. */
+const pctWord = (p: number): string => `${Math.round(p * 100)}%`;
 
 export type Category =
   | "Anytime TD"
@@ -48,9 +55,23 @@ export const FIX = {
   recordHits: 11,
   recordSettled: 15,
   pick: "Green Bay",
-  /** The gap between the model's margin and the line, derived once. */
+  /** The gap between the model's margin and the line, in the home frame, derived
+   *  once. Signed: `-1.6` means the model's margin is 1.6 pts further in the home
+   *  team's favour than the line is. */
   get edge() {
     return Math.round((this.modelMargin - this.spreadLine) * 10) / 10;
+  },
+  /**
+   * The same gap as a MAGNITUDE — "the model wants N points more than the line".
+   *
+   * A separate getter rather than `Math.abs(edge)` at the call site, because the
+   * sign is a convention of the home frame and the magnitude is a different
+   * question, and a signal's `gap` is the magnitude: the chip signs it with
+   * `fmt.signed`, and a fixture that already carried the sign would render
+   * "+−1.6". The comment above `edge` says which is which.
+   */
+  get edgePts() {
+    return Math.abs(this.edge);
   },
 } as const;
 
@@ -119,7 +140,98 @@ export const CATEGORY_KIND: Record<Category, "probability" | "projection"> = {
   Rebounds: "projection",
 };
 
-/** The categories shown. ONE category per list. */
+/**
+ * The `Signal[]` this fixture feeds the shared `SignalRows` mocks.
+ *
+ * **Every figure here is read from `FIX` or derived from it**, the same rule the
+ * player lists follow, so a signal mock cannot disagree with the tiles about the
+ * same game. That is why `gap` is `FIX.edge` and not a retyped `1.6`.
+ *
+ * The `trust` row's rate is the one figure `FIX` does not already carry — a
+ * historical hit rate is not a property of this fixture — so it is declared here
+ * with its own bucket, and the `n` that goes with it, for the same reason
+ * `PLAYERS[].bucket` exists.
+ *
+ * `BUCKET` is exported because the below-floor case is this row with a smaller
+ * `n` and nothing else changed: a state of one fixture, not a second fixture.
+ */
+export const BUCKET = {
+  /** "at 60-70%" in the spec's own wording: the bucket this model's pick sits in. */
+  label: "60-70%",
+  /** The model's own probability for this fixture, which is what picks the bucket. */
+  model_prob: 0.66,
+  /** Hits over settled picks in that bucket. 5 of the 6 F1 buckets in the spike clear 30. */
+  hits: 42,
+  n: 61,
+} as const;
+
+/** The trust rate, as the spec's `trust` signal states it: a share, and the
+ *  arithmetic done ONCE here so the bar and the headline cannot disagree. */
+export const trustRate = BUCKET.hits / BUCKET.n;
+
+export const SIGNALS: Signal[] = [
+  {
+    kind: "trust",
+    sport: "nfl",
+    game_id: "401671829",
+    headline: {
+      // 12 words exactly, so the harness shows the rule's own boundary and the
+      // clipped case beside it is visibly a different thing.
+      text: `On ${pctWord(BUCKET.model_prob)} calls this model has been right ${pctWord(trustRate)} of the time.`,
+      // The figures the visual draws, plus the ones the headline only speaks.
+      // `rate` is what the bar's width is; `model_prob` is not drawn by any
+      // visual and exists so the headline's own number is in the payload.
+      figures: { rate: trustRate, model_prob: BUCKET.model_prob },
+    },
+    n: BUCKET.n,
+    source: `stored pre-kickoff picks, ${BUCKET.label} bucket`,
+    as_of: "2026-09-30",
+    strength: 0.8,
+    pre_kickoff_only: true,
+    visual: "reliability_bar",
+  },
+  {
+    kind: "line_gap",
+    sport: "nfl",
+    game_id: "401671829",
+    headline: {
+      text: `Model wants ${FIX.edgePts} more than the line.`,
+      // `FIX.edgePts` is the fixture's own derived gap as a magnitude, which is
+      // the tile's arithmetic (`modelMargin − spreadLine`) without the home
+      // frame's sign — see the two getters on `FIX`.
+      figures: { gap: FIX.edgePts, model_margin: FIX.modelMargin, line: FIX.spreadLine },
+    },
+    n: null,
+    source: `quoted spread at kickoff · ${FIX.home} ${FIX.spreadLine}`,
+    as_of: "2026-10-04T16:00:00Z",
+    strength: 0.6,
+    pre_kickoff_only: true,
+    visual: "delta_chip",
+  },
+];
+
+/** A headline over the cap, for the clipped state. Its `rate` is the SAME
+ *  `trustRate` as the row above: the point of the state is that clipping removes
+ *  words and never a figure. */
+export const LONG_HEADLINE_SIGNAL: Signal = {
+  ...SIGNALS[0],
+  headline: {
+    text: `On ${pctWord(BUCKET.model_prob)} calls this model has been right ${pctWord(trustRate)} of the time across every stored pre-kickoff pick in this bucket to date.`,
+    figures: SIGNALS[0].headline.figures,
+  },
+};
+
+/** The same trust row with `n` under the floor — 12 games, 8 right. A state, not
+ *  a second fixture: the rate and the text are derived from the same bucket. */
+export const BELOW_FLOOR_SIGNAL: Signal = {
+  ...SIGNALS[0],
+  n: 12,
+  headline: {
+    text: `On ${pctWord(BUCKET.model_prob)} calls this model has been right ${pctWord(8 / 12)} of the time.`,
+    figures: { rate: 8 / 12, model_prob: BUCKET.model_prob },
+  },
+};
+
 export const LISTS: { category: Category; keys: string[] }[] = [
   // Jacobs is in the Anytime-TD pool but OUT: ranked() drops him, which is
   // the point of the rule — an out player leaves the ranking entirely.
