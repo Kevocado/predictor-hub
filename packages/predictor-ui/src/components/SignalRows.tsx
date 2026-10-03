@@ -25,6 +25,12 @@
  * draws appears in the headline's words, and refuses the row when it does not**
  * (`HeadlineFigureMismatchError` — see `assertFigureIsStated`).
  *
+ * "Appears in the words" is decided by comparing NUMBERS, not by comparing words
+ * or strings — `headlineStatesFigure`, and the long history of why that is not a
+ * detail is on `STATED_FIGURE`. The three ways a figure can be stated wrongly
+ * that a string comparison gets wrong, each found by review against this code:
+ * `1%` is not `61%`; `<1%` is not `1%`; and `−1.6` is not `+1.6`.
+ *
  * Merging the two into one formatted string was considered and rejected: a
  * component that *parsed* its own headline to find the figure would make the
  * assertion vacuous — the number on the chip and the number in the sentence would
@@ -344,12 +350,30 @@ function denotes(drawn: StatedFigure, stated: StatedFigure): boolean {
     const inside = drawn.cmp === "<" ? stated.value < drawn.value : stated.value > drawn.value;
     const atBound = Math.abs(stated.value - drawn.value) < 0.5;
     if (!inside && !(atBound && stated.cmp === drawn.cmp)) return false;
-  } else {
-    // An unbounded rate is compared at the display's own precision, and BOTH the
+  } else if (drawn.pct) {
+    // An unbounded RATE is compared at the display's own precision, and BOTH the
     // rounded and the floored value are reachable: `0.738` draws as `74%` and a
-    // writer may say `73%`, which is the same rate at the precision shown.
-    const magnitudes = drawn.pct ? [Math.round(drawn.value), Math.floor(drawn.value)] : [drawn.value];
+    // writer may say `73%`, which is the same rate at the precision the page
+    // shows. `pct` prints whole percents, so one is the granularity.
+    const magnitudes = [Math.round(drawn.value), Math.floor(drawn.value)];
     if (!magnitudes.some((m) => Math.abs(m - stated.value) < 0.5)) return false;
+  } else {
+    // A GAP is compared at ITS OWN precision, which is one decimal: `fmt.signed`
+    // prints `+1.6` and never `+1.62`. Sharing the rate's whole-number tolerance
+    // here accepted `2` and `1.2` for a chip drawing `+1.6` (CodeRabbit review
+    // comment 4172337758) — the same defect as 4172215630, in the other
+    // direction: not the wrong sign but the wrong magnitude, and a headline
+    // claiming a 2.0-point gap beside a chip reading 1.6 is a wrong number on the
+    // page in exactly the way this file exists to prevent.
+    //
+    // **The tolerance is the DISPLAY's granularity, never a fudge factor.** It is
+    // derived from `fmt.signed` rather than written as `0.05`, because the rule
+    // being enforced is "the words state the figure the chip draws" and the chip's
+    // precision is defined by the formatter — a constant here would drift the day
+    // `signed` changes.
+    const decimals = (signed(drawn.value).split(".")[1] ?? "").length;
+    const scale = 10 ** decimals;
+    if (Math.round(stated.value * scale) !== Math.round(drawn.value * scale)) return false;
   }
 
   // A boundary the writer states must agree with the drawn one, and a boundary
@@ -369,6 +393,55 @@ function denotes(drawn: StatedFigure, stated: StatedFigure): boolean {
 export function headlineStatesFigure(text: string, signal: Signal, figure: number): boolean {
   const drawn = drawnAs(signal, figure);
   return statedFigures(text).some((stated) => denotes(drawn, stated));
+}
+
+/**
+ * Does the LAST figure in this text state the drawn one?
+ *
+ * A separate question from `headlineStatesFigure`, and the clipper needs this
+ * one. It walks a headline word by word asking whether a figure ENDS at this word
+ * (a comparator and its number may straddle a space — `below < 1%` — so the span
+ * it offers can be more than one word). If the span carries a figure anywhere,
+ * "any figure in the span" would keep `b c 74%` whole and drag two ordinary words
+ * in with it; the figure the span ends with is the one that starts at it.
+ *
+ * Without the distinction the two halves of this rule disagree: the validator
+ * accepts a headline because a figure appears SOMEWHERE in it, and the clipper
+ * then protects far more than that figure, which is prose the reader did not ask
+ * to keep.
+ */
+/**
+ * Where the drawn figure sits in this text, as character offsets into it.
+ *
+ * **A RANGE, and that is the third shape this question has taken.** It was first
+ * "which words state the figure" (a list), then "does this span state it" (a
+ * predicate), and both are the wrong interface: a predicate cannot say *which
+ * words* to keep, so the clipper had to re-derive it by asking about prefixes,
+ * and asking "does this span END with the figure" matches `b c 74%` — three words
+ * for a figure that is one (CodeRabbit review comment 4172337760 and the two
+ * regressions it produced, where the figure came out printed twice).
+ *
+ * A range says it exactly: the clipper keeps the words this range covers and
+ * nothing else. `below < 1%` is one range across two words because the scanner
+ * read it as one figure; `1.6` in `1.6 more` is one word because it is one.
+ *
+ * The FIRST figure in the text is the one returned, so a headline that states it
+ * twice protects the first occurrence — which is where the reader reads it, and
+ * keeping the second would cost prose for nothing.
+ */
+export function figureRange(
+  text: string,
+  signal: Signal,
+  figure: number,
+): { start: number; end: number } | null {
+  const drawn = drawnAs(signal, figure);
+  const matches = [...text.matchAll(STATED_FIGURE)];
+  for (let i = 0; i < matches.length; i++) {
+    if (denotes(drawn, statedFigures(text)[i])) {
+      return { start: matches[i].index, end: matches[i].index + matches[i][0].length };
+    }
+  }
+  return null;
 }
 
 /** A visual this package cannot draw. */
@@ -591,79 +664,83 @@ export function signalIsDrawn(signal: Signal, minN: number = SPEC_MIN_N): boolea
  * longer mentioned 74%: exactly the dishonesty the split `headline` exists to
  * make impossible, reintroduced by the cap.
  *
- * So the rule is now: **keep the first `max` ORDINARY words, plus every word
- * that states a protected figure, in document order.**
+ * So the rule is now: **keep the first `max` ORDINARY words, plus every word the
+ * drawn figure occupies, in document order.**
  *
- * **Protection is a PREDICATE, not a list of strings, and the caller supplies it
- * from the same rule the validator uses.** The first version took
- * `protectedWords: string[]` and normalised each side by stripping punctuation off
- * words, which produced five bugs across four review rounds: substring matching
- * let `1%` satisfy `61%` (4171835614); normalising one side only let `<1%` stop
- * matching itself (4171902960, 4171924918); stripping BOTH sides threw away the
- * boundary symbol so `1%` satisfied a `<1%` (4172215626); and whitespace
- * splitting left `74%—based` unrecognised so a headline plainly stating `74%` was
- * clipped away (4172215627). Every one of those is the same root cause — the unit
- * of comparison was the WORD, and a figure is not a word. It is the NUMBER now
- * (`STATED_FIGURE`), and this function asks the caller rather than re-deciding,
- * because "does this word state the drawn figure" has one answer in the package
- * and `headlineStatesFigure` is it.
+ * **Protection is a RANGE of character offsets, supplied by the caller, and this
+ * is the third interface this question has had.** That history is worth keeping
+ * because each shape failed in the same direction — it could say WHETHER the
+ * figure was stated but not WHICH WORDS to keep:
+ *
+ *  - a `protectedWords: string[]`, matched by stripping punctuation off each
+ *    word. Substring matching let `1%` satisfy `61%` (4171835614); normalising one
+ *    side only let `<1%` stop matching itself (4171902960, 4171924918); stripping
+ *    both threw the boundary away so `1%` satisfied `<1%` (4172215626); and
+ *    splitting on whitespace left `74%—based` unrecognised so a headline plainly
+ *    stating `74%` was clipped away (4172215627). Root cause of all four: the unit
+ *    was the WORD, and a figure is not a word.
+ *  - a PREDICATE over spans of up to three words, which fixed the straddling case
+ *    but could not say which words the figure covered — so the clipper asked about
+ *    prefixes of itself and kept `b c 74%` whole (4172337760), and a scan that
+ *    resumed one word at a time re-found the same figure and printed it twice.
+ *
+ * A range says exactly which characters are the figure, so the clipper keeps the
+ * words those characters sit in and re-derives nothing. It is built by
+ * `figureRange` from the same `denotes` the validator uses, which is what makes
+ * the two halves of this rule one rule: the validator asks "does the headline
+ * state the figure at all", the clipper asks "which words is it".
  *
  * **And the figure being protected must be one the headline actually stated.**
- * That is checked BEFORE this runs, by `signalIsDrawn` → `assertFigureIsStated`,
- * so the predicate is never vacuous in a row that reaches the screen: a row whose
- * words omit the figure is refused rather than clipped. The two are one rule in
- * two halves — the clipper keeps a stated figure from being clipped away, and the
- * validator stops an unstated one from being drawn.
+ * `signalIsDrawn` → `assertFigureIsStated` runs first, so the range is never null
+ * for a row that reaches the screen: a row whose words omit the figure is refused
+ * rather than clipped.
  *
- * **THREE forms are protected for a rate, because `fmt.pct` has boundaries.** At
- * `p <= 0.005` it prints `<1%` and at `p >= 0.995` it prints `>99%`, never `0%`
- * and `100%`. A headline is written in plain words, so it can say `0%`, `100%`,
- * `+1%` or `<1%` where the formatter says something else, and protecting only
- * `pct(figure)` would leave the boundary rate as the one thing the clip removes.
- * `pct(figure)`, the rounded percent and the floored percent are all protected,
- * and BOTH sides of the comparison are normalised — a leading `+`, `−`, `<`, `>`
- * and any trailing punctuation are dropped — so a `<1%` in the text matches a
- * protected `<1%` instead of stripping one side only (CodeRabbit review comments
- * 4171835614 and 4171902960).
- *
- * The match is on a WHOLE word, never a substring: protecting `1%` must not also
- * protect `61%`, which would keep a clause unrelated to the figure and could
- * still drop the one that carries it. `norm` strips surrounding punctuation, so
- * `(74%`, `74%)` and `74%.` are all the protected word; it can over-protect, which
- * costs a little prose, and that is the safe direction — under-protecting is the
- * defect this rule exists to prevent.
- *
- * **What is given up.** A clipped row can exceed `max` words, so the cap is
- * "12 ordinary words" rather than "12 words", and a headline that names its
- * figure on every one of forty words stays forty words long. That is an adapter
- * copy bug rather than something this component can repair, and `data-clipped`
- * is the signal for it — the fix is the adapter's shorter wording.
- *
- * **What would make this a refusal instead: a NEGATION.** "Out: J. Jacobs is
- * **not** projected" clipped to "Out: J. Jacobs is" inverts the claim, and no
- * amount of figure-protection helps. None of the four spec §4 signals can produce
- * one from their own fields — `kind` says which claim a row is making — so it is
- * not reachable here. The note is here so the next person checks it before
- * adding a `kind` that can.
+ * **Where the cap sits.** The cap is on the sentence AROUND the figure, so a
+ * clipped row can exceed `max` words, and a headline that names its figure on
+ * every one of forty words stays forty words long. That is an adapter copy bug
+ * with an adapter fix, and `data-clipped` is the signal for it. The words BESIDE a
+ * protected figure are ordinary and spend the budget like any other — pinned by a
+ * test, because an earlier interface swept them in.
  */
 export function clipHeadline(
   text: string,
   max: number = MAX_HEADLINE_WORDS,
-  isProtected: (word: string) => boolean = () => false,
+  keep?: { start: number; end: number } | null,
 ): { text: string; clipped: boolean } {
   const trimmed = text.trim();
   const words = trimmed.split(/\s+/).filter(Boolean);
   if (words.length <= max) return { text: trimmed, clipped: false };
+
+  // Which words does the protected range touch? Character offsets become word
+  // indices ONCE here, so the clipper never re-asks what the figure is — that was
+  // the defect in the two previous interfaces, where it asked about prefixes of
+  // itself and kept `b c 74%` whole for a figure that is one word.
+  //
+  // Overlap rather than containment, because the range can start INSIDE a word
+  // when an adapter writes `74%—based`, and because a two-word figure
+  // (`below < 1%`) must keep both of its words.
+  const protectedWords = new Set<number>();
+  if (keep) {
+    // `trimmed` is what the offsets are into, so this walks that same string.
+    let at = 0;
+    for (let i = 0; i < words.length; i++) {
+      const start = trimmed.indexOf(words[i], at);
+      const end = start + words[i].length;
+      if (start < keep.end && end > keep.start) protectedWords.add(i);
+      at = end;
+    }
+  }
+
   const kept: string[] = [];
   let ordinary = 0;
-  for (const word of words) {
-    // A protected word is kept wherever it is and does not spend the budget: the
-    // cap is on the sentence AROUND the figure, not on the figure.
-    if (isProtected(word)) {
-      kept.push(word);
+  for (let i = 0; i < words.length; i++) {
+    if (protectedWords.has(i)) {
+      // A protected figure is kept wherever it is and does not spend the budget:
+      // the cap is on the sentence AROUND the figure, not on the figure.
+      kept.push(words[i]);
       continue;
     }
-    if (ordinary < max) kept.push(word);
+    if (ordinary < max) kept.push(words[i]);
     ordinary++;
   }
   return { text: kept.join(" "), clipped: ordinary > max };
@@ -710,7 +787,10 @@ function SignalRow({ signal, rowId }: { signal: Signal; rowId: string }) {
   const { text, clipped } = clipHeadline(
     signal.headline.text,
     MAX_HEADLINE_WORDS,
-    (word) => headlineStatesFigure(word, signal, figure),
+    // The RANGE of the drawn figure, so the clipper keeps the words it covers and
+    // re-derives nothing. `assertFigureIsStated` has already established that one
+    // exists, so this is never null for a row that reaches the screen.
+    figureRange(signal.headline.text, signal, figure),
   );
 
   return (

@@ -24,12 +24,28 @@ import {
   SignalFigureError,
   HeadlineFigureMismatchError,
   headlineStatesFigure,
+  figureRange,
   type Signal,
 } from "./SignalRows";
 
 /** Spec §4's `trust`: the model says ~72%, and on this bucket it has been
  *  right 74% of the time. Every figure is stated in the headline's own words as
  *  well as carried in `figures`, which is the property case 4 asserts. */
+/**
+ * The character RANGE of `needle` inside `text` — the shape `clipHeadline` takes,
+ * and the third this question has taken (a list of words, then a predicate over
+ * spans, now a range). A range says which CHARACTERS are the figure, so the
+ * clipper keeps exactly the words those characters sit in; a predicate had to
+ * re-derive that and kept `b c 74%` whole for a figure occupying one word.
+ *
+ * `(?<!\\d.)` on the left is what keeps `1%` from matching inside `61%`.
+ */
+const rangeOf = (text: string, needle: string): { start: number; end: number } | null => {
+  const escaped = needle.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");
+  const m = new RegExp(`(?<![\\d.])${escaped}`).exec(text);
+  return m ? { start: m.index, end: m.index + m[0].length } : null;
+};
+
 const trust = (over: Partial<Signal> = {}): Signal => ({
   kind: "trust",
   sport: "nfl",
@@ -323,11 +339,67 @@ describe("4 · the figures drawn are the figures the headline states", () => {
     }
   });
 
+    const bar = (rate: number) => trust({ headline: { text: "", figures: { rate } } });
+    const chip = (gap: number) => lineGap({ headline: { text: "", figures: { gap } } });
+
+  it("figureRange finds the figure's CHARACTERS, and the clipper keeps those words", () => {
+    // 4172337760: a comparator and its number can straddle a space, so the range
+    // must cover both words — and it must cover nothing else.
+    //
+    // Asserted by slicing rather than by exact offsets: `STATED_FIGURE` consumes
+    // the whitespace before a number, so a range may start a character early, and
+    // pinning `10`/`13` would test that detail rather than the property. What
+    // matters is which CHARACTERS the range covers, and the slice states it.
+    const covers = (text: string, range: { start: number; end: number } | null) =>
+      range ? text.slice(range.start, range.end).trim() : null;
+    expect(covers("was right 74% of the time", figureRange("was right 74% of the time", bar(0.738), 0.738)))
+      .toBe("74%");
+    expect(covers("below < 1% of the time", figureRange("below < 1% of the time", bar(0.004), 0.004)))
+      .toBe("< 1%");
+    expect(covers("wants 1.6 more", figureRange("wants 1.6 more", chip(1.6), 1.6))).toBe("1.6");
+    // A figure glued to a word by an em dash: the range covers the figure and the
+    // word it sits in is protected, which is what the 4172215627 case needs.
+    expect(covers("was 74%—based here", figureRange("was 74%—based here", bar(0.738), 0.738)))
+      .toBe("74%");
+    // No figure at all, and the wrong one: no range, so nothing is protected.
+    expect(figureRange("was right 61% of the time", bar(0.738), 0.738)).toBeNull();
+    expect(figureRange("nothing numeric here", bar(0.738), 0.738)).toBeNull();
+    // The FIRST occurrence, which is where a reader meets it.
+    const twice = "74% at first and 74% again";
+    expect(figureRange(twice, bar(0.738), 0.738)).toEqual({ start: 0, end: 3 });
+  });
+
+  it("clips a straddling comparator figure, keeping both its words", () => {
+    // The component-level half of 4172337760: through the real clipper, where the
+    // figure sits PAST the budget and must survive as two words.
+    const late =
+      "Across every stored pre-kickoff pick this season the model was right " +
+      "below < 1% of the time in this bucket of settled games and its margin";
+    const { unmount } = render(
+      <SignalRows signals={[trust({ n: 42, headline: { text: late, figures: { rate: 0.004 } } })]} />,
+    );
+    const headline = screen.getByTestId("signal-headline");
+    expect(headline).toHaveAttribute("data-clipped", "true");
+    expect(headline.textContent).toContain("< 1%");
+    unmount();
+  });
+
+  it("does not sweep the words AROUND a protected figure in with it", () => {
+    // The regression the range interface exists to prevent: a predicate asked
+    // about prefixes kept `b c 74%` whole, and a scan that did not resume after a
+    // match printed the figure twice.
+    const text = "alpha beta gamma 74% delta epsilon";
+    const out = clipHeadline(text, 2, rangeOf(text, "74%"));
+    // Two ordinary words, the figure, and nothing after it: the words BESIDE the
+    // figure are ordinary and spend the budget like any other.
+    expect(out.text).toBe("alpha beta 74%");
+    // With room for them, they are kept — protection is not what excluded them.
+    expect(clipHeadline(text, 4, rangeOf(text, "74%")).text).toBe("alpha beta gamma 74% delta");
+  });
+
   it("figureForms and headlineStatesFigure, as functions", () => {
     // `0.738` draws at 74% (`pct`) and floors to 73%, and both are accepted
     // because a headline at that boundary legitimately says either. Asserted
-    const bar = (rate: number) => trust({ headline: { text: "", figures: { rate } } });
-    const chip = (gap: number) => lineGap({ headline: { text: "", figures: { gap } } });
     const says = (text: string, s: Signal, figure: number) => headlineStatesFigure(text, s, figure);
 
     // The ordinary middle: `pct` rounds to 74% and a writer may say 73%.
@@ -374,6 +446,23 @@ describe("4 · the figures drawn are the figures the headline states", () => {
     expect(says("wants \u22121.6 more", chip(1.6), 1.6)).toBe(false);
     expect(says("wants \u22121.6 more", chip(-1.6), -1.6)).toBe(true);
     expect(says("wants +1.6 more", chip(-1.6), -1.6)).toBe(false);
+    // 4172337758: a gap is compared at the DISPLAY's precision, which is one
+    // decimal because `fmt.signed` prints `+1.6` and never `+1.62`. The
+    // whole-percent tolerance the rate path uses accepted "wants 2 more" and
+    // "wants 1.2 more" here — the same wrong-number defect as 4172215630, in the
+    // other direction: not the wrong sign but the wrong magnitude.
+    expect(says("wants 2 more", chip(1.6), 1.6)).toBe(false);
+    expect(says("wants 1.2 more", chip(1.6), 1.6)).toBe(false);
+    // 1.65 does NOT state 1.6: it rounds to 1.7 at the display's precision, and the
+    // chip draws 1.6. Asserted because "round both sides" is the tempting fix and
+    // it would accept this.
+    expect(says("wants 1.65 more", chip(1.6), 1.6)).toBe(false);
+    expect(says("wants 1.7 more", chip(1.6), 1.6)).toBe(false);
+    expect(says("wants 15 more", chip(14), 14)).toBe(false);
+    expect(says("wants 14 more", chip(14), 14)).toBe(true); // a whole gap is fine
+    // The rate path keeps its own tolerance, which is what makes this a finding
+    // about GAPS specifically: 73% still states 0.738, and 1% does not state 1.6.
+    expect(says("right 73% here", bar(0.738), 0.738)).toBe(true);
     // A rate has no direction, so a sign on it is not a contradiction.
     expect(says("right +74% here", bar(0.738), 0.738)).toBe(true);
   });
@@ -642,7 +731,7 @@ it("matches a figure wrapped in OPENING punctuation, past the cap", () => {
 it("counts the cap on ordinary words, so a protected one does not spend it", () => {
     // The stated cost: a clipped row may exceed 12 words, and the cap is on the
     // sentence around the figure rather than on the figure.
-    const out = clipHeadline("a b c 74% d e f g h i j k l m n", 4, (w) => w.includes("74%"));
+    const out = clipHeadline("a b c 74% d e f g h i j k l m n", 4, rangeOf("a b c 74% d e f g h i j k l m n", "74%"));
     expect(out.clipped).toBe(true);
     expect(out.text.split(/\s+/)).toHaveLength(5);
     expect(out.text).toContain("74%");
@@ -655,33 +744,32 @@ it("counts the cap on ordinary words, so a protected one does not spend it", () 
     expect(clipHeadline("  a  b  ")).toEqual({ text: "a  b", clipped: false });
     expect(clipHeadline("")).toEqual({ text: "", clipped: false });
     expect(clipHeadline("a b c", 2)).toEqual({ text: "a b", clipped: true });
-    // Protection is a PREDICATE the caller supplies, so these cases exercise the
-    // clipper's own arithmetic (which words are kept, in what order) rather than
-    // how a figure is recognised — that is `headlineStatesFigure`'s test above,
-    // and `SignalRow` wires the two together.
-    // With no predicate this is the plain 12-word clip it has always been.
-    expect(clipHeadline("a b 74% c", 2, (w) => w.includes("74%"))).toEqual({ text: "a b 74%", clipped: true });
+    // Protection is a RANGE the caller supplies, so these cases exercise the
+    // clipper's own arithmetic (which words a range covers, in what order) rather
+    // than how a figure is recognised — that is `headlineStatesFigure` and
+    // `figureRange`, and `SignalRow` wires the three together.
+    // With no range this is the plain 12-word clip it has always been.
+    expect(clipHeadline("a b 74% c d", 2, rangeOf("a b 74% c d", "74%"))).toEqual({ text: "a b 74%", clipped: true });
     // A protected form that appears nowhere drops nothing and changes nothing.
-    expect(clipHeadline("a b c d", 2, (w) => w.includes("99%"))).toEqual({ text: "a b", clipped: true });
+    expect(clipHeadline("a b c d", 2, rangeOf("a b c d", "99%"))).toEqual({ text: "a b", clipped: true });
     // Surrounding punctuation is not part of the figure, so a sentence-final
     // "74%." is still the protected word.
-    expect(clipHeadline("a b 74%. c d", 2, (w) => w.startsWith("74%"))).toEqual({ text: "a b 74%.", clipped: true });
+    expect(clipHeadline("a b 74%. c d", 2, rangeOf("a b 74%. c d", "74%"))).toEqual({ text: "a b 74%.", clipped: true });
     // A PARENTHESIS closes too, which is the shape a "(74% of 61 games)" aside
     // takes.
-    expect(clipHeadline("a b 74%) d e", 2, (w) => w.startsWith("74%"))).toEqual({ text: "a b 74%)", clipped: true });
-    // The predicate is asked about the raw word, so it sees whatever the writer
-    // typed. That is the whole point of the change: recognising a figure is
-    // `headlineStatesFigure`'s job and it scans the text for NUMBERS rather than
-    // normalising words.
-    expect(clipHeadline("a b +1.6 d e", 2, (w) => w === "+1.6")).toEqual({ text: "a b +1.6", clipped: true });
-    expect(clipHeadline("a b <1% d e", 2, (w) => w === "<1%")).toEqual({ text: "a b <1%", clipped: true });
-    expect(clipHeadline("a b <1% d e", 2, (w) => w.includes("1%"))).toEqual({ text: "a b <1%", clipped: true });
-    expect(clipHeadline("a b −2.5 d e", 2, (w) => w.includes("2.5"))).toEqual({ text: "a b −2.5", clipped: true });
+    expect(clipHeadline("a b 74%) d e", 2, rangeOf("a b 74%) d e", "74%"))).toEqual({ text: "a b 74%)", clipped: true });
+    // The range is over CHARACTERS, so a figure glued to punctuation keeps the word
+    // it sits in whatever that punctuation is — recognising a figure is
+    // `figureRange`'s job and it scans for NUMBERS rather than normalising words.
+    expect(clipHeadline("a b +1.6 d e", 2, rangeOf("a b +1.6 d e", "1.6"))).toEqual({ text: "a b +1.6", clipped: true });
+    expect(clipHeadline("a b <1% d e", 2, rangeOf("a b <1% d e", "1%"))).toEqual({ text: "a b <1%", clipped: true });
+    expect(clipHeadline("a b <1% d e", 2, rangeOf("a b <1% d e", "1%"))).toEqual({ text: "a b <1%", clipped: true });
+    expect(clipHeadline("a b −2.5 d e", 2, rangeOf("a b −2.5 d e", "2.5"))).toEqual({ text: "a b −2.5", clipped: true });
     // An opening bracket is not part of the figure, so a predicate reading the
     // raw word still recognises `(74%` — the scanner in `headlineStatesFigure`
     // is what makes that work, and 4171924918 is what asked for it.
-    expect(clipHeadline("a b (74% d e", 2, (w) => w.includes("74%"))).toEqual({ text: "a b (74%", clipped: true });
-    expect(clipHeadline("a b [74%] d e", 2, (w) => w.includes("74%"))).toEqual({ text: "a b [74%]", clipped: true });
+    expect(clipHeadline("a b (74% d e", 2, rangeOf("a b (74% d e", "74%"))).toEqual({ text: "a b (74%", clipped: true });
+    expect(clipHeadline("a b [74%] d e", 2, rangeOf("a b [74%] d e", "74%"))).toEqual({ text: "a b [74%]", clipped: true });
     // Whitespace-delimited, so a decimal is one word to a reader.
     expect(clipHeadline("Model margin −6.1 vs line −4.5", 4)).toEqual({
       text: "Model margin −6.1 vs",
