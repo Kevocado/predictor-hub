@@ -244,8 +244,19 @@ type DrawnBar = StatedFigure & { rate: number };
  *
  * Non-figure text is simply not matched and is therefore ignored, which is what
  * lets "Right 74%—based on 42 games" pass and "42 games" alone not count.
+ *
+ * **The sign is `+`, U+2212 or a hyphen-minus, and it is glued to its digits.**
+ * An en dash and an em dash are typography, not arithmetic: with either in the
+ * class, "a 5—3 record" parsed as a negative three and "a — 42 point swing"
+ * parsed as −42, so a correct headline was refused because the figure it plainly
+ * stated had been read with a sign nobody wrote. Removing them costs nothing —
+ * no writer types an em dash to mean minus — and `\s*` between sign and digits
+ * goes with them, because a spaced hyphen is a dash in prose ("Right — 74%"),
+ * not a negative. The remaining three marks are unambiguous and always sit
+ * against the number: `+1.6`, `−1.6`, `-1.6`.
  */
-const STATED_FIGURE = /([<>])\s*([+−–—-]?)\s*(\d+(?:\.\d+)?)\s*(%?)|([+−–—-]?)\s*(\d+(?:\.\d+)?)\s*(%?)/g;
+const STATED_FIGURE =
+  /([<>])\s*([+−-]?)(\d+(?:\.\d+)?)\s*(%?)|([+−-]?)(\d+(?:\.\d+)?)\s*(%?)/g;
 
 /** Every number in `text`, in order. */
 function statedFigures(text: string): StatedFigure[] {
@@ -428,9 +439,22 @@ function denotes(drawn: DrawnBar, stated: StatedFigure): boolean {
     // being enforced is "the words state the figure the chip draws" and the chip's
     // precision is defined by the formatter — a constant here would drift the day
     // `signed` changes.
+    // **Both sides go through `toFixed`, because `toFixed` is what `fmt.signed`
+    // uses to draw the chip**, AND the stated value must ROUND-TRIP at that
+    // precision. Two separate requirements, and dropping the second is the trap
+    // the suite already guards: rounding both sides alone makes `1.65` beside a
+    // `+1.6` chip compare as `1.6 === 1.6` and be ACCEPTED, when `1.65` is a
+    // different figure wearing more decimals than the page shows. The
+    // round-trip is what keeps it a different figure.
+    //
+    // Rounding with `Math.round` instead was the bug: `signed(1.65)` prints
+    // `+1.6` (1.65 sits below 1.65 in binary) while `Math.round(1.65 * 10)` is
+    // 17, so a headline copying the chip's own `+1.6` was refused for failing to
+    // match a chip reading `+1.6` — the figure disagreeing with itself.
     const decimals = (signed(drawn.value).split(".")[1] ?? "").length;
-    const scale = 10 ** decimals;
-    if (Math.round(stated.value * scale) !== Math.round(drawn.value * scale)) return false;
+    const atDisplay = Number(stated.value.toFixed(decimals));
+    if (atDisplay !== stated.value) return false;
+    if (atDisplay !== Number(signed(drawn.value))) return false;
   }
 
   // A stated comparator on an UNBOUNDED drawn rate is refused outright: `<2` on a

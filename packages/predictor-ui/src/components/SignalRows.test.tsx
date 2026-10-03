@@ -12,7 +12,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { pct } from "../fmt";
+import { pct, signed } from "../fmt";
 import {
   SignalRows,
   SPEC_MIN_N,
@@ -956,5 +956,49 @@ describe("the row paints only tokens this package defines", () => {
     for (const family of ALL.filter((f) => !WEIGHTS_AND_SIZES.has(f))) {
       expect(["pr-display", "pr-body"], `font-${family} is not a family tokens.css declares`).toContain(family);
     }
+  });
+});
+// Two defects a fresh review round found in the figure scanner and the gap
+// comparison. Both made a CORRECT headline get refused, which is a false
+// negative in the one direction this component cannot afford to be wrong in
+// either — it reads as "the headline is wrong" when the headline is right.
+describe("a correct headline is not refused by typography or by rounding", () => {
+  const chip = (gap: number) => lineGap({ headline: { text: "", figures: { gap } } });
+  const bar = (rate: number) => trust({ headline: { text: "", figures: { rate } } });
+  const says = (text: string, s: Signal, figure: number) => headlineStatesFigure(text, s, figure);
+
+  it("reads an en dash and an em dash as punctuation, not as a minus sign", () => {
+    // "— 42" must state 42. With an en/em dash in the sign class this parsed as
+    // −42, the figure the text plainly states was lost, and the headline was
+    // refused for disagreeing with itself.
+    expect(says("A — 42 point swing", chip(42), 42)).toBe(true);
+    expect(says("A – 42 point swing", chip(42), 42)).toBe(true);
+    // A range is two figures, not a negative.
+    expect(says("A 5—3 record and a 42 point swing", chip(42), 42)).toBe(true);
+    // A spaced hyphen is a dash in prose. "Right — 74%" states 74%, not −74%.
+    expect(says("Right — 74% of 42 games", bar(0.74), 0.74)).toBe(true);
+  });
+
+  it("still reads a genuine minus sign as a minus sign", () => {
+    // Dropping the en/em dashes must not cost the three marks that really are
+    // signs, and must not cost the sign MISMATCH check either.
+    expect(says("Wants −1.6 fewer", chip(-1.6), -1.6)).toBe(true);
+    expect(says("Wants -1.6 fewer", chip(-1.6), -1.6)).toBe(true);
+    expect(says("Wants +1.6 more", chip(1.6), 1.6)).toBe(true);
+    // A chip drawing +1.6 is still contradicted by a headline claiming −1.6.
+    expect(says("Wants −1.6 more", chip(1.6), 1.6)).toBe(false);
+  });
+
+  it("accepts the chip's own rendered value at a binary half-way", () => {
+    // `signed(1.65)` prints `+1.6`, because 1.65 sits below 1.65 in binary. The
+    // chip therefore draws +1.6, and a headline stating 1.6 must be accepted.
+    // Comparing with `Math.round` compared 16 against 17 and refused the chip's
+    // own figure.
+    expect(signed(1.65)).toBe("+1.6");
+    expect(says("Wants 1.6 more", chip(1.65), 1.65)).toBe(true);
+    // The mirror: stated 1.65 against a chip drawing +1.6 is a DIFFERENT figure
+    // wearing more decimals, and stays refused (asserted above at the tolerance
+    // test; repeated here so the rounding fix cannot quietly undo it).
+    expect(says("Wants 1.65 more", chip(1.6), 1.6)).toBe(false);
   });
 });
