@@ -418,6 +418,30 @@ it("matches a SIGNED figure in the text against an unsigned protected form", () 
   expect(screen.getByTestId("signal-delta")).toHaveTextContent("+1.6");
 });
 
+// RED-CHECK: `norm` stripping no leading punctuation —
+// "2 failed | 43 passed (45)".
+it("matches a figure wrapped in OPENING punctuation, past the cap", () => {
+  // CodeRabbit review comment 4171924918: `norm("(74%")` returned `(74%` while the
+  // protected form normalised to `74%`, so the drawn figure was clipped away.
+  const late =
+    "Across every stored pre-kickoff pick this season the model has been right " +
+    "(74% of the time in this bucket of settled games) with the margin called";
+  const { unmount } = render(
+    <SignalRows signals={[trust({ headline: { text: late, figures: { rate: 0.738 } } })]} />,
+  );
+  const headline = screen.getByTestId("signal-headline");
+  expect(headline).toHaveAttribute("data-clipped", "true");
+  expect(headline.textContent).toContain("74%");
+  unmount();
+
+  // And through the real component, where the protected forms are the drawn ones.
+  const { unmount: u2 } = render(
+    <SignalRows signals={[lineGap({ headline: { text: "Across this season the model wanted (1.6 more than the market line every week.", figures: { gap: 1.6 } } })]} />,
+  );
+  expect(screen.getByTestId("signal-headline").textContent).toContain("1.6");
+  u2();
+});
+
 it("counts the cap on ordinary words, so a protected one does not spend it", () => {
     // The stated cost: a clipped row may exceed 12 words, and the cap is on the
     // sentence around the figure rather than on the figure.
@@ -453,6 +477,12 @@ it("counts the cap on ordinary words, so a protected one does not spend it", () 
     expect(clipHeadline("a b <1% d e", 2, ["<1%"])).toEqual({ text: "a b <1%", clipped: true });
     expect(clipHeadline("a b <1% d e", 2, ["1%"])).toEqual({ text: "a b <1%", clipped: true });
     expect(clipHeadline("a b −2.5 d e", 2, ["−2.5"])).toEqual({ text: "a b −2.5", clipped: true });
+    // An OPENING bracket is punctuation too, and CodeRabbit review comment
+    // 4171924918 is right that `(74%` is the figure: `norm` strips the `(` from the
+    // token while the protected form had no `(` to lose, so the drawn figure
+    // stopped matching itself.
+    expect(clipHeadline("a b (74% d e", 2, ["74%"])).toEqual({ text: "a b (74%", clipped: true });
+    expect(clipHeadline("a b [74%] d e", 2, ["74%"])).toEqual({ text: "a b [74%]", clipped: true });
     // Whitespace-delimited, so a decimal is one word to a reader.
     expect(clipHeadline("Model margin −6.1 vs line −4.5", 4)).toEqual({
       text: "Model margin −6.1 vs",

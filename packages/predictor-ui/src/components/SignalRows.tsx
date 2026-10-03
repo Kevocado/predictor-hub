@@ -332,9 +332,10 @@ export function signalIsDrawn(signal: Signal, minN: number = SPEC_MIN_N): boolea
  *
  * The match is on a WHOLE word, never a substring: protecting `1%` must not also
  * protect `61%`, which would keep a clause unrelated to the figure and could
- * still drop the one that carries it. `norm` is lossy in one direction only — it
- * removes a sign and a boundary symbol, and neither is part of the number — so it
- * cannot make two different figures compare equal.
+ * still drop the one that carries it. `norm` strips surrounding punctuation, so
+ * `(74%`, `74%)` and `74%.` are all the protected word; it can over-protect, which
+ * costs a little prose, and that is the safe direction — under-protecting is the
+ * defect this rule exists to prevent.
  *
  * **What is given up.** A clipped row can exceed `max` words, so the cap is
  * "12 ordinary words" rather than "12 words", and a headline that names its
@@ -370,12 +371,17 @@ export function clipHeadline(
   // kept its own, so the drawn boundary rate stopped matching itself. Same for a
   // signed `+1.6` in the text against an unsigned protected `1.6`.
   //
-  // `norm` therefore drops a LEADING sign and a leading boundary symbol, and any
-  // trailing punctuation, and leaves the digits, decimal point and `%` alone —
-  // so it is lossy in the one direction only: it never turns two different
-  // figures into one, because a sign and a boundary symbol are the only things it
-  // removes and neither is part of the number.
-  const norm = (w: string) => w.trim().replace(/^[+\-−<>≤≥≈]+/, "").replace(/[^\w%]+$/, "");
+  // `norm` therefore strips surrounding punctuation — a leading sign or boundary
+  // symbol or open bracket, and any trailing punctuation — and leaves digits, the
+  // decimal point and `%` alone.
+  //
+  // **It can over-protect, and that is the direction that is safe.** Dropping the
+  // sign means a headline containing both `+1.6` and `−1.6` would protect both,
+  // so a row could keep a word it did not need to. Keeping too much prose is a
+  // cosmetic cost; keeping too little is the honesty defect this whole rule
+  // exists to prevent. The alternative — keeping the sign, so only `+1.6` matches
+  // an unsigned `1.6` — is what 4171902960 was about, and it fails the wrong way.
+  const norm = (w: string) => w.trim().replace(/^[^\w.%]+/, "").replace(/[^\w%]+$/, "");
   const marks = new Set(protectedWords.filter(Boolean).map(norm));
   const protectedIndex = (word: string): boolean => marks.has(norm(word));
   const kept: string[] = [];
