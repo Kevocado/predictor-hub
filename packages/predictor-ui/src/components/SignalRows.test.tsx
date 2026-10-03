@@ -467,9 +467,9 @@ describe("4 · the figures drawn are the figures the headline states", () => {
     expect(says("wants +1.6 more", chip(-1.6), -1.6)).toBe(false);
     // 4172337758: a gap is compared at the DISPLAY's precision, which is one
     // decimal because `fmt.signed` prints `+1.6` and never `+1.62`. The
-    // whole-percent tolerance the rate path uses accepted "wants 2 more" and
-    // "wants 1.2 more" here — the same wrong-number defect as 4172215630, in the
-    // other direction: not the wrong sign but the wrong magnitude.
+    // whole-percent tolerance the rate path used to carry accepted "wants 2 more"
+    // and "wants 1.2 more" here — the same wrong-number defect as 4172215630, in
+    // the other direction: not the wrong sign but the wrong magnitude.
     expect(says("wants 2 more", chip(1.6), 1.6)).toBe(false);
     expect(says("wants 1.2 more", chip(1.6), 1.6)).toBe(false);
     // 1.65 does NOT state 1.6: it rounds to 1.7 at the display's precision, and the
@@ -479,8 +479,9 @@ describe("4 · the figures drawn are the figures the headline states", () => {
     expect(says("wants 1.7 more", chip(1.6), 1.6)).toBe(false);
     expect(says("wants 15 more", chip(14), 14)).toBe(false);
     expect(says("wants 14 more", chip(14), 14)).toBe(true); // a whole gap is fine
-    // The rate path keeps its own tolerance, which is what makes this a finding
-    // about GAPS specifically: 73% still states 0.738, and 1% does not state 1.6.
+    // The rate path keeps its own half of the rule, which is what makes this a
+    // finding about GAPS specifically: 73% still states 0.738, and 1% does not
+    // state 1.6.
     expect(says("right 73% here", bar(0.738), 0.738)).toBe(true);
     // A rate has no direction, so a sign on it is not a contradiction.
     expect(says("right +74% here", bar(0.738), 0.738)).toBe(true);
@@ -515,6 +516,87 @@ describe("4 · the figures drawn are the figures the headline states", () => {
     expect(says("Right >99.5% here", bar(0.996), 0.996)).toBe(true);
     // And the identical inequality is the identical claim.
     expect(says("Right <1% here", bar(0.004), 0.004)).toBe(true);
+  });
+
+  // RED-CHECK: the candidate lines reverted to
+  // `[Math.round(drawn.value), Math.floor(drawn.value)]` with `|m - stated| < 0.5`
+  // — the three tests below are "3 failed | 61 passed (64)" in this file.
+  it("a rate is matched at the figure the BAR DRAWS, not within half a point of it", () => {
+    const says = (text: string, rate: number) => headlineStatesFigure(text, bar(rate), rate);
+
+    // **Binary noise in the CANDIDATE SET.** `0.29 * 100` is 28.999999999999996,
+    // so flooring the float offered 28 as a figure the bar does not draw: a
+    // headline saying 28% beside a bar reading 29% was ACCEPTED. The page prints
+    // `pct(0.29)` = "29%", and the candidate has to come from that string — the
+    // same reason `drawnAs` reads the comparator and bound back out of `pct`.
+    expect(pct(0.29)).toBe("29%");
+    expect(says("Right 29% here", 0.29)).toBe(true);
+    expect(says("Right 28% here", 0.29)).toBe(false);
+
+    // **The tolerance was half a percentage point wide.** At 0.738 the bar draws
+    // 74%, and `|74 - 74.4| = 0.4 < 0.5` let 74.4% through: a different number
+    // wearing one decimal, which is the same defect as the gap path's `2` beside a
+    // `+1.6` chip (4172337758), in the rate direction. The candidates are now
+    // compared for EQUALITY, because the rule is "the words state the figure the
+    // bar draws" and 74.4 is not the figure the bar draws.
+    expect(pct(0.738)).toBe("74%");
+    expect(says("Right 74% here", 0.738)).toBe(true);
+    expect(says("Right 74.4% here", 0.738)).toBe(false);
+    expect(says("Right 73.4% here", 0.738)).toBe(false);
+
+    // **The deliberate floor half, kept — both halves asserted.** `pct` rounds to
+    // 74%, and a writer truncating the same 73.8% rate may say 73%. Asserted in
+    // BOTH directions on purpose: tightening the match to the rendered string
+    // alone would keep `74%` and start REFUSING this correct headline, which is a
+    // new false positive rather than a fix. RED-CHECK on that over-tight version —
+    // `const magnitudes = [rendered]` — this file is "3 failed | 60 passed (63)",
+    // and the pre-existing `73%` assertions fail with it.
+    expect(says("Right 73% here", 0.738)).toBe(true);
+
+    // A rate that IS a whole percent has no fraction to truncate, so the floor
+    // candidate is not reachable and 73% is a different figure. `0.74 * 100` is
+    // exactly 74 — the case the binary-noise candidate broke.
+    expect(pct(0.74)).toBe("74%");
+    expect(says("Right 74% here", 0.74)).toBe(true);
+    expect(says("Right 73% here", 0.74)).toBe(false);
+  });
+
+  it("refuses the mis-stated rate through the RENDERED row, not only as a function", () => {
+    // The function above is the rule; this is the route a real payload takes.
+    // Both were rendered: a bar reading 29% beside the words "28%", and a bar
+    // reading 74% beside "74.4%".
+    expect(() =>
+      render(<SignalRows signals={[trust({ headline: { text: "Right 28% of the time.", figures: { rate: 0.29 } } })]} />),
+    ).toThrow(HeadlineFigureMismatchError);
+    expect(() =>
+      render(<SignalRows signals={[trust({ headline: { text: "Right 74.4% of the time.", figures: { rate: 0.738 } } })]} />),
+    ).toThrow(HeadlineFigureMismatchError);
+    expect(screen.queryByTestId("signal-row")).not.toBeInTheDocument();
+
+    // And the two figures that ARE the drawn one still render, floor included.
+    const { unmount } = render(
+      <SignalRows signals={[trust({ headline: { text: "Right 29% of the time.", figures: { rate: 0.29 } } })]} />,
+    );
+    expect(screen.getByTestId("signal-headline")).toHaveTextContent("Right 29% of the time");
+    unmount();
+    render(<SignalRows signals={[trust({ headline: { text: "Right 73% of the time.", figures: { rate: 0.738 } } })]} />);
+    expect(screen.getByTestId("signal-headline")).toHaveTextContent("Right 73% of the time");
+  });
+
+  it("protects the figure that DENOTES, so the clipper cannot keep the wrong words", () => {
+    // The second consumer of the same rule, and the reason this defect was not
+    // confined to a boolean. `figureRange` asks which CHARACTERS state the figure
+    // so the clipper protects exactly those words, and it walks the headline with
+    // the same `denotes` the validator accepts on — so a candidate that denotes
+    // nothing is not merely unvalidated: it is the figure the clipper keeps. With
+    // `28%` accepted, this headline protected "28%" and would have clipped away
+    // the "29%" the bar actually draws. RED-CHECK with the fix reverted:
+    // "expected { start: 6, end: 9 } to deeply equal { start: 14, end: 17 }".
+    expect(rangeOf("Right 28% and 29% here", "29%")).not.toBeNull();
+    expect(figureRange("Right 28% and 29% here", bar(0.29), 0.29)).toEqual(rangeOf("Right 28% and 29% here", "29%"));
+    // And the mis-stated-only headline has no range at all, so nothing is
+    // protected and `assertFigureIsStated` has already refused the row.
+    expect(figureRange("Right 28% of the time", bar(0.29), 0.29)).toBeNull();
   });
 
   it("a refusal takes the WHOLE list down, before any row renders", () => {
