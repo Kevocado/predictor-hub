@@ -48,7 +48,7 @@ repository cannot answer it* — not that the sport has no data. `origin/main` u
 > # `origin/main` measures the store as it stands NOW. To reproduce one of the dated rows above,
 > # set REF to the commit recorded with it: REF=6f492739, or REF=61ac4c65. Neither is an
 > # approximation -- those commits are in history and the blob is still there.
-> REF=origin/main
+> REF=${REF:-origin/main}
 > BLOB=$(git rev-parse "$REF:data/tracking.db")   # record this SHA with your figures
 > git cat-file blob "$BLOB" > /tmp/tracking.db    # read the BLOB, not the working tree
 >
