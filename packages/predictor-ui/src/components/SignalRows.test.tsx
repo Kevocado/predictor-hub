@@ -22,6 +22,9 @@ import {
   signalIsDrawn,
   UndrawableSignalVisualError,
   SignalFigureError,
+  HeadlineFigureMismatchError,
+  figureForms,
+  headlineStatesFigure,
   type Signal,
 } from "./SignalRows";
 
@@ -241,17 +244,105 @@ describe("4 · the figures drawn are the figures the headline states", () => {
     expect(screen.getByTestId("signal-headline")).toHaveTextContent("61%");
   });
 
-  it("catches a headline that states a different number than the bar draws", () => {
-    // The defect this pair exists to make visible: the adapter wrote 74%, the
-    // payload carries 0.61. Both are in the signal; nothing else in the package
-    // would notice, which is why the assertion reads the two rendered strings
-    // and compares them rather than trusting the input.
-    const mismatched: Signal = trust();
-    mismatched.headline.text = "At 72% this model has been right 12% of the time.";
-    render(<SignalRows signals={[mismatched]} />);
-    const drawn = screen.getByTestId("signal-bar-fill").getAttribute("style")!;
-    expect(drawn).toContain("73.8%");
-    expect(mismatched.headline.text).not.toContain("74%");
+  /* RED-CHECK 4a — "a headline that states a different figure", the case the
+   * Major names: "Backed by 61% of 30 picks" beside a drawn 74%. */
+  it("REFUSES a headline that states a DIFFERENT figure than the one it draws", () => {
+    // The exact shape: the payload's `rate` is 0.738 and the words say 61%. Both
+    // are in the signal, the bar would draw at 73.8%, and on `origin/main` before
+    // this fix nothing objected — because a 12-word headline skipped the only
+    // branch that looked at the figures.
+    expect(() =>
+      render(
+        <SignalRows
+          signals={[trust({ headline: { text: "Backed by 61% of 30 picks.", figures: { rate: 0.738 } } })]}
+        />,
+      ),
+    ).toThrow(HeadlineFigureMismatchError);
+    expect(() =>
+      render(
+        <SignalRows
+          signals={[trust({ headline: { text: "Backed by 61% of 30 picks.", figures: { rate: 0.738 } } })]}
+        />,
+      ),
+    ).toThrow(/61% of 30 picks/);
+  });
+
+  it("REFUSES a chip row whose headline omits its gap too", () => {
+    expect(() =>
+      render(<SignalRows signals={[lineGap({ headline: { text: "The model disagrees with the line.", figures: { gap: 1.6 } } })]} />),
+    ).toThrow(HeadlineFigureMismatchError);
+  });
+
+  /* RED-CHECK 4b — a matching short headline must survive untouched. */
+  it("a short headline that AGREES renders, unchanged and unclipped", () => {
+    render(<SignalRows signals={[trust()]} />);
+    const headline = screen.getByTestId("signal-headline");
+    expect(headline).toHaveAttribute("data-clipped", "false");
+    expect(headline.textContent).toBe("At 72% this model has been right 74% of the time.");
+    expect(screen.getByTestId("signal-bar-fill")).toHaveStyle({ width: "73.8%" });
+  });
+
+  /* RED-CHECK 4c — an omitted figure. */
+  it("REFUSES a headline that OMITS the figure entirely", () => {
+    // Not a contradiction: the words simply never mention it. A bar with no
+    // number beside it is a bare figure with no sample size in words, which is the
+    // reader-facing outcome the rule exists to prevent.
+    expect(() =>
+      render(<SignalRows signals={[trust({ headline: { text: "This model has a graded record.", figures: { rate: 0.738 } } })]} />),
+    ).toThrow(HeadlineFigureMismatchError);
+  });
+
+  it("accepts every word a headline may legitimately use for the figure", () => {
+    // The three boundary forms plus the punctuation and sign variants, so the
+    // validator and the clipper cannot be tightened into rejecting real copy.
+    // `[text, rate]`, paired explicitly rather than inferred from the text: an
+    // inference would pick the rate from the very string under test, so the case
+    // would assert whatever the inference decided rather than what the component
+    // does with a fixed payload.
+    const accepted: [string, number][] = [
+      ["At 72% this model has been right 74% of the time.", 0.738],
+      ["Right 74%.", 0.738],                // trailing full stop
+      ["Right (74%) of its picks.", 0.738], // parenthetical
+      ["Right +74% here.", 0.738],          // leading sign
+      ["The 74% case.", 0.738],             // sentence-initial
+      ["Right <1% here.", 0.004],           // the formatter's own form
+      ["Right 0% here.", 0.004],            // and the plain word for the same rate
+      ["Right 100% here.", 0.996],          // and the top boundary
+      ["Right >99% here.", 0.996],          // and the formatter's form for it
+    ];
+    for (const [text, rate] of accepted) {
+      const { unmount } = render(
+        <SignalRows signals={[trust({ n: 42, headline: { text, figures: { rate } } })]} />,
+      );
+      expect(screen.getByTestId("signal-row"), text).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it("figureForms and headlineStatesFigure, as functions", () => {
+    // `0.738` draws at 74% (`pct`) and floors to 73%, and both are accepted
+    // because a headline at that boundary legitimately says either. Asserted
+    // exactly, duplicate and all, so the list is not "tidied" into one form.
+    expect(figureForms(trust(), 0.738)).toEqual(["74%", "74%", "73%"]);
+    expect(figureForms(lineGap(), 1.6)).toEqual(["1.6"]);
+    // The boundary rates, where `pct` stops being the plain word.
+    expect(figureForms(trust(), 0.004)).toEqual(["<1%", "0%", "0%"]);
+    expect(figureForms(trust(), 0.996)).toEqual([">99%", "100%", "99%"]);
+    expect(headlineStatesFigure("right 74% of the time", ["74%"])).toBe(true);
+    expect(headlineStatesFigure("right 61% of the time", ["74%"])).toBe(false);
+    // Whole-word on both sides: `1%` never satisfies `61%`, in either direction.
+    expect(headlineStatesFigure("right 61% here", ["1%"])).toBe(false);
+    expect(headlineStatesFigure("right 1% here", ["61%"])).toBe(false);
+    // An empty protected list can never be satisfied, so it cannot pass a row.
+    expect(headlineStatesFigure("anything at all", [])).toBe(false);
+  });
+
+  it("a refusal takes the WHOLE list down, before any row renders", () => {
+    // The cost of throwing, asserted rather than described: no half-drawn list.
+    expect(() =>
+      render(<SignalRows signals={[trust(), lineGap({ headline: { text: "No gap named.", figures: { gap: 1.6 } } })]} />),
+    ).toThrow(HeadlineFigureMismatchError);
+    expect(screen.queryByTestId("signal-row")).not.toBeInTheDocument();
   });
 
   it("REFUSES a rate outside [0,1] rather than drawing a bar off its track", () => {
@@ -273,6 +364,61 @@ describe("4 · the figures drawn are the figures the headline states", () => {
   it("accepts a negative gap, which is a margin and not a share", () => {
     const { unmount } = render(<SignalRows signals={[lineGap({ headline: { text: "Model wants 0.6 fewer.", figures: { gap: -0.6 } } })]} />);
     expect(screen.getByTestId("signal-delta")).toHaveTextContent("−0.6");
+    unmount();
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * The `n`-floor interaction, made deliberate rather than incidental.
+ *
+ * The order in `signalIsDrawn` is floor-then-validate, so a below-floor rate is
+ * DROPPED and never validated: its figure is suppressed and its headline goes
+ * with it, so there is nothing on the page for the figure to contradict. The
+ * alternative — validating first — would make every sub-floor bucket a thrown
+ * error, and a sport with twelve games of history could not render its panel at
+ * all. Spec §4 says a sub-floor rate says nothing, and "nothing" is not a crash.
+ * ------------------------------------------------------------------------- */
+
+describe("the floor interaction · a dropped row is not a contradicted row", () => {
+  it("DROPS, does not reject, a below-floor rate whose headline omits its figure", () => {
+    // The case that settles the order. If validation ran first this would throw,
+    // and a sport early in its record would lose its whole panel over a row that
+    // was never going to draw.
+    const { container } = render(
+      <SignalRows
+        signals={[trust({ n: 12, headline: { text: "Too few games to say.", figures: { rate: 8 / 12 } } })]}
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("drops a below-floor rate whose headline states a DIFFERENT figure too", () => {
+    // Same verdict for the same reason, and deliberately: the row renders nothing,
+    // so there is no figure on the page to disagree with anything.
+    const { container } = render(
+      <SignalRows
+        signals={[trust({ n: 12, headline: { text: "Backed by 90% of 12 picks.", figures: { rate: 0.02 } } })]}
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("STILL rejects the same bad headline once `n` clears the floor", () => {
+    // The floor is the only thing suppressing the earlier case. Above it, the
+    // headline is on the page and the figure is beside it, so they must agree.
+    expect(() =>
+      render(<SignalRows signals={[trust({ n: 30, headline: { text: "Backed by 90% of 12 picks.", figures: { rate: 0.02 } } })]} />),
+    ).toThrow(HeadlineFigureMismatchError);
+  });
+
+  it("a `delta_chip` row with n = null is validated like any other row", () => {
+    // No floor applies to a gap, so there is no suppression to hide behind: the
+    // check runs on every render path or it runs on none.
+    expect(() =>
+      render(<SignalRows signals={[lineGap({ n: null, headline: { text: "The model disagrees.", figures: { gap: 1.6 } } })]} />),
+    ).toThrow(HeadlineFigureMismatchError);
+    const { unmount } = render(<SignalRows signals={[lineGap({ n: null })]} />);
+    expect(screen.getByTestId("signal-row")).toBeInTheDocument();
     unmount();
   });
 });
