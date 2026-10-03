@@ -434,11 +434,21 @@ it("matches a figure wrapped in OPENING punctuation, past the cap", () => {
   expect(headline.textContent).toContain("74%");
   unmount();
 
-  // And through the real component, where the protected forms are the drawn ones.
+  // And through the real component, where the protected forms are the drawn
+  // ones. `(1.6` must sit past the cap or this passes for the wrong reason —
+  // CodeRabbit's nitpick on the previous version of this case, which had it at
+  // word 7 where the plain 12-word clip keeps it anyway. Asserted on the index.
+  const gapLate =
+    "Across every stored pick this season the model has wanted more than the line " +
+    "(1.6 points of margin every single week of the schedule so far)";
+  expect(gapLate.split(" ").findIndex((w) => w.startsWith("(1.6"))).toBeGreaterThan(MAX_HEADLINE_WORDS);
   const { unmount: u2 } = render(
-    <SignalRows signals={[lineGap({ headline: { text: "Across this season the model wanted (1.6 more than the market line every week.", figures: { gap: 1.6 } } })]} />,
+    <SignalRows signals={[lineGap({ headline: { text: gapLate, figures: { gap: 1.6 } } })]} />,
   );
-  expect(screen.getByTestId("signal-headline").textContent).toContain("1.6");
+  const gapHeadline = screen.getByTestId("signal-headline");
+  expect(gapHeadline).toHaveAttribute("data-clipped", "true");
+  expect(gapHeadline.textContent).toContain("(1.6");
+  expect(screen.getByTestId("signal-delta")).toHaveTextContent("+1.6");
   u2();
 });
 
