@@ -12,6 +12,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { pct } from "../fmt";
 import {
   SignalRows,
   SPEC_MIN_N,
@@ -386,7 +387,38 @@ describe("5 · a headline over 12 words is clipped by a stated rule", () => {
     unmount();
   });
 
-  it("counts the cap on ordinary words, so a protected one does not spend it", () => {
+  // RED-CHECK: only the token normalised, the protected form left raw —
+// "2 failed | 41 passed (43)".
+it("matches a boundary symbol on BOTH sides, so `<1%` matches itself", () => {
+  // CodeRabbit review comment 4171902960. `bare` stripped the token's angle
+  // bracket while the protected form kept its own, so the DRAWN boundary rate
+  // stopped matching itself and was clipped.
+  for (const rate of [0.004, 0.996]) {
+    const late =
+      `Across every stored pre-kickoff pick in this bucket here the model was right ` +
+      `${pct(rate)} of the time across the whole season's record so far.`;
+    expect(late.split(" ").findIndex((w) => w.startsWith(pct(rate)))).toBeGreaterThan(MAX_HEADLINE_WORDS);
+    const { unmount } = render(
+      <SignalRows signals={[trust({ headline: { text: late, figures: { rate } } })]} />,
+    );
+    expect(screen.getByTestId("signal-headline").textContent).toContain(pct(rate));
+    unmount();
+  }
+});
+
+it("matches a SIGNED figure in the text against an unsigned protected form", () => {
+  // The same finding, on a gap: a headline that writes "+1.6" must still match
+  // the protected `1.6`, since the sign is the direction and not part of the
+  // number.
+  const late = "Across this whole season the model has wanted +1.6 more than the market on this one.";
+  render(<SignalRows signals={[lineGap({ headline: { text: late, figures: { gap: 1.6 } } })]} />);
+  const headline = screen.getByTestId("signal-headline");
+  expect(headline).toHaveAttribute("data-clipped", "true");
+  expect(headline.textContent).toContain("+1.6");
+  expect(screen.getByTestId("signal-delta")).toHaveTextContent("+1.6");
+});
+
+it("counts the cap on ordinary words, so a protected one does not spend it", () => {
     // The stated cost: a clipped row may exceed 12 words, and the cap is on the
     // sentence around the figure rather than on the figure.
     const out = clipHeadline("a b c 74% d e f g h i j k l m n", 4, ["74%"]);
@@ -413,6 +445,14 @@ describe("5 · a headline over 12 words is clipped by a stated rule", () => {
     // A PARENTHESIS closes too, which is the shape a "(74% of 61 games)" aside
     // takes.
     expect(clipHeadline("a b 74%) d e", 2, ["74%"])).toEqual({ text: "a b 74%)", clipped: true });
+    // A leading SIGN and a leading BOUNDARY symbol are normalised away on BOTH
+    // sides, so a headline that writes `+1.6` or `<1%` matches a protected `1.6`
+    // or `<1%`. Normalising only the token was a real defect (CodeRabbit review
+    // comment 4171902960): `<1%` stripped to `1%` stopped matching itself.
+    expect(clipHeadline("a b +1.6 d e", 2, ["1.6"])).toEqual({ text: "a b +1.6", clipped: true });
+    expect(clipHeadline("a b <1% d e", 2, ["<1%"])).toEqual({ text: "a b <1%", clipped: true });
+    expect(clipHeadline("a b <1% d e", 2, ["1%"])).toEqual({ text: "a b <1%", clipped: true });
+    expect(clipHeadline("a b −2.5 d e", 2, ["−2.5"])).toEqual({ text: "a b −2.5", clipped: true });
     // Whitespace-delimited, so a decimal is one word to a reader.
     expect(clipHeadline("Model margin −6.1 vs line −4.5", 4)).toEqual({
       text: "Model margin −6.1 vs",

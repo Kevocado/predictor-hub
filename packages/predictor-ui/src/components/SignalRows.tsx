@@ -319,13 +319,22 @@ export function signalIsDrawn(signal: Signal, minN: number = SPEC_MIN_N): boolea
  * does not format, because the two formatters (`fmt.signed` for a gap,
  * `fmt.pct` for a rate) differ and guessing here would protect the wrong string.
  *
- * **Two forms are protected for a rate, because `fmt.pct` has boundaries.** At
- * `p <= 0.005` and `p >= 0.995` it prints `<1%` and `>99%` rather than `0%` and
- * `100%`, so a headline written by hand can say `0%` or `100%` where the chip
- * says `<1%` and the two forms would not match. Both are protected (CodeRabbit
- * review comment 4171835614). The match is on a WHOLE word, never a substring:
- * protecting `1%` must not also protect `61%`, which would keep a clause
- * unrelated to the figure and could still drop the one that carries it.
+ * **THREE forms are protected for a rate, because `fmt.pct` has boundaries.** At
+ * `p <= 0.005` it prints `<1%` and at `p >= 0.995` it prints `>99%`, never `0%`
+ * and `100%`. A headline is written in plain words, so it can say `0%`, `100%`,
+ * `+1%` or `<1%` where the formatter says something else, and protecting only
+ * `pct(figure)` would leave the boundary rate as the one thing the clip removes.
+ * `pct(figure)`, the rounded percent and the floored percent are all protected,
+ * and BOTH sides of the comparison are normalised — a leading `+`, `−`, `<`, `>`
+ * and any trailing punctuation are dropped — so a `<1%` in the text matches a
+ * protected `<1%` instead of stripping one side only (CodeRabbit review comments
+ * 4171835614 and 4171902960).
+ *
+ * The match is on a WHOLE word, never a substring: protecting `1%` must not also
+ * protect `61%`, which would keep a clause unrelated to the figure and could
+ * still drop the one that carries it. `norm` is lossy in one direction only — it
+ * removes a sign and a boundary symbol, and neither is part of the number — so it
+ * cannot make two different figures compare equal.
  *
  * **What is given up.** A clipped row can exceed `max` words, so the cap is
  * "12 ordinary words" rather than "12 words", and a headline that names its
@@ -355,11 +364,20 @@ export function clipHeadline(
   // could keep a clause that has nothing to do with the figure and lose the one
   // that does. (CodeRabbit review comment 4171835614 raised this and the boundary
   // form below; both are here.)
-  const marks = new Set(protectedWords.filter(Boolean).map((w) => w.trim()));
-  // A word is compared with its surrounding punctuation off, so "74%." and
-  // "74%" are the same word — punctuation is not part of a figure.
-  const bare = (w: string) => w.replace(/^[^\w.+-]+|[^\w%]+$/g, "");
-  const protectedIndex = (word: string): boolean => marks.has(bare(word));
+  // **BOTH SIDES go through `norm`, or the match fails on its own output.**
+  // Normalising only the token was a real defect (CodeRabbit review comment
+  // 4171902960): `<1%` strips its angle bracket to `1%` while the protected form
+  // kept its own, so the drawn boundary rate stopped matching itself. Same for a
+  // signed `+1.6` in the text against an unsigned protected `1.6`.
+  //
+  // `norm` therefore drops a LEADING sign and a leading boundary symbol, and any
+  // trailing punctuation, and leaves the digits, decimal point and `%` alone —
+  // so it is lossy in the one direction only: it never turns two different
+  // figures into one, because a sign and a boundary symbol are the only things it
+  // removes and neither is part of the number.
+  const norm = (w: string) => w.trim().replace(/^[+\-−<>≤≥≈]+/, "").replace(/[^\w%]+$/, "");
+  const marks = new Set(protectedWords.filter(Boolean).map(norm));
+  const protectedIndex = (word: string): boolean => marks.has(norm(word));
   const kept: string[] = [];
   let ordinary = 0;
   for (const word of words) {
@@ -415,12 +433,13 @@ function SignalRow({ signal, rowId }: { signal: Signal; rowId: string }) {
   // as `<1%`, `1` draws as `>99%`, and a headline written by a human says `0%`
   // or `100%` for those. Protecting only `pct(figure)` would let the drawn
   // boundary rate be the one thing the clip removes. So the rounded plain form
-  // and the rounded percent are protected alongside the formatter's own, and the
+  // and the floored percent are protected alongside the formatter's own, and the
   // match is whole-word so `1%` cannot also match `61%` (CodeRabbit review
-  // comment 4171835614).
+  // comments 4171835614 and 4171902960).
   //
-  // A gap has TWO: the sign is dropped because a headline says "1.6" where the
-  // chip says "+1.6", and protecting "+1.6" would protect nothing.
+  // A gap has ONE: the sign is dropped because a headline says "1.6" where the
+  // chip says "+1.6", and `clipHeadline`'s `norm` strips a leading sign anyway, so
+  // a headline that writes `+1.6` matches the same figure (4171902960).
   const protectedForms: string[] =
     signal.visual === "reliability_bar"
       ? [pct(figure), `${Math.round(figure * 100)}%`, `${Math.floor(figure * 100)}%`]
