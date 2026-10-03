@@ -45,8 +45,12 @@ repository cannot answer it* — not that the sport has no data. `origin/main` u
 >
 > ```sh
 > cd F1_Predictor
-> BLOB=$(git rev-parse origin/main:data/tracking.db)   # record this SHA with your figures
-> git cat-file blob "$BLOB" > /tmp/tracking.db         # read the BLOB, not the working tree
+> # `origin/main` measures the store as it stands NOW. To reproduce one of the dated rows above,
+> # set REF to the commit recorded with it: REF=6f492739, or REF=61ac4c65. Neither is an
+> # approximation -- those commits are in history and the blob is still there.
+> REF=origin/main
+> BLOB=$(git rev-parse "$REF:data/tracking.db")   # record this SHA with your figures
+> git cat-file blob "$BLOB" > /tmp/tracking.db    # read the BLOB, not the working tree
 >
 > # total rows, and resolved rows — the two figures in the measurement table:
 > sqlite3 /tmp/tracking.db "SELECT COUNT(*) FROM session_predictions;"
@@ -65,9 +69,9 @@ repository cannot answer it* — not that the sport has no data. `origin/main` u
 >  GROUP BY bucket ORDER BY MIN(predicted_prob);"
 > ```
 >
-> Verified against blob `da6217d9`: 1,452 resolved, and the six bands below reproduce exactly. Add
-> the band total to the resolved count as a check — every resolved row must land in exactly one
-> band, so they sum to the same number.
+> Run with `REF=6f492739` and `REF=61ac4c65`, both figures below reproduce exactly. As a check, add
+> the band totals: every resolved row must land in exactly one band, so the six `n` values sum to
+> the resolved count.
 >
 > The other four sports' stores are untracked (below), so they cannot be re-measured this way:
 > their `UNKNOWN`s are permanent rather than stale.
