@@ -48,6 +48,14 @@ services:
     environment:
       PUBLIC_MODE: "true"
       GITHUB_ACTIONS_TOKEN: ${PL_GITHUB_ACTIONS_TOKEN:-}
+      # Read by `data/sportsbook_api.py` (the RapidAPI sportsbook feed that
+      # `data/fixtures.py` lists as its primary source), by `odds/value_bets.py`
+      # and by `evaluate/odds_benchmark.py`. Omitting these is what left PL
+      # showing no odds: the code degrades cleanly on an absent key, so nothing
+      # failed and the site just had no prices. Commit 54b721d is the switch to
+      # this feed; `vps-stack/tests/odds-env.test.mjs` now holds it.
+      ODDS_API_KEY: ${ODDS_API_KEY:-}
+      SPORTSBOOK_API_KEY: ${SPORTSBOOK_API_KEY:-}
 
   f1:
     <<: *app
@@ -72,6 +80,11 @@ services:
     environment:
       PUBLIC_MODE: "true"
       ODDS_API_KEY: ${ODDS_API_KEY:-}
+      # NFL has no `data/sportsbook_api.py` yet, so this key is not yet read by
+      # anything in `nfl_predictor` -- it is passed so the credential is in place
+      # when that module lands, and so the two odds keys move together. NFL's
+      # lines today come from `data/odds_api.py` (The Odds API).
+      SPORTSBOOK_API_KEY: ${SPORTSBOOK_API_KEY:-}
     volumes:
       # Was the nfl-cache Azure Files share.
       - ./volumes/nfl-cache:/app/data/cache

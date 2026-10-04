@@ -1,0 +1,62 @@
+# The hub's own suite.
+#
+# It is here because it was not running anywhere. `tests/` and
+# `vps-stack/tests/` are plain `node:test` files with no dependencies, and
+# before this workflow nothing in `.github/` invoked `node --test` — so 143
+# assertions across the hub landing page, the vendored-UI contract, the site
+# sync rules, the craft floor and the VPS stack were only ever exercised by
+# whoever remembered to run them by hand. Two of them had quietly rotted:
+# nothing was checking that a service whose code reads a credential is handed
+# one, and PL had already lost both its odds keys.
+#
+# The two tests that need the sibling site checkouts are NOT run here, and that
+# is deliberate rather than an oversight:
+#
+#   tests/site-components.test.mjs
+#   tests/sites-root.test.mjs
+#
+# Both walk the other repos' working trees. Checking them out here would make
+# this workflow's result depend on five other repositories' default branches at
+# the moment it ran, which is the flakiness `site-sync-check.yml` already exists
+# to handle properly (and which skips explicitly rather than passing silently).
+# They remain runnable with `SITES_ROOT=<dir> node --test`.
+name: tests
+
+on:
+  pull_request: {}
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24" # node:test, no build step and no dependencies
+      # No `SITES_ROOT`, deliberately: it is the switch that turns on the two
+      # sibling-walking files, and the list below excludes them either way. The
+      # env is left unset rather than pointed somewhere so a future edit that
+      # adds one of those files fails loudly instead of quietly reporting on a
+      # path that does not exist.
+      - name: Tests
+        run: |
+          node --test \
+            tests/craft-floor.test.mjs \
+            tests/hub.test.mjs \
+            tests/site-sync.test.mjs \
+            tests/sync-ui-source.test.mjs \
+            tests/sync-ui.test.mjs \
+            tests/teasers.test.mjs \
+            vps-stack/tests/hub-caddyfile.test.mjs \
+            vps-stack/tests/odds-env.test.mjs
