@@ -620,3 +620,106 @@ test("every steps.<id>.outputs.<name> the site-sync workflow reads is written to
     );
   }
 });
+
+// ------------------------------------------------------ the re-check trigger
+
+// The gap this section closes. Everything the workflow listens for fires on a
+// change *to the hub* — `pull_request`, `push` to main, `workflow_dispatch`.
+// But what the check enforces, "every site vendors the hub's current package",
+// is fixed by a merge in a *site* repo, and no hub event fires when that
+// happens. So the sequence a package bump produces ends with main still holding
+// the verdict from the bump itself:
+//
+//   hub PR bumps the package  -> PR reports BEHIND (right: the sites cannot
+//                                vendor what is not on main yet), exits 0
+//   it merges                 -> push to main enforces, RED for
+//                                `4 of 4 sites are behind` (right: that is
+//                                true, and the fix is a sync PR)
+//   the four site PRs merge   -> the sites are current, and nothing ever asks
+//                                the hub again
+//
+// Observed on this repo: `failure 957d0b7` sitting on main while
+// `scripts/check-site-sync.mjs` reported `PASS — 4 of 4`. The verdict was
+// correct when it was written and wrong by the time anyone looked. A check
+// whose main-branch verdict cannot go green is a check nobody reads.
+//
+// The trigger is a `schedule`, not `repository_dispatch` from the site repos,
+// and the two tests below hold the two halves of that claim: the schedule
+// exists and is well-formed, and a scheduled run lands on the *enforced*
+// verdict rather than on a new, softer mode of its own.
+
+// Red-checkable: delete the `schedule:` block from site-sync-check.yml and this
+// fails. That is the point -- the trigger is the fix, so a future edit that
+// drops it has to take a red with it.
+test("the hub re-checks on a schedule, so a site merge can turn main green", () => {
+  assert.match(workflow, /^ {2}schedule:\s*$/m,
+    "the workflow has no schedule: trigger, so nothing re-runs it when a *site* repo changes and main's verdict goes stale");
+  const crons = [...workflow.matchAll(/^\s+-\s*cron:\s*"?([^"\n#]+?)"?\s*$/gm)].map((m) => m[1].trim());
+  assert.ok(crons.length > 0, "schedule: with no cron is not a trigger -- GitHub rejects the workflow");
+  for (const cron of crons) {
+    const fields = cron.split(/\s+/);
+    assert.equal(fields.length, 5, `a cron is five fields, got ${JSON.stringify(cron)}`);
+    for (const [i, field] of fields.entries()) {
+      assert.match(field, /^[\d*,\-/]+$/, `cron field ${i} of ${JSON.stringify(cron)} is not a cron token`);
+    }
+    // GitHub's scheduler is best-effort and backs off hardest at the top of the
+    // hour, so a run pinned to minute 0 buys jitter instead of precision. This
+    // asserts the choice the workflow's own comment claims it made.
+    assert.notEqual(fields[0], "0", "the cron is pinned to :00, the slot GitHub delays hardest");
+  }
+});
+
+// A scheduled run must be the push case exactly, because that is what it is: the
+// package is not changing under it (it changed long ago, and already merged),
+// so there is nothing to be PENDING about. If this ever reports enforce=0 the
+// check has grown a mode that a stale red can hide in -- which would be the
+// defect the schedule was added to fix, reintroduced by its own fix.
+test("a scheduled re-check enforces exactly as a push to main does", () => {
+  // Stated here as well as in the test above, because this one is otherwise
+  // vacuous: it runs the step, and the step exists whether or not anything
+  // triggers it. Reverting the `schedule:` block leaves this passing on its own
+  // -- it would go on passing with nothing in the repo ever asking for a
+  // re-check, which is the defect. So the trigger has to be there for the
+  // verdict below to mean anything.
+  assert.match(workflow, /^ {2}schedule:\s*$/m, "nothing triggers a scheduled run, so this test's verdict is about a run that cannot happen");
+  const scheduled = runWorkflowStep(decideStep(), {
+    env: { EVENT_NAME: "schedule", BASE_REF: "" }, changed: pkgChange,
+  });
+  assert.equal(scheduled.env.enforce, "1",
+    "a scheduled run must enforce; PENDING means 'the sites owe a re-sync for a package that is not on main yet', which is never true of a re-check");
+  assert.equal(scheduled.env.expect_resync, "0", "main is not waiting for a re-sync, it owes one -- and so is a scheduled run");
+  // It takes the push branch outright rather than falling through to the
+  // pull_request branch: a scheduled run has no base ref to diff against, and
+  // the one thing the enforce step must not do here is ask git a question whose
+  // answer would be a guess. `argv === null` is the stub reporting it was never
+  // called, which is how we tell "took the first branch" from "reached the diff
+  // and got a lucky empty answer".
+  assert.equal(scheduled.argv, null, "a scheduled run must not diff; it has no base ref and does not need one");
+});
+
+// The schedule must not be able to interfere with the run that is enforcing.
+// A scheduled run reads `github.ref` as the default branch -- the same ref a
+// push to main does -- so with one shared concurrency group, cancel-in-progress
+// lets whichever starts second cancel the other, and main's enforcing run can be
+// marked "cancelled". A cancelled required check is not a green one, so the
+// trigger meant to add assurance would be able to remove it.
+test("the schedule cannot cancel the push run that is enforcing", () => {
+  assert.match(workflow, /group:\s*site-sync-\$\{\{\s*github\.event_name\s*\}\}-\$\{\{\s*github\.ref\s*\}\}/,
+    "the concurrency group does not separate events by name, so a scheduled run and a push to main cancel each other");
+});
+
+test("the scheduled run still compares every site and still fails closed", () => {
+  // Not a new mode: the same step, the same script, the same permissions. The
+  // only thing `schedule` adds is *when*, and these assertions are what stop it
+  // being quietly turned into "when, and softer" -- a second decision path, a
+  // relaxed site list, or a non-blocking step would each satisfy the two tests
+  // above while reopening the hole.
+  assert.doesNotMatch(workflow, /continue-on-error/, "a step was marked non-blocking instead of the verdict being computed");
+  assert.match(workflow, /node scripts\/check-site-sync\.mjs/, "the workflow no longer runs the check");
+  assert.match(workflow, /^permissions:\s*$/m, "the workflow lost its permissions block");
+  assert.match(workflow, /contents: read/, "the scheduled run needs a credential to read the four sites");
+  // One decision, one script, one site list -- for every trigger including the
+  // new one. A second `sites:` or a second invocation would be a second verdict.
+  const runs = workflow.match(/node scripts\/check-site-sync\.mjs/g) ?? [];
+  assert.equal(runs.length, 1, `the check runs ${runs.length} times in one workflow; a scheduled run that compares something else is a different check`);
+});
