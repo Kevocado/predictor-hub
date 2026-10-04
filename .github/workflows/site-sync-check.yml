@@ -15,14 +15,18 @@ name: Vendored UI is current
 # One decision is computed per run, in the step below, from the event and the
 # PR's own diff. Three cases, and the third is the one that matters:
 #
-#   push to main, or a manual run          ENFORCED. The sites are compared and
-#                                         drift fails, exactly as since #21.
+#   push to main, a manual run, or         ENFORCED. The sites are compared and
+#   a scheduled re-check                   drift fails, exactly as since #21.
 #   pull_request, no change to             ENFORCED. Same.
 #     packages/predictor-ui
 #   pull_request, changes                  PENDING. The sites are still compared
 #     packages/predictor-ui                   and the drift is still printed and
 #                                            annotated; the run reports them as
 #                                            awaiting the re-sync and exits 0.
+#
+# The first case is where the schedule below lands: `schedule` is not
+# `pull_request`, so a re-check enforces exactly as a push does and is not
+# softened by being scheduled.
 #
 # The third case is a deadlock, not a preference. The sites vendor
 # packages/predictor-ui by copying it from the hub's main, so a PR that changes
@@ -33,15 +37,60 @@ name: Vendored UI is current
 #
 # Note what is *not* relaxed. Every site is still read on every run, an unreadable
 # one is still a hard failure in every mode, main still enforces the moment the
-# bump lands (that red is correct — it clears when the four site PRs merge), and
+# bump lands (that red is correct — and under the schedule it also *clears* when
+# the four site PRs merge, which is the whole reason the schedule exists), and
 # the step fails closed if it cannot compute the diff at all.
-# tests/site-sync.test.mjs runs the step below for each of the three cases.
+# tests/site-sync.test.mjs runs the step below for each of the three cases, and
+# pins the scheduled run to the same enforced verdict.
 
 on:
   pull_request: {}
   push:
     branches: [main]
   workflow_dispatch: {}
+  # The re-check. Every trigger above fires on a change *to the hub*, but what
+  # this check enforces is fixed by a merge in a *site* repo, and no hub event
+  # fires when that happens. So the sequence that actually occurs leaves a
+  # verdict behind that nothing ever revises:
+  #
+  #   hub PR bumps packages/predictor-ui  → the PR reports BEHIND, which is
+  #                                           correct: the sites cannot vendor a
+  #                                           package that is not on main yet
+  #   it merges                           → push to main enforces and goes RED
+  #                                           for `4 of 4 sites are behind`, also
+  #                                           correct, and the fix is a sync PR
+  #   the four site PRs merge             → the sites ARE current now, and the
+  #                                           hub is never asked again
+  #
+  # Main then keeps displaying the last hub-side verdict, which after that
+  # sequence is a stale `failure` for a state that is really PASS. Observed:
+  # `failure 957d0b7` on main while scripts/check-site-sync.mjs reported
+  # `PASS — 4 of 4`. A check whose main-branch verdict cannot go green is a check
+  # nobody reads.
+  #
+  # A schedule, and deliberately not `repository_dispatch`, because the failure
+  # being closed here is *silent staleness* and a schedule is the one mechanism
+  # that cannot reintroduce it:
+  #
+  #   * Dispatch is immediate, but a site repo's GITHUB_TOKEN is scoped to that
+  #     repo and cannot dispatch to another one. It needs a PAT in a secret in
+  #     each of the four site repos, an edit to four site workflows, and this
+  #     file merged to main first — repository_dispatch only reaches a workflow
+  #     on the default branch. Delete or break any one of those four steps and
+  #     main goes stale permanently with nothing re-checking it, which is the
+  #     failure being fixed rather than a smaller version of it.
+  #   * A schedule needs no credential and no other repo's cooperation, so the
+  #     only thing that can stop it is the hub itself.
+  #
+  # The cost of that choice: up to ~6h of extra red on main while the site PRs
+  # land. Dispatch buys latency and spends robustness, and staleness — not
+  # latency — is what this trigger is for.
+  #
+  # :17 past the hour, not :00. GitHub's scheduler is best-effort and delays the
+  # top of the hour hardest, so scheduling into that slot buys jitter rather than
+  # precision.
+  schedule:
+    - cron: "17 */6 * * *"
 
 permissions:
   contents: read # the automatic GITHUB_TOKEN. Every site repo is public, so an
@@ -49,7 +98,12 @@ permissions:
   #                this token is the only credential the check expects.
 
 concurrency:
-  group: site-sync-${{ github.ref }}
+  # The event name is in the group so the schedule cannot cancel the run that is
+  # already enforcing. A scheduled run reads `github.ref` as the default branch,
+  # the same ref a push run does, so without this they share a group and
+  # cancel-in-progress can mark main's enforcing run "cancelled" — the new
+  # trigger weakening the existing one instead of adding to it.
+  group: site-sync-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
