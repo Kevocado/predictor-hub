@@ -159,7 +159,11 @@ number with its ± margin. Every row carries provenance:
 What "confident" means is stated per row: a probability for PL
 scorers/NFL TD, a bucket rate for uncalibrated arms, a projection ±
 MAE for yardage/NBA. No odds feed exists anywhere, so no row ever
-claims an edge vs a price.
+claims an edge vs a price. **PREMISE CORRECTED 2026-10-04:** four repos do
+ship an odds client, and only CFB's cache is populated in production — see
+`2026-10-01-fixture-signals-design.md` §11. The RULE stands unchanged: no row
+may claim an edge vs a price, because that prohibition is about deriving an edge
+from a probability, not about a feed being absent.
 
 ### D. Player news
 

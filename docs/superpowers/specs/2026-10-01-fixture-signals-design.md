@@ -74,7 +74,7 @@ for the wording step. The shared UI renders `Signal[]` with predictor-ui compone
 |---|---|---|---|
 | **trust** | "When this model says ~59% on a home favourite it has been right X% of the time (n games)." | the stored track record's pick-probability buckets / each site's calibration data. Renders only at n >= 30; below that the row says nothing, never a rate from a handful of games. | all |
 | **absence** | "Out: J. Jacobs, our #2 rush projection (78 yds), ESPN injury report, Wed." Day-To-Day is **flagged, never turned into a number.** | NBA `/players/out` + Day-To-Day (merged), NFL gate (merged), PL FPL status. F1/CFB: no feed, no row. | NBA, NFL, PL |
-| **line_gap** | "Model margin 3.1 vs line 2.5: 0.6 pts" with the model's historical record when it disagreed by >= 2 pts (only if n is enough). | NFL/CFB carry a quoted spread/total. PL, NBA and F1 have **no odds feed**: this signal never appears there. | NFL, CFB |
+| **line_gap** | "Model margin 3.1 vs line 2.5: 0.6 pts" with the model's historical record when it disagreed by >= 2 pts (only if n is enough). | NFL/CFB carry a quoted spread/total. PL, NBA and F1 have **no odds feed**: this signal never appears there. **CORRECTED 2026-10-04 — see §11.** | NFL, CFB |
 | **post_game** | "Projected margin 3.1, actual 14. Biggest miss: total (proj 40.6, actual 62)." Whether a flagged absence existed. | stored pre-game pick vs final score and available outcomes | all, finished games only |
 
 ### Corrections baked in (found while writing this)
@@ -142,3 +142,39 @@ every state: signal present/absent per sport, finished game, started game). No n
 - What shape is the quoted line on NFL/CFB for pre-game and for started games (stored vs live)?
 - Where does a finished game's actual outcome data live per sport for `post_game`?
 - PL: which FPL statuses map to out vs doubtful (PL#38 already removes i/s/u).
+
+**All four are now answered** — see the spike's "measured, on the production
+store" section and `2026-10-04-production-measurements.md`.
+
+## 11. Correction (2026-10-04): the "no odds feed" claim was wrong
+
+§4's `line_gap` row, and two other documents, stated that no repository has an
+odds feed. **That is false, and it was false in the sense that matters** — the
+code exists in four repos. Measured on the VPS on 2026-10-04:
+
+| repo | odds client in `src/` | key present in the deployed container | odds cache populated |
+|---|---|---|---|
+| CFB | `data/odds_api.py`, `odds/value_bets.py` | `ODDS_API_KEY`, `SPORTSBOOK_API_KEY` | **yes** — per-event `cache/sportsbook/*.json`, written same-day |
+| NFL | `data/odds_api.py`, `odds/value_bets.py` | `ODDS_API_KEY` only | no — `cache/odds/` empty, no `sportsbook/` |
+| NBA | `data/odds_api.py`, `odds/value_bets.py`, `pipeline/refresh_odds.py` | `ODDS_API_KEY`, `SPORTSBOOK_API_KEY` | no — `cache/odds/` empty, no `sportsbook/` |
+| PL | `data/odds_api.py`, `data/sportsbook_api.py`, `odds/value_bets.py`, `evaluate/odds_benchmark.py` | **none** | no — `cache/odds/`, `cache/sportsbook/` and `cache/odds_snapshots/` all empty |
+| F1 | none | — | — |
+
+So the accurate statement is **"no odds DATA"**, not "no odds feed", and the two
+sports the old sentence named as feedless (PL and NBA) both have a full client.
+PL is the extreme case: the entire odds stack is present in the repo and *no
+credential is set in production*, which is a configuration gap rather than a
+missing feature. Kevin reports PL was showing odds, which is consistent with the
+client having worked at some point and the credential since going unset.
+
+Only **CFB** has a wired feed, and its `sportsbook_api.py` path is the one that
+fills. NFL and NBA hold `SPORTSBOOK_API_KEY` yet have no `sportsbook/` cache
+directory at all, so their refresh is not calling that path — which is a wiring
+gap to close, not a missing key to obtain.
+
+**What does not change.** The *reason* no row may claim an implied edge is
+untouched, because it was never about the absence of a feed: the rule exists so
+a row cannot imply an edge from a probability alone. That rule stays in
+`2026-10-01-phase2-player-picks.md` and in the picks-panel wording tests, which
+still forbid the words `book line`, `closing line` and `sportsbook`. Only the
+stated *premise* is corrected here.
