@@ -226,7 +226,7 @@ news adds a second freshness trigger bounded exactly like team news
 
 ### H. Phases (in this order)
 
-0. Box-score split small PR (§E) — Sports only (PR #20, in review).
+0. Box-score split small PR (§E) — Sports only (PR #20, **merged** 2026-09-30).
 1. Instant block + de-duplication (§A) — biggest win, no model cost.
    The block must look complete before the AI button is pressed, and
    the button carries a static promise line naming what the AI adds

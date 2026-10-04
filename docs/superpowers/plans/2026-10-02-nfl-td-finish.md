@@ -55,4 +55,5 @@ category on passing alone; CFB panel unchanged. `npm run build` + full vitest.
 
 ## Done when
 NFL#26 and the Sports PR are merged through the CodeRabbit gate; summary on hub#69 lists the commits that need a
-deploy (NFL_Predictor, Sports_Predictor) and notes the model was retrained.
+deploy (NFL_Predictor, Sports_Predictor, CFB_Predictor — the anytime-TD fix landed in CFB_Predictor #29 as
+well) and notes the model was retrained.

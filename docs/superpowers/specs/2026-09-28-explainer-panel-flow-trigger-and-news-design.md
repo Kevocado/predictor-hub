@@ -15,7 +15,7 @@ ruling at ledger Task 37, on the reasoning given in §7 below.
 > **Re-checked 2026-10-04 against merged PRs; the four-site table below still holds.**
 > Two things have landed since and change what this spec *is*, not whether it
 > shipped. (1) The facts moved out from behind the button — `InstantBlock` shipped
-> on all four surfaces (hub #52, Sports_Predictor #22, NBA_Predictor #17,
+> on all four sport sites and the hub (hub #52, Sports_Predictor #22, NBA_Predictor #17,
 > PL_Predictor #35, F1_Predictor #22), which is the amendment to this spec's
 > flow-sentence and button-gating rules that
 > [`2026-09-30-fixture-insight-design.md`](2026-09-30-fixture-insight-design.md) §4
