@@ -1,5 +1,13 @@
 # Phase 2 — Model's Top Calls (player picks) Implementation Plan
 
+**Status: executed on four surfaces, then withdrawn on F1.** Checked 2026-10-04
+against merged PRs: Sports_Predictor #24 (NFL + CFB, then simplified by #25),
+NBA_Predictor #22 with the §D availability gate in #23 (then #25), PL_Predictor #38
+(then #40), hub #63, #72 and #69. F1_Predictor #26 shipped the per-market rows and
+F1_Predictor #28 removed them, so F1 has no "Model's top calls" block. Spec:
+`2026-09-30-fixture-insight-design.md` §H phase 2. The checkboxes below are the plan
+as written, not the state of the work.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Every fixture modal gains a ranked, visual, provenance-carrying list of the model's own top player calls — three rows per category at most, one category per list, and **an out player removed from the ranking entirely**.

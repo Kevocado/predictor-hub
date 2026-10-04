@@ -1,5 +1,23 @@
 # Plan: fixture signals, phases 1-4
 
+**Status: Task 0 done; phase 1 partial; phases 2–4 not started.** Checked 2026-10-04
+against merged PRs (`gh pr list --state merged`, all seven repos):
+
+| task / phase | state | evidence |
+|---|---|---|
+| Task 0 — the spike | **done, and it corrected the spec** | hub #71; re-derived and dated in hub #78 |
+| Phase 1 — shared contract + `trust` + `line_gap` | **partial** | hub `Signal` + `SignalRows` in hub #73; **F1** `trust` adapter + `GET /signals/{game_id}` in F1_Predictor #34. No merged PR for the NFL/CFB/NBA/PL `trust` adapters (their `tracking.db` is gitignored, so the spike recorded `UNKNOWN`, not absent) or for `line_gap` |
+| Phase 2 — absence | not started | no merged PR |
+| Phase 3 — `post_game` | not started | no merged PR |
+| Phase 4 — "so what" + validator | not started | no merged PR |
+| Phase 5 — slate brief | out of scope by this plan's own instruction; needs its own spec | — |
+
+Two things a reader of the checkboxes below should know: hub #73's package half is
+**inert** until the sites re-sync via `sync-ui.mjs`, so no served fixture modal
+renders `SignalRows` yet; and the phase-2 "absence" work here is **not** the same
+task as the availability gates already merged in NBA_Predictor #23 and
+NFL_Predictor #24, which exist and are named in this plan's premise.
+
 Spec: `docs/superpowers/specs/2026-10-01-fixture-signals-design.md` (approved by Kevin 2026-10-01).
 One PR per repo per phase, test-first, `npm run build` clean, red proofs, CodeRabbit gate, no deploys.
 Use the impeccable skill for the mocks (desktop + 390px, every state); no new tokens or faces.

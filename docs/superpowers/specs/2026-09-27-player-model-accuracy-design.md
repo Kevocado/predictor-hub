@@ -1,7 +1,24 @@
 # Player-Model Accuracy Remediation — Design Spec
 
 **Date:** 2026-09-27
-**Status:** Implemented in part (PL_Predictor). NFL/CFB/NFL-CFB yardage work specified, not started.
+**Status:** Implemented in part (PL_Predictor). **Corrected 2026-10-04** — the second
+half of this line used to read "NFL/CFB/NFL-CFB yardage work specified, not
+started", which is no longer true of §5.1's two preconditions. Checked 2026-10-04
+against merged PRs (`gh pr list --state merged`):
+
+| §5.1 / §5.2 step | state | evidence |
+|---|---|---|
+| "stop displaying a number the system cannot compute" | **done** | Sports_Predictor #8 — the team-total-yards figure was decomposed and relabelled rather than deleted |
+| CFB backfill + per-game reconciliation | **done** | CFB_Predictor #12 ("add the backfill that was missing", "reconcile per game instead of per team-week"); `src/cfb_predictor/data/team_stats.py` and `scripts/backfill_team_stats.py` are on CFB `origin/main` |
+| NFL team-yardage source | partial | NFL_Predictor #9 names "a missing team-yardage source"; `src/nfl_predictor/data/team_stats.py` is on NFL `origin/main` |
+| train the **team-total yardage model** (§5.2 step 4) | **unverified — no merged PR found** | neither NFL nor CFB `origin/main` contains a team-level yardage model; not claimed either way |
+| re-enable the panel fed by the team model (§5.2 step 5) | **not started** | panel stays decomposed/relabelled per Sports_Predictor #8 |
+| §5.3 `manifest.py` selection-bias fix | not started | no merged PR found |
+
+So the §5.2 ordering held for its first step and the CFB backfill landed; the model
+it was unblocking has not been traced to a merged PR, and this spec does not claim
+it has.
+
 **Origin:** Live forensic audit of all three predictors, 2026-09-27.
 **Evidence file:** `/Users/sigey/Documents/Projects.nosync/.superpowers/audit-2026-09-27-total-yards.md`
 

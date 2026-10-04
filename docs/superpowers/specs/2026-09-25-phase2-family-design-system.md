@@ -1,7 +1,21 @@
 # Phase 2 · Family Design System — Spec
 
 **Date:** 2026-09-25
-**Status:** direction pinned by Kevin; this spec records it for review.
+**Status: implemented on all five sites, then simplified.** Corrected 2026-10-04 —
+this said only "direction pinned by Kevin; this spec records it for review", which
+read as an unimplemented proposal. Checked 2026-10-04 against merged PRs
+(`gh pr list --state merged`, all seven repos):
+
+- Built per sport in the Phase 2 migration PRs: Sports_Predictor #1, PL_Predictor #1,
+  NBA_Predictor #1, F1_Predictor #1, and the hub's copy via predictor-hub #26 and #44.
+  The roadmap's own Phase 2 line records "Phase 2 is complete on all five sites".
+- Since simplified toward player/team/prediction rows: Sports_Predictor #25,
+  NBA_Predictor #25, PL_Predictor #40, F1_Predictor #27, predictor-hub #69.
+- F1 then dropped its "Model's top calls" block entirely (F1_Predictor #28), so the
+  §per-sport table here no longer describes F1.
+
+Unchanged and still binding: the honesty rule and the shared tokens. Review of the
+design itself is still outstanding; what is not outstanding is whether it shipped.
 **Product truth:** [`PRODUCT.md`](../../../PRODUCT.md) (users, the honesty rule, and "five sports, full depth").
 **Roadmap:** [2026-09-25-predictor-frontend-action-plan.md](../plans/2026-09-25-predictor-frontend-action-plan.md), Phase 2 (steps 5–8) and Phase 3 (steps 9–12).
 

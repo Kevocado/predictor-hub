@@ -1,5 +1,12 @@
 # Phase 1 — Instant Facts Block Implementation Plan
 
+**Status: executed; the block shipped on all five surfaces.** Checked 2026-10-04
+against merged PRs (`gh pr list --state merged`, all seven repos): hub #52,
+Sports_Predictor #22, NBA_Predictor #17, PL_Predictor #35, F1_Predictor #22. The
+checkboxes below are the plan as written and are not the state of the work — this
+line is. Spec: `2026-09-30-fixture-insight-design.md` §H phase 1, whose own status
+line carries the per-phase table.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** The facts of a fixture — timing badge, verdict line, tiles, probability bar, record strip — render from the site's own bundle with **no request**, before the AI button is pressed; the button then says what it adds; and the sites stop repeating the same figures a second time.

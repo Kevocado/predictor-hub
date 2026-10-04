@@ -1,7 +1,27 @@
 # Fixture insight design (spec, 2026-09-30)
 
-SPEC ONLY — nothing here is implemented. It becomes work only when the
-reviewer approves this file. One design system for all five surfaces
+**Status: partially implemented.** Corrected 2026-10-04 — this said "SPEC ONLY —
+nothing here is implemented" after §H phases 0–2 had shipped on every surface.
+Checked 2026-10-04 against merged PRs (`gh pr list --state merged`, all seven repos):
+
+| §H phase | state | merged PRs |
+|---|---|---|
+| 0 — box-score team split (§E) | shipped | Sports_Predictor #20 |
+| 1 — instant block + de-duplication (§A) | shipped, all five surfaces | hub #52, Sports #22, NBA #17, PL #35, F1 #22 |
+| 2 — player's top calls (§C) | shipped, then simplified | hub #63, #72, #69; Sports #24, #25; NBA #22, #25; PL #38, #40; F1 #26 then **withdrawn** by F1 #28 |
+| 3 — player news (§D) | partial | NBA #23 (Day-To-Day), NFL #24 (injury gate). No merged PR found for CFB, PL or F1 news rows. |
+| 4 — insight rewrite (§B + validator rule) | not started | no merged PR found |
+
+F1's phase-2 rows shipped in #26 and were removed again in #28, so F1 has no
+"Model's top calls" block; the spec's §C row for F1 no longer describes the site.
+
+**Superseded in part** by
+[`2026-10-01-fixture-signals-design.md`](2026-10-01-fixture-signals-design.md),
+which re-specs the signals layer (`trust` / `line_gap` / absence / `post_game` /
+AI "so what") against measured data. Its phases 1–4 are separate work with their
+own status line; §H phase 4 above and that spec's phase 4 are not the same task.
+
+One design system for all five surfaces
 (PL, NFL, CFB, F1, NBA); per-sport differences are listed, not forked.
 
 ## 1. Goal

@@ -7,6 +7,12 @@ nothing to distinguish a shipped feature from an unimplemented proposal. Verifie
 by `git grep BoxScore origin/main` in both repos: `GameDetailModal.tsx` on
 `Sports_Predictor` and `PlayerBoxScore.tsx` on `NBA_Predictor`, both mounting it
 outside the vendored package tree.
+
+**Re-checked 2026-10-04 against merged PRs — still live, and A4 has since shipped
+on Sports only.** The team-split amendment this spec's §4/A4 deferred to
+`fixture-insight` §E landed as Sports_Predictor #20, "feat: team filter on predicted
+box score (Away/Both/Home)", which is fixture-insight §H phase 0. NBA needed no
+grouping work and still has no filter, exactly as this spec predicted.
 **Roadmap:** [../plans/2026-09-25-predictor-frontend-action-plan.md](../plans/2026-09-25-predictor-frontend-action-plan.md). This is Phase 5.
 **Mode:** Operate. The visitor's job is to read a projected roster and decide whether to trust it. Scanability and honest numbers outrank expression; the broadcast-scoreboard world is inherited unchanged.
 

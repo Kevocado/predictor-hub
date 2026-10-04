@@ -7,6 +7,17 @@ which is the v2 shape and not the v1 `headline`/`sections` this spec replaced. T
 reviewer's approval is still outstanding; what is not outstanding is whether it
 shipped.
 
+**Re-checked 2026-10-04 against merged PRs — still shipped, but §6 has since been
+amended.** `InstantBlock` moved the facts out from behind the AI button (hub #52,
+Sports_Predictor #22, NBA_Predictor #17, PL_Predictor #35, F1_Predictor #22), which
+is the amendment
+[`2026-09-30-fixture-insight-design.md`](2026-09-30-fixture-insight-design.md) §4
+records against this spec's §6. So the *shape below* is the reason for the design,
+not a description of the panel as served today — read it with the fixture-insight
+status line. §3 of this spec (the scope table that dropped F1 and NBA) is
+superseded; see
+[`2026-09-27-explainer-all-sports-and-live-refresh.md`](2026-09-27-explainer-all-sports-and-live-refresh.md).
+
 This spec is normally read before a plan is written
 (`superpowers:writing-plans`) and before any code moves. It has been through that
 and the code is deployed; the design is recorded here as the reason the shape is

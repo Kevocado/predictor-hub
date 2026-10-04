@@ -1,10 +1,24 @@
 # The explainer on all five sports, and live refreshes on game days
 
 **Date:** 2026-09-27
-**Status:** awaiting Kevin's review.
+**Status: partially implemented.** Corrected 2026-10-04 — this said only "awaiting
+Kevin's review", which a reader could not distinguish from an unimplemented
+proposal. Its two asks split, and only one of them shipped. Checked 2026-10-04
+against merged PRs and against each site's `refresh-public-snapshot.yml` on
+`origin/main`:
+
+| ask | state | evidence |
+|---|---|---|
+| the explainer reaches **all five** sports | **done** | `docs/superpowers/ledgers/2026-09-25-phase4-match-explainer.md` records the service built and the sport set derived from config; see also [`2026-09-27-explainer-v2-design.md`](2026-09-27-explainer-v2-design.md) |
+| the `cron:` lines move **closer together on game days** | **PL only** | PL_Predictor `origin/main` carries `- cron: "*/20 11-21 * * 0,1,3,5,6"` plus a daily catch-all. NFL_Predictor is still `"20 */3 * * *"`, CFB_Predictor `"25 */4 * * *"`, F1_Predictor `"40 */6 * * *"`, NBA_Predictor `'0 */6 * * *'`. No merged PR changed those four. |
+
+So the supersession of explainer-v2 §3 below is in force; the cron half is not,
+and the four hourly-or-slower schedules above are the current state.
+
 **Supersedes:** §3 of `docs/superpowers/specs/2026-09-27-explainer-v2-design.md` (the
 scope table that removed F1 and NBA), and the `cron:` lines in each sport's
-`.github/workflows/refresh-public-snapshot.yml`.
+`.github/workflows/refresh-public-snapshot.yml` — **the first, yes; the second only
+in PL_Predictor.**
 
 ---
 

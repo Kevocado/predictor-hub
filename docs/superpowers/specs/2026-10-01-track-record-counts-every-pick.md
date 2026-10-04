@@ -1,8 +1,17 @@
 # The track record counts every recorded pick
 
-**Status:** decided by Kevin on 2026-10-01 (in chat). Supersedes the "only a pick made before the
+**Status: implemented on all seven repos.** Corrected 2026-10-04 — this said
+"Implementation is not started" after the change had shipped on every sport and the
+hub. Checked 2026-10-04 against merged PRs (`gh pr list --state merged`):
+Sports_Predictor #26, NBA_Predictor #26, PL_Predictor #39, F1_Predictor #29,
+NFL_Predictor #25, CFB_Predictor #27, and the hub's UI labelling in
+predictor-hub #67. Each site now shows the pre-kickoff figure **beside** the full
+record rather than instead of it, which is what "pre-kickoff beside it" in those
+PR titles records.
+
+Decided by Kevin on 2026-10-01 (in chat). Supersedes the "only a pick made before the
 start counts" rule everywhere it appears (PRODUCT.md, the reviewer handoff, specs B8 / §F of the
-fixture-insight design, PL#28/#29, NFL#23, Sports#13). Implementation is not started.
+fixture-insight design, PL#28/#29, NFL#23, Sports#13).
 
 ## The decision, in Kevin's words
 
