@@ -1,5 +1,32 @@
 # Predictor Hub — Azure Hosting Migration Design Spec
 
+> ## ⚠️ SUPERSEDED — Azure is not the deploy path (recorded 2026-10-04)
+>
+> **Do not execute this spec or its plan.** Everything moved to a single VPS
+> before any Azure resource was created. Kept as the decision record: the Render
+> OOM and the snapshot workaround it describes were real, and the reasoning for
+> leaving Render is what the VPS path answers.
+>
+> **What replaced it:** the VPS path. The stack is version-controlled in this
+> repository under `deploy/` (predictor-hub #27, "fold the VPS stack into the hub
+> repo, so it is version-controlled"), and each site's deploy workflow is
+> `ci: deploy to the VPS on merge to main` — merged in NFL_Predictor #6,
+> CFB_Predictor #6, PL_Predictor #8, Sports_Predictor #3 (all 2026-09-28). The
+> roadmap records the same decision: "Hosting is now settled (everything on the
+> VPS)"
+> ([`../plans/2026-09-25-predictor-frontend-action-plan.md`](../plans/2026-09-25-predictor-frontend-action-plan.md)).
+> Sports_Predictor #11 ("mark the Azure rebuild plan superseded, because Azure is
+> not the deploy path") made the same correction in that repo on 2026-09-28.
+>
+> **One caveat, because "deploy to the VPS on merge" reads as automatic:** that
+> workflow is merged in **four** of the six site repos only. It is still open,
+> and therefore not in effect, for NBA_Predictor (#5), F1_Predictor (#6) and this
+> hub's landing page (#5). Checked 2026-10-04 against
+> `gh pr list --state open`. Nothing here describes an auto-deploy.
+>
+> Superseded as of 2026-09-28; status line last checked 2026-10-04 against merged
+> and open PRs across all seven repos.
+
 ## Overview
 
 Migrate F1_Predictor, PL_Predictor, and (once built) NFL_Predictor off Render

@@ -1,5 +1,22 @@
 # Azure Hosting Migration Implementation Plan
 
+> ## ⚠️ SUPERSEDED — DO NOT EXECUTE (recorded 2026-10-04)
+>
+> Every task below is unstarted and will stay that way: deployment moved to the
+> VPS before any Azure resource existed. The seven tasks, the resource names and
+> the `az` commands are kept only as the decision record of why Render was left.
+>
+> **Replace it with:** the VPS stack version-controlled in this repository under
+> `deploy/` (predictor-hub #27), plus each site's `ci: deploy to the VPS on merge
+> to main` — merged in NFL_Predictor #6, CFB_Predictor #6, PL_Predictor #8,
+> Sports_Predictor #3; still **open** (so not in effect) in NBA_Predictor #5,
+> F1_Predictor #6 and predictor-hub #5.
+> Design side: [`../specs/2026-09-06-azure-hosting-migration-design.md`](../specs/2026-09-06-azure-hosting-migration-design.md),
+> which carries the same superseded note.
+>
+> Superseded as of 2026-09-28; status line last checked 2026-10-04 against merged
+> and open PRs across all seven repos.
+
 > **For agentic workers:** Execute tasks in order (Task 1 → Task 7); within a task, execute steps in order. Each step names the exact command to run and the exact output to expect before moving to the next step — treat a mismatch as a stop-and-report condition, not something to work around silently. Steps use checkbox (`- [ ]`) syntax for tracking; check one off only after its "Expected" condition is actually confirmed, not just after running the command. If running inside Claude Code, prefer superpowers:subagent-driven-development or superpowers:executing-plans; any other agent can execute this plan directly from the checkboxes below, no special tooling required beyond `az`, `gh`, `docker`, and shell access.
 
 **Goal:** Move F1_Predictor and PL_Predictor off Render onto Azure Container Apps, and `predictor-hub` onto an Azure Static Web App, with zero behavior change to either app (PL_Predictor keeps its existing snapshot-serving mode as-is — converting it to live compute is a separate, follow-up plan).

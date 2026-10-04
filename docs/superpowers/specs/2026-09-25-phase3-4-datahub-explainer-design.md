@@ -2,6 +2,19 @@
 
 **Date:** 2026-09-25
 **Status:** all four sections approved by Kevin. Sections 1–2 were approved in conversation on 2026-09-25; sections 3–4 were approved on 2026-09-26, which lifted the Task 12 gate.
+
+**Implementation status (checked 2026-10-04 against merged PRs, all seven repos):**
+Phase 3 **done**, Phase 4 **done**. The approval line above says nothing about
+whether code shipped, which is why this line exists.
+
+| phase | state | evidence |
+|---|---|---|
+| Phase 3 — Data Hub parity | **done** | `docs/superpowers/ledgers/2026-09-25-phase3-datahub-parity.md` records Tasks 1–6 complete on `claude/sports-predictors-frontend-plan-qpab3v`; `packages/predictor-ui/src/components/StatTable.tsx` is on hub `origin/main` |
+| Phase 4 — the AI match explainer | **done** | `docs/superpowers/ledgers/2026-09-25-phase4-match-explainer.md` records the service built task-by-task; hub #37, #39, #41, #19 and #36 are the merged explainer work. Served by all five sports |
+
+The later phases of the frontend roadmap that this spec's predecessor started —
+Phases 3–5 of the *action plan* — are tracked there, not here. Review of the design
+is still outstanding; what is not outstanding is whether it shipped.
 **Roadmap:** [../plans/2026-09-25-predictor-frontend-action-plan.md](../plans/2026-09-25-predictor-frontend-action-plan.md). This replaces the old Phase 4 ("live Hub ticker"). The ticker can come later and reuse the explainer's facts endpoints.
 
 ## Kevin's asks, verbatim

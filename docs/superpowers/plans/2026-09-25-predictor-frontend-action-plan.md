@@ -58,6 +58,16 @@ This is a starting brief. `/impeccable shape` (step 4) finalises it.
 
 **Status (2026-09-25):** implemented, reviewed and pushed on `claude/sports-predictors-frontend-plan-qpab3v` in Sports_Predictor, PL_Predictor, NBA_Predictor and predictor-hub. Carried over: the "last updated" time in error states and "Odds updated N min ago" need the snapshot's `updated_at`, so they move to the Phase 3 snapshot-first render. The live-VPS check that NBA cards show picks is still open.
 
+> **Re-checked 2026-10-04 against merged PRs.** The trust fixes are traceable to
+> NFL_Predictor #23, #28, #29, #31 and #32, CFB_Predictor #26 and #27,
+> PL_Predictor #28, #29 and #44, NBA_Predictor #1 and #18, Sports_Predictor #13
+> and F1_Predictor #10 — all merged, all pre/post-kickoff honesty work, several of
+> which this phase's line "leave rebuilt picks out of the headline" predicted.
+> **The carried-over snapshot-first render and the live-VPS check are UNVERIFIED:**
+> the first needs `/api/snapshot-meta` consumers, which no single merged PR claims,
+> and the second is a live-host check that was not re-run — no merged PR and no
+> offline command can stand in for it. Neither is claimed done here.
+
 **Implementation plan:** [2026-09-25-phase1-trust.md](2026-09-25-phase1-trust.md). Each phase gets its own executable plan (superpowers:writing-plans), and each UI task runs through its `/impeccable` command.
 
 | # | Command | Target | Work | Done when |
@@ -71,6 +81,13 @@ This is a starting brief. `/impeccable shape` (step 4) finalises it.
 
 **Status (2026-09-25):** 2a (the `predictor-ui` package) is done. 2b (the NFL + CFB site) is done and reviewed; it needed backend changes in `NFL_Predictor` and `CFB_Predictor`, which now flag picks rebuilt after kickoff and leave them out of the track record. 2c (NBA) is built. It fixed a larger honesty hole in the NBA backend: the retrain backtest wrote picks for finished games into the live table, and the cards, track record and calibration all judged them. NBA now records each game's tip-off and counts only picks made before it. 2d (Hub restyle) is done; the live "this weekend" ticker stays in Phase 4, step 13, because it needs the sport APIs reachable from the Hub (CORS or a same-origin proxy). 2e (F1, timing tower) is built and reviewed. Its whole 2026 track record turned out to have been snapshotted after the races; it now counts only pre-session snapshots (all 12 current races read as rebuilt). 2f (PL, the reference) is built and reviewed: mostly a token swap, plus the family frame, the gameweek navigator, kickoff times in UTC with their zone (the old code read them as viewer-local), and a 12 px floor. **Phase 2 is complete on all five sites.** Next: Phase 3 (Data Hub StatTables, detail sheets) and Phase 4 (the live Hub ticker, which needs a CORS or same-origin proxy decision on the VPS).
 
+> **Re-checked 2026-10-04 against merged PRs.** "Complete on all five sites" holds:
+> Sports_Predictor #1, PL_Predictor #1, NBA_Predictor #1, F1_Predictor #1 plus the
+> hub's copy (hub #26, #44) are the family-design PRs, and the later simplification
+> passes are Sports #25, NBA #25, PL #40, F1 #27, hub #69. Two things have since
+> moved: F1 dropped its "Model's top calls" block (F1 #28), and Phase 3's Data Hub
+> half below is now done.
+
 | # | Command | Target | Work |
 |---|---|---|---|
 | 5 | `/impeccable init` | predictor-hub | Write `PRODUCT.md`: audience (sports fans on their phones), the one-question promise, the pre-kickoff honesty rule, five sports and one product. impeccable requires this before `shape`. |
@@ -79,6 +96,16 @@ This is a starting brief. `/impeccable shape` (step 4) finalises it.
 | 8 | `/impeccable extract` | new `Kevocado/predictor-ui` | Package `tokens.css`, `fmt.ts` and the React components, consumed by every site as a tagged git dependency. `fmt` owns every number on screen: whole-number %, `<1%` / `>99%`, signed net rating, W3/L1 streaks, "MIA by 4.8", "WAS +4.5" spreads, "Sep 18, 7:02 AM CT" dates, and "Sep 18 model" in place of version ids. |
 
 ## Phase 3 · Move each site onto the system
+
+**Status (checked 2026-10-04 against merged PRs, all seven repos):** the Data Hub
+parity half is **done** — `docs/superpowers/ledgers/2026-09-25-phase3-datahub-parity.md`
+records Tasks 1–6 complete on `claude/sports-predictors-frontend-plan-qpab3v`, and
+`packages/predictor-ui/src/components/StatTable.tsx` is on `origin/main`. The
+per-site `/impeccable clarify|typeset|adapt|layout` passes (steps 9–12) are
+**not separately traceable**: several of their items shipped inside other work
+(e.g. Sports_Predictor #23 "drop the empty pre-game heading", NBA_Predictor #19),
+but no merged PR maps to steps 9–12 as a set, so this plan does not claim them.
+Listed below as unverified rather than done.
 
 Order: **Sports** (football season is under way, and it's the P0), **NBA** (before the late-October tip-off), **Hub**, **F1**, **PL**. Each site goes through the same four commands. Each run changes that site only.
 
@@ -126,7 +153,27 @@ Site-specific items that ride along with that site's pass:
 | 13 | `/impeccable shape`, then build | The Hub is a **Persuade** surface. Build a broadcast "tonight / this weekend" ticker of the next pick in each sport (a Pick Bug per sport), with the season hit rate beside each ("F1: Russell 18% to win Baku · 6/12 winners called"), and the sport switcher from the shared app frame. Remove the emoji cards, the four identical LIVE badges, and the filler copy ("walk-forward-validated scoreline model", "no login required", "Work in progress"). Links are the VPS subdomains, or relative paths once everything shares one origin. SportMark favicons and page titles follow the pattern `MIA @ TOR · NBA Predictor`. |
 | 14 | `/impeccable delight` (optional) | Broadcast touches only where they add meaning: a result "final" wipe on settle, and a hit-rate ticker. No decoration elsewhere. |
 
+## Phase 4 · The Hub becomes the front page
+
+**Status (checked 2026-10-04 against merged PRs):** **partial.** Step 13's live
+teasers shipped in predictor-hub #23 — five sport cards, each with a live "picks"
+teaser (closest game and most confident pick for NFL/CFB/NBA, next session for
+F1), a Home tab and clickable rows. The rest of step 13 has **not** shipped: no
+pick-bug ticker with the season hit rate beside each sport, and no comprehensive
+landing page. The landing page is specced separately in
+[`../specs/2026-09-27-hub-picks-page-design.md`](../specs/2026-09-27-hub-picks-page-design.md)
+(still not started) and its deploy is still open as predictor-hub #5, "publish the
+landing page to the VPS on merge to main" — so nothing publishes the landing page
+automatically. Step 14 (`/impeccable delight`) is optional and has no merged PR.
+
 ## Phase 5 · Verify
+
+**Status (checked 2026-10-04):** **not started, and the target is unverified.**
+No merged PR in any repo corresponds to step 15 (`/impeccable audit`) or step 16
+(`/impeccable polish`). The only critique artefact on `origin/main` is
+`.impeccable/critique/2026-09-25T07-27-01Z__index-html.md`, the 18/40 snapshot
+quoted in this plan's Inputs — so the ≥ 28/40 target has never been measured
+against a re-run, and this plan does not claim it has been reached.
 
 | # | Command | Work |
 |---|---|---|

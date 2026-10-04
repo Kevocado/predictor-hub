@@ -1,5 +1,16 @@
 # Explainer v2 Implementation Plan
 
+**Status: executed; the v2 explainer shipped on all five sports.** Corrected
+2026-10-04 — the note below reads "Plan only. No code moves with it", which is an
+instruction to an executing agent, not a statement of what happened, and a later
+reader took it for one. Checked 2026-10-04 against merged PRs
+(`gh pr list --state merged`): the service and contract landed in hub #19, #36, #37,
+#39 and #41; the site rollouts are F1_Predictor #15, PL_Predictor #27,
+NBA_Predictor #14, Sports_Predictor #5 and #15. The panel's composition has since
+been amended by the instant-block work (hub #52 and the four site PRs) — see
+[`../specs/2026-09-30-fixture-insight-design.md`](../specs/2026-09-30-fixture-insight-design.md)
+and [`../specs/2026-09-27-explainer-v2-design.md`](../specs/2026-09-27-explainer-v2-design.md).
+
 > **Plan only. No code moves with it.** The spec's status line gates a plan on
 > the reviewer's approval and gates code on the plan's; #7 was merged with no
 > comments, which I read as that approval. **If you meant something narrower,

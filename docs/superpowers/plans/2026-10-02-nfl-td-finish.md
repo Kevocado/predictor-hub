@@ -1,5 +1,17 @@
 # Plan: finish NFL TD work (anytime TD fix, QB passing-TD line, pop-out)
 
+**Status: executed — all four tasks shipped.** Corrected 2026-10-04: this plan
+carried no status line at all, so its unchecked-looking task headings read as
+unstarted work. Checked 2026-10-04 against merged PRs (`gh pr list --state
+merged`): Task 1 + Task 2 in NFL_Predictor #26 ("feat: QB passing-TD call on a
+per-player model line"), with the serve-side fixes that made it measurable in
+NFL_Predictor #27–#31; Task 3 in NFL_Predictor #38 ("feat: record and grade the QB
+passing-TD call so the shipped prediction can be evaluated"); Task 4 in
+Sports_Predictor #27 ("feat: NFL pop-out — 'Rush or receiving TD' and 'QB passing
+TDs' on the model line"), reworded by Sports_Predictor #29. The same anytime-TD
+defect was fixed in CFB_Predictor #29. The "Done when" commits that needed a deploy
+were NFL_Predictor, Sports_Predictor and CFB_Predictor.
+
 **For the executing agent.** Self-review each task; every new test is red-checked by really removing the fix.
 Gates, merge rule and standing rules are in the hand-off prompt on predictor-hub#69. Do not deploy.
 
@@ -43,4 +55,5 @@ category on passing alone; CFB panel unchanged. `npm run build` + full vitest.
 
 ## Done when
 NFL#26 and the Sports PR are merged through the CodeRabbit gate; summary on hub#69 lists the commits that need a
-deploy (NFL_Predictor, Sports_Predictor) and notes the model was retrained.
+deploy (NFL_Predictor, Sports_Predictor, CFB_Predictor — the anytime-TD fix landed in CFB_Predictor #29 as
+well) and notes the model was retrained.

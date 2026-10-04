@@ -1,7 +1,23 @@
 # Fixture signals: computed insight, instant, with an AI "so what"
 
-**Status:** design approved by Kevin on 2026-10-01 (brainstormed in chat; all four signals chosen,
-signals instant, AI adds the interpretation). No code yet. Next: an implementation plan
+**Status: partially implemented.** Corrected 2026-10-04 — this said "No code yet"
+after phase 1 began landing. Checked 2026-10-04 against merged PRs
+(`gh pr list --state merged`, all seven repos):
+
+| phase (per [`../plans/2026-10-02-fixture-signals-phases-1-4.md`](../plans/2026-10-02-fixture-signals-phases-1-4.md)) | state | evidence |
+|---|---|---|
+| Task 0 — the spike | **done, and it corrected this spec** | predictor-hub #71, then re-derived and dated in #78 |
+| 1 — shared contract + `trust` + `line_gap` | **partial** | hub `Signal` type + `SignalRows` shipped in hub #73; the **F1** `trust` adapter and `GET /signals/{game_id}` shipped in F1_Predictor #34. The NFL/CFB/NBA/PL `trust` adapters have **not** shipped: those four sports' `data/tracking.db` files are gitignored, so the spike could not measure their bucket depth and recorded them `UNKNOWN`, not absent. `line_gap` (NFL/CFB only) has no merged PR. |
+| 2 — absence (NBA, NFL, PL) | not started | no merged PR |
+| 3 — `post_game` | not started | no merged PR |
+| 4 — AI "so what" + validator rule | not started | no merged PR |
+| 5 — slate brief | not started | out of scope by the plan's own instruction; needs its own spec |
+
+Phase 1's hub half is deliberately inert until the sites re-sync (`sync-ui.mjs`),
+so the shipped `SignalRows` is not yet on any served fixture modal.
+
+Design approved by Kevin on 2026-10-01 (brainstormed in chat; all four signals chosen,
+signals instant, AI adds the interpretation). Next: an implementation plan
 (`superpowers:writing-plans`), then phases below, one PR per repo per phase.
 
 ## 1. The problem, measured

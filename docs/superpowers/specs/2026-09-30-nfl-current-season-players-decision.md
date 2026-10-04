@@ -4,6 +4,15 @@
 item 8 of the reviewer's standing list asked for the decision to be written into a
 spec rather than left in someone's head.
 
+**Re-checked 2026-10-04:** this is a decision record, not an implementation claim,
+so there is no PR to trace. What was re-checked is the premise — the NFL
+current-season roster and availability behaviour it was written against, measured
+at `NFL_Predictor` `origin/main` `b2ec1b7` on 2026-09-30. The behaviour has since
+moved in two places, both in merged PRs: NFL_Predictor #19 falls back to
+`nflverse stats_player` when `player_stats` 404s, and NFL_Predictor #24 makes the
+injury report gate the props pick path. Neither contradicts the decision recorded
+below; both narrow what "eligible to appear in a player row" means in practice.
+
 **Parent spec:** `2026-09-30-fixture-insight-design.md` §C (NFL row) and §D (NFL
 availability). This document does not change that spec; it settles one question it
 left open — who is eligible to appear in an NFL player row at all.

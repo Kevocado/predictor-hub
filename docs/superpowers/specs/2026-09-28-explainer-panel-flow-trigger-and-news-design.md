@@ -12,6 +12,18 @@ ruling at ledger Task 37, on the reasoning given in §7 below.
 
 ## Status, measured 2026-09-29
 
+> **Re-checked 2026-10-04 against merged PRs; the four-site table below still holds.**
+> Two things have landed since and change what this spec *is*, not whether it
+> shipped. (1) The facts moved out from behind the button — `InstantBlock` shipped
+> on all four sport sites and the hub (hub #52, Sports_Predictor #22, NBA_Predictor #17,
+> PL_Predictor #35, F1_Predictor #22), which is the amendment to this spec's
+> flow-sentence and button-gating rules that
+> [`2026-09-30-fixture-insight-design.md`](2026-09-30-fixture-insight-design.md) §4
+> records. (2) The news half of this spec advanced further than "triggered only":
+> NBA_Predictor #23 (Day-To-Day, a flag never a number) and NFL_Predictor #24 (the
+> injury report gates the props pick path; absence never removes anyone). No merged
+> PR was found for a CFB, PL or F1 news row, so this spec does not claim one.
+
 The table further down records the state on 2026-09-28 and is left as written,
 because it is the evidence for why the spec exists. This section is the current
 state, and every row was checked rather than recalled.
