@@ -27,7 +27,7 @@ Inherits Phase 1's constraints in full: never push to `main`, never merge; one b
 - **The cap is not a quota.** At most three rows per category; fewer when fewer exist; never padded, never a fourth. A category that cannot fill three is not a category.
 - **One category per list.** A rebounds row never appears under a points heading.
 - **An out player leaves the ranking.** No list, no bar, no tile, no rank position. He appears once, below the lists, attributed and dated. "Flagged in place" is forbidden — see the spec's §D after #50.
-- **Say what "confident" means per row, per sport.** A probability, a bucket hit-rate, or a projection ± MAE. Never an implied edge: **no odds feed exists in any repo**, so no row may claim one.
+- **Say what "confident" means per row, per sport.** A probability, a bucket hit-rate, or a projection ± MAE. Never an implied edge: **no odds feed exists in any repo**, so no row may claim one. **PREMISE CORRECTED 2026-10-04** — four repos do ship an odds client (`data/odds_api.py` in NFL/CFB/NBA/PL; PL also has `sportsbook_api.py` + `evaluate/odds_benchmark.py`), and CFB's `cache/sportsbook/` is populated in production. The RULE is unchanged and still binding: a row still may not imply an edge, because the prohibition is about deriving an edge from a probability, not about the absence of a feed. See `specs/2026-10-01-fixture-signals-design.md` §11 for the measured table.
 - **Provenance is per row**: a graded record where a ledger genuinely grades that row, an explicit "no graded record yet" where none does. Never a number borrowed from a different unit of analysis (see the PL correction below).
 - **Banned wording**: "lock", "guaranteed", "best bet", "edge", "value". The name is **"Model's top calls"**.
 
