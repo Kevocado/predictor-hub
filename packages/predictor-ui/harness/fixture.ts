@@ -237,6 +237,50 @@ export const SIGNALS: Signal[] = [
   },
 ];
 
+/** Phase 2's absence row, in TWO sports, because the unit is the whole point.
+ *
+ *  `ABSENCE_SIGNAL` is NFL: a rush projection in YARDS, spelled out in the
+ *  headline because the marker cannot know the unit. `PL_ABSENCE_SIGNAL` is the
+ *  same shape carrying a share, spelled with a `%`. They are drawn identically,
+ *  which IS the design: `figures.projection` is a magnitude in the sport's own
+ *  units, and the headline is where the unit lives.
+ *
+ *  Both carry an `n` UNDER the rate floor -- 3 injured players and 1 -- and both
+ *  draw. That is what `DRAWS_A_RATE.absence_strip === false` buys, and it is the
+ *  thing a reader would notice first if it were wrong: a row about a handful of
+ *  injured players is not a rate drawn from a handful of games. */
+export const ABSENCE_SIGNAL: Signal = {
+  kind: "absence",
+  sport: "nfl",
+  game_id: "401671829",
+  headline: {
+    text: "Out: J. Jacobs, our #2 rush projection (78 yds)",
+    figures: { projection: 78 },
+  },
+  n: 3,
+  source: "ESPN injury report, Wed · 3 players out",
+  as_of: "2026-10-04T16:00:00Z",
+  strength: 0.45,
+  pre_kickoff_only: true,
+  visual: "absence_strip",
+};
+
+export const PL_ABSENCE_SIGNAL: Signal = {
+  kind: "absence",
+  sport: "pl",
+  game_id: "1",
+  headline: {
+    text: "Out: Saka, our #2 midfielder, 62% to score",
+    figures: { projection: 62 },
+  },
+  n: 1,
+  source: "FPL status · 1 player out",
+  as_of: "2026-10-04T16:00:00Z",
+  strength: 0.4,
+  pre_kickoff_only: true,
+  visual: "absence_strip",
+};
+
 /** A headline over the cap, for the clipped state. Its `rate` is the SAME
  *  `trustRate` as the row above: the point of the state is that clipping removes
  *  words and never a figure. */

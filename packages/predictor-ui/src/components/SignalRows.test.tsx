@@ -964,20 +964,25 @@ describe("accessibility · the headline is read, and the evidence is reachable",
 
 describe("the refusals · nothing reaches the page as a false statement", () => {
   it("REFUSES a visual this package cannot draw, rather than dropping its marker", () => {
-    // Phase 2/3's `absence_strip` and `projected_vs_actual`. Rendering the words
-    // without the marker is the failure tests and screenshots both miss.
-    expect(() =>
-      render(<SignalRows signals={[lineGap({ kind: "absence", visual: "absence_strip" })]} />),
-    ).toThrow(UndrawableSignalVisualError);
+    // `projected_vs_actual` is phase 3 and still refused. This test USED to use
+    // `absence_strip` as its example, which stopped being true in the same change
+    // that built that visual -- so it is deliberately re-pointed at the visual
+    // that is STILL undrawable rather than deleted: the refusal is the behaviour
+    // under test, and only `projected_vs_actual` exercises it any more.
+    // `SignalRows.absence.test.tsx` now covers the other half of this pair --
+    // that `absence_strip` DOES draw.
     expect(() =>
       render(<SignalRows signals={[lineGap({ kind: "post_game", visual: "projected_vs_actual" })]} />),
+    ).toThrow(UndrawableSignalVisualError);
+    expect(() =>
+      render(<SignalRows signals={[lineGap({ kind: "absence", visual: "projected_vs_actual" })]} />),
     ).toThrow(/drawable today/i);
   });
 
   it("checks every row before any of them renders", () => {
     // One bad row must not leave a half-drawn list on the page.
     expect(() =>
-      render(<SignalRows signals={[trust(), lineGap({ kind: "absence", visual: "absence_strip" })]} />),
+      render(<SignalRows signals={[trust(), lineGap({ kind: "post_game", visual: "projected_vs_actual" })]} />),
     ).toThrow(UndrawableSignalVisualError);
   });
 
