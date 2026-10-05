@@ -106,3 +106,34 @@ test("F1 is handed no odds credential, because it reads none", () => {
   assert.ok(!keys.has("ODDS_API_KEY"), "f1 reads no odds client; it should be handed no key");
   assert.ok(!keys.has("SPORTSBOOK_API_KEY"), "f1 reads no sportsbook client; it should be handed no key");
 });
+test("tradehub forwards the Alpaca credentials the crypto shadow endpoint reads", () => {
+  // **This block exists in PRODUCTION's /opt/stack/compose.yml and was missing
+  // from the repository.** Found on 2026-10-05 by diffing the deployed file
+  // against `main` while syncing the PL/NFL odds keys, not by a test -- which is
+  // the gap this test closes.
+  //
+  // Nothing is broken right now: `/opt/stack/.env` has no Alpaca values either, so
+  // `GET /api/shadow-performance` answers **424**, which is that endpoint's
+  // documented "unset" response. The trap is what happens the moment someone sets
+  // the keys: **compose forwards only what this block names**, so with these two
+  // lines absent from the repo a `.env` entry does nothing and the endpoint keeps
+  // answering 424 with credentials sitting right there in the file. That is the
+  // identical failure PL had, and the identical shape.
+  //
+  // The failure mode is silent in the worst direction: a future
+  // `rsync compose.yml /opt/stack/` from a clean checkout -- the obvious way to
+  // apply the odds fix -- would DELETE these two lines from the live file and
+  // quietly un-forward credentials the operator had set.
+  const keys = envKeysFor("tradehub");
+  assert.ok(keys.has("ALPACA_API_KEY"), "tradehub must forward ALPACA_API_KEY");
+  assert.ok(keys.has("ALPACA_SECRET_KEY"), "tradehub must forward ALPACA_SECRET_KEY");
+});
+
+test("no odds credential reaches a service that reads none, Alpaca included", () => {
+  // The Alpaca pair is for the crypto shadow timeline, which only `tradehub`
+  // serves. Passing it to a sports service would imply a capability it lacks --
+  // the same reasoning the F1 assertion above gives.
+  const keys = envKeysFor("pl");
+  assert.ok(!keys.has("ALPACA_API_KEY"), "pl reads no Alpaca client; it should be handed no key");
+  assert.ok(!keys.has("ALPACA_SECRET_KEY"), "pl reads no Alpaca client; it should be handed no key");
+});
