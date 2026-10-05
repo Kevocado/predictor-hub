@@ -40,6 +40,7 @@ import { render, screen } from "@testing-library/react";
 import {
   SignalRows,
   SPEC_MIN_N,
+  SignalFigureError,
   UndrawableSignalVisualError,
   rateIsDrawable,
   signalFigure,
@@ -64,6 +65,21 @@ const absence = (over: Partial<Signal> = {}): Signal => ({
   strength: 0.4,
   pre_kickoff_only: true,
   visual: "absence_strip",
+  ...over,
+});
+
+/** A `delta_chip` row: a disagreement with the line, in the sport's own units. */
+const lineGap = (over: Partial<Signal> = {}): Signal => ({
+  kind: "line_gap",
+  sport: "nfl",
+  game_id: "2026_04_KC_BAL",
+  headline: { text: "Model wants +1.6 more than the line.", figures: { gap: 1.6 } },
+  n: 40,
+  source: "sportsbook line",
+  as_of: "2026-10-03T16:44:10Z",
+  strength: 0.6,
+  pre_kickoff_only: true,
+  visual: "delta_chip",
   ...over,
 });
 
@@ -128,5 +144,53 @@ describe("absence_strip", () => {
   it("handles a fractional projection without inventing precision", () => {
     render(<SignalRows signals={[absence({ headline: { text: "Out: Saka, our #2 midfielder, 62% to score", figures: { projection: 62 } } })]} />);
     expect(screen.getByTestId("signal-absence")).toHaveTextContent("62");
+  });
+});
+// --- the figure a projection cannot be ----------------------------------
+
+
+describe("a projection is a magnitude, and a negative one is refused", () => {
+  it("REFUSES a negative projection rather than drawing a minus sign", () => {
+    // Caught by CodeRabbit on F1#38. `signalFigure` range-checks a `rate` to [0,1]
+    // and deliberately does NOT range-check a `gap` ("a yardage figure is a
+    // perfectly good gap"), but `projection` was in neither branch.
+    //
+    // The three absence adapters all send non-negative figures — NFL rush yards,
+    // NBA's `predicted_value`, PL's probability — so nothing produces this today.
+    // But adapters are separate repositories, and this package's whole discipline
+    // is to refuse a figure it cannot draw rather than render the words beside a
+    // marker that disagrees with them. `projection(-78)` draws "-78", so the row
+    // would read "Out: J. Jacobs, our #2 rush projection (-78 yds)" — a player who
+    // is out for MINUS 78 yards.
+    expect(() =>
+      render(<SignalRows signals={[absence({ headline: { text: "Out: A Player, our #2 rush projection (-78 yds)", figures: { projection: -78 } } })]} />),
+    ).toThrow(SignalFigureError);
+  });
+
+  it("names the figure and the bound in the error", () => {
+    // An adapter author needs to know WHICH field is wrong, not just that
+    // something is.
+    try {
+      signalFigure(absence({ headline: { text: "x -78", figures: { projection: -78 } } }), "absence_strip");
+      expect.unreachable("should have thrown");
+    } catch (e) {
+      expect((e as Error).message).toMatch(/projection/);
+      expect((e as Error).message).toMatch(/-78/);
+    }
+  });
+
+  it("still accepts zero", () => {
+    // Zero is a real projection for PL: `availability_multiplier` is 0.0 for an
+    // unavailable player, and a player the model expected nothing from is a
+    // legitimate, if unexciting, absence. Refusing it would refuse a true claim.
+    render(<SignalRows signals={[absence({ headline: { text: "Out: A Player, our #2 scorer projection (0% to score)", figures: { projection: 0 } } })]} />);
+    expect(screen.getByTestId("signal-absence")).toHaveTextContent("0");
+  });
+
+  it("still allows a signed gap, because a disagreement CAN point either way", () => {
+    // The rule being drawn: `delta_chip` is a direction, `absence_strip` is a
+    // magnitude. Refusing negatives here must not reach across and refuse them
+    // there -- that was the reason `gap` was left unchecked in the first place.
+    expect(() => signalFigure(lineGap({ headline: { text: "Model wants -1.6 more than the line.", figures: { gap: -1.6 } } }), "delta_chip")).not.toThrow();
   });
 });
