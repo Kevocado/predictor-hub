@@ -190,6 +190,19 @@ services:
       # Keyed FRED API for ALFRED vintages (labor nowcast / Jobs Scorecard): the keyless
       # alfred/fred web hosts drop connections from this server; api.stlouisfed.org works.
       FRED_API_KEY: ${FRED_API_KEY:-}
+      # Alpaca market data for the crypto shadow timeline
+      # (/api/shadow-performance): unset = the endpoint answers 424 naming these
+      # variables. Set them in .env AND here -- compose forwards only what this
+      # block names, so .env alone does nothing.
+      #
+      # Present in production's /opt/stack/compose.yml since before 2026-09-29 and
+      # MISSING from this repository until 2026-10-05. Nothing was broken -- .env
+      # has no Alpaca values either, so the endpoint answers its documented 424 --
+      # but a sync of this file over the deployed one would have deleted the two
+      # lines and left any credentials the operator set doing nothing. Same shape as
+      # PL's odds keys (8fe91a9b); `vps-stack/tests/odds-env.test.mjs` now holds it.
+      ALPACA_API_KEY: ${ALPACA_API_KEY:-}
+      ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY:-}
       # Past ALFRED/FRED vintages never change: keep them across the throwaway job containers.
       TRADEHUB_ALFRED_CACHE: /cache/alfred
     volumes:
