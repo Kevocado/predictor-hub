@@ -53,6 +53,8 @@ import {
   valueOf,
   assertFixtureConsistency,
   type Category,
+  ABSENCE_SIGNAL,
+  PL_ABSENCE_SIGNAL,
 } from "./fixture";
 
 /** The game and every player figure live in ./fixture — nothing restates them. */
@@ -627,6 +629,22 @@ function App() {
               Two rows, in the order the endpoint ranked them by <code>strength</code>. The bar is the
               trust row&apos;s rate ({Math.round(trustRate * 100)}% of {BUCKET.n} games); the chip is
               the gap ({FIX.edgePts} pts) with the sign in the figure, not in the colour.
+            </p>
+          </div>
+
+          <div data-shot="signals-absence" className="flex flex-col gap-2">
+            <InstantHead>Absence — the player&apos;s own projection, in the sport&apos;s units</InstantHead>
+            <SignalRows signals={[ABSENCE_SIGNAL, PL_ABSENCE_SIGNAL]} />
+            <p className="max-w-[70ch] text-xs text-pr-text-faint">
+              Phase 2&apos;s visual, and the one this package used to REFUSE — which is
+              why no absence signal could be drawn anywhere until it landed. The
+              marker is a plain unsigned number, because the component cannot know
+              the unit: NFL&apos;s is 78 <em>rush yards</em> and PL&apos;s is a share, and only the
+              adapter knows which. It is deliberately not a bar (a projection is not
+              a hit rate) and deliberately not coloured: a player being out is not an
+              outcome the model got right or wrong. Its <code>n</code> counts injured
+              players, so the <code>n ≥ {SPEC_MIN_N}</code> rate floor is exempt —
+              both rows above draw at n=3 and n=1.
             </p>
           </div>
 
