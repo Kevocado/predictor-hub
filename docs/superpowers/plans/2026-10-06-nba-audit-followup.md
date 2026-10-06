@@ -56,8 +56,12 @@ Files: `data/espn.py` and the training-cache loader, `features/build.py`, `model
 2. Season-boundary carry-over: start each season's ratings at last season's rating regressed toward the mean (fit
    the regression weight in walk-forward, do not hard-code it). Unit-test that week-1 features use only prior-season
    data.
-3. Re-run the walk-forward with date-boundary windows (no row-wise cuts) and report pooled out-of-fold
-   log-loss/Brier/AUC and MAE against naive. If it does not beat the Phase A numbers, say so and do not ship it.
+3. Re-run the walk-forward with date-boundary windows (no row-wise cuts). Compare against Phase A on the SAME
+   held-out games: score the new model only on the 758 Phase A out-of-fold games (same dates, same windows), with
+   the extra seasons used for training only, and report that table next to the Phase A numbers. Different held-out
+   sets are not comparable and a number from one is never put beside the other. Report the larger multi-season
+   held-out set separately as its own table. If the new model does not beat Phase A on the identical games, say so
+   and do not ship it.
 4. Note the new n in the evaluation doc; the ±0.05 per-bucket calibration gate needs n >= 100 per bucket.
 
 ## Task 4 (P1) — model candidates, each ships only if walk-forward beats the current winner
