@@ -25,14 +25,28 @@ sudo -u ubuntu git fetch -q origin main && sudo -u ubuntu git checkout -q --forc
 sha=$(git rev-parse HEAD)
 docker build -q -t ghcr.io/kevocado/$img:$sha . >/var/tmp/build-$repo-$$.log 2>&1 || { echo "build failed"; tail -5 /var/tmp/build-$repo-$$.log; exit 1; }
 cd /opt/stack
+# The tag line must already exist: sed on a missing line changes nothing and compose would silently
+# fall back to the service's default tag while the health check passes against the old container.
+grep -q "^$var=" .env || { echo "FAILED: $var is not set in /opt/stack/.env, refusing to deploy"; exit 1; }
 prev=$(grep "^$var=" .env | cut -d= -f2-)
+rollback() {
+  sed -i "s|^$var=.*|$var=$prev|" .env
+  docker compose --project-directory /opt/stack up -d --no-deps $svc >/dev/null 2>&1
+}
 sed -i "s|^$var=.*|$var=$sha|" .env
-docker compose --project-directory /opt/stack up -d --no-deps $svc >/dev/null 2>&1
+grep -q "^$var=$sha\$" .env || { echo "FAILED: could not set $var"; rollback; exit 1; }
+if ! docker compose --project-directory /opt/stack up -d --no-deps $svc >/var/tmp/compose-$svc-$$.log 2>&1; then
+  echo "FAILED: compose could not start $svc on $sha, rolling back to $prev"; tail -5 /var/tmp/compose-$svc-$$.log
+  rollback; exit 1
+fi
+# The healthy container must be the NEW image, not the previous one still answering.
+cid=$(docker compose --project-directory /opt/stack ps -q $svc)
+img=$(docker inspect --format '{{.Config.Image}}' "$cid" 2>/dev/null)
+case "$img" in *"$sha"*) ;; *) echo "FAILED: $svc is running $img, expected $sha, rolling back"; rollback; exit 1;; esac
 for i in $(seq 1 24); do
   if docker compose --project-directory /opt/stack exec -T caddy wget -q -T 5 -O /dev/null "http://$svc:$port$hp" 2>/dev/null; then echo "OK $svc -> ${sha:0:12}"; exit 0; fi
   sleep 5
 done
 echo "FAILED health, rolling back to $prev"
-sed -i "s|^$var=.*|$var=$prev|" .env
-docker compose --project-directory /opt/stack up -d --no-deps $svc >/dev/null 2>&1
+rollback
 exit 1
