@@ -48,7 +48,7 @@ export interface FixtureExtras {
   tiles?: MarketTile[];
   segments?: Segment[];
   legend?: Segment[];
-  record?: { label: string; hits: number | null; settled: number };
+  record?: { label: string; hits: number | null; settled: number; rebuilt?: number; preTip?: { hits: number; settled: number } | null };
   players?: { name: string; projection: string }[];
   moment?: Moment;
 }

@@ -573,6 +573,27 @@ describe("RecordStrip", () => {
     expect(screen.queryByText(/68/)).toBeNull();
     expect(container.querySelector("[data-testid='record-fill']")).toBeNull();
   });
+
+  it("shows rebuilt count when provided", () => {
+    render(<RecordStrip label="Every pick" hits={1174} settled={1373} rebuilt={1365} />);
+    expect(screen.getByText("1174/1373")).toBeInTheDocument();
+    expect(screen.getByText("1365 of them made after tip-off")).toBeInTheDocument();
+  });
+
+  it("shows pre-tip subset when provided", () => {
+    render(<RecordStrip label="Every pick" hits={1174} settled={1373} rebuilt={1365} preTip={{ hits: 3, settled: 8 }} />);
+    expect(screen.getByText("1174/1373")).toBeInTheDocument();
+    expect(screen.getByText("1365 of them made after tip-off")).toBeInTheDocument();
+    expect(screen.getByText("Before tip-off: 3 of 8")).toBeInTheDocument();
+  });
+
+  it("shows pre-tip without rebuilt when rebuilt is zero", () => {
+    render(<RecordStrip label="Every pick" hits={10} settled={20} rebuilt={0} preTip={{ hits: 5, settled: 10 }} />);
+    expect(screen.getByText("10/20")).toBeInTheDocument();
+    expect(screen.queryByText(/made after tip-off/)).toBeNull();
+    expect(screen.queryByText("0 of them made after tip-off")).toBeNull();
+    expect(screen.getByText("Before tip-off: 5 of 10")).toBeInTheDocument();
+  });
 });
 
 describe("ExplainerPanel", () => {

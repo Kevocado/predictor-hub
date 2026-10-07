@@ -127,7 +127,7 @@ export function ExplainerPanel({
    *  or withholds the figures, and the failure mode of a site that forgets this is
    *  a collision at 260px, which a screenshot catches. */
   expandable?: boolean;
-  record?: { label: string; hits: number | null; settled: number };
+  record?: { label: string; hits: number | null; settled: number; rebuilt?: number; preTip?: { hits: number; settled: number } | null };
   /** NFL's top player projections (§6). A list the facts already carry, so it
    *  costs the panel nothing to show. */
   players?: { name: string; projection: string }[];
@@ -328,7 +328,7 @@ export function ExplainerPanel({
               </ul>
             </div>
           )}
-          {record && <RecordStrip label={record.label} hits={record.hits} settled={record.settled} />}
+          {record && <RecordStrip label={record.label} hits={record.hits} settled={record.settled} rebuilt={record.rebuilt} preTip={record.preTip} />}
         </div>
       )}
 
