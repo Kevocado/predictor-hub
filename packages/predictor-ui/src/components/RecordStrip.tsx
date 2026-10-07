@@ -14,15 +14,23 @@ import { record as fmtRecord } from "../fmt";
  * The accessible name says "41 of 68" for the same reason. A screen reader
  * cannot see a bar's width, so the numbers have to be in words; those words are
  * the facts' own, not a percentage derived from them.
+ *
+ * Optional `rebuilt` and `preTip` fields (NBA): when the headline record includes
+ * picks made after the event started, `rebuilt` is the count of those picks and
+ * `preTip` is the pre-tip subset. Both are rendered as honest disclosure lines.
  */
 export function RecordStrip({
   label,
   hits,
   settled,
+  rebuilt,
+  preTip,
 }: {
   label: string;
   hits: number | null;
   settled: number;
+  rebuilt?: number;
+  preTip?: { hits: number; settled: number } | null;
 }) {
   const counts = fmtRecord(hits ?? Number.NaN, settled);
   const has = counts !== "—" && settled > 0;
@@ -73,6 +81,12 @@ export function RecordStrip({
         // Nothing settled reads as a dash, never 0/0 — "0/0" is a claim about a
         // record that does not exist yet.
         <span className="font-pr-display text-sm font-semibold text-pr-text-faint">—</span>
+      )}
+      {rebuilt && rebuilt > 0 && (
+        <span className="text-xs text-pr-text-dim">{rebuilt} of them made after tip-off</span>
+      )}
+      {preTip && preTip.settled > 0 && (
+        <span className="text-xs text-pr-text-dim">Before tip-off: {preTip.hits} of {preTip.settled}</span>
       )}
     </div>
   );

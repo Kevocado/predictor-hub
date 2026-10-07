@@ -137,4 +137,17 @@ describe("InstantBlock", () => {
     expect(container.firstChild).not.toBeNull();
     expect(screen.getByText(/11\s*\/\s*15|11 of 15/)).toBeInTheDocument();
   });
+
+  it("renders rebuilt count in the record strip", () => {
+    render(<InstantBlock sport="nba" bundle={{ home_team: "LAL", away_team: "BOS" }} extras={{ record: { label: "Every pick", hits: 1174, settled: 1373, rebuilt: 1365 } }} />);
+    expect(screen.getByText("1174/1373")).toBeInTheDocument();
+    expect(screen.getByText("1365 of them made after tip-off")).toBeInTheDocument();
+  });
+
+  it("renders pre-tip subset in the record strip", () => {
+    render(<InstantBlock sport="nba" bundle={{ home_team: "LAL", away_team: "BOS" }} extras={{ record: { label: "Every pick", hits: 1174, settled: 1373, rebuilt: 1365, preTip: { hits: 3, settled: 8 } } }} />);
+    expect(screen.getByText("1174/1373")).toBeInTheDocument();
+    expect(screen.getByText("1365 of them made after tip-off")).toBeInTheDocument();
+    expect(screen.getByText("Before tip-off: 3 of 8")).toBeInTheDocument();
+  });
 });
