@@ -591,6 +591,7 @@ describe("RecordStrip", () => {
     render(<RecordStrip label="Every pick" hits={10} settled={20} rebuilt={0} preTip={{ hits: 5, settled: 10 }} />);
     expect(screen.getByText("10/20")).toBeInTheDocument();
     expect(screen.queryByText(/made after tip-off/)).toBeNull();
+    expect(screen.queryByText("0 of them made after tip-off")).toBeNull();
     expect(screen.getByText("Before tip-off: 5 of 10")).toBeInTheDocument();
   });
 });
