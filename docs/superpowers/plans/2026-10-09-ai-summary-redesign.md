@@ -52,7 +52,7 @@ Rules: at most 2 Edge, 2 Risk, 1 Price rows. Rows are ordered by duel strength, 
 | NFL | `rest_and_travel` | short week, bye, miles/time zones travelled | schedule + stadium coords | partly built (rest) |
 | NFL | `key_absences` | position-group-weighted starters Out | injuries + depth chart | built (absence signal) |
 | CFB | `ppa_pass/rush_off_vs_def` | PPA per play, pass and rush, as ranks | CFBD advanced stats (model plan Task 11) | built (CFB#35) |
-| CFB | `havoc_vs_havoc_allowed` | defence havoc rate vs offence's havoc allowed | CFBD game-advanced `havocRate` | available in API; loader not yet reading (extend `_side()`) |
+| CFB | `havoc_vs_havoc_allowed` | defence havoc rate vs offence's havoc allowed | CFBD `/stats/game/advanced` | **absent** (confirmed on real 2024 data: not on offense or defense) |
 | CFB | `line_play` | line yards / stuff rate / power success, run game vs run defence | CFBD game-advanced `stuffRate`, line yards | available in API; loader not yet reading (extend `_side()`) |
 | CFB | `explosiveness` | explosive-play rate for vs against | CFBD game-advanced `explosiveness` | available in API; loader not yet reading (extend `_side()`) |
 | CFB | `talent_gap` | recruiting-talent composite rank gap | CFBD `/teams/talent` | separate call (Task 12 extension) |
@@ -67,9 +67,12 @@ Rules: at most 2 Edge, 2 Risk, 1 Price rows. Rows are ordered by duel strength, 
 | NBA | `four_factors_duel` | offence vs defence on eFG%, TOV%, ORB%, FT rate, as ranks | box scores | built (four_factors.py) |
 | NBA | `style matchups` | pace, offensive rebounding, turnovers, 3-point rate, free-throw rate | the NBA plan's `matchup` signal | designed and merged (NBA plan) |
 
-Deleted from the catalog: none on confirmed-absent evidence.
-- CFB `havoc`, `line_play`, `explosiveness`: kept (not deleted) — CFBD game-advanced carries these; loader `_side()` not yet reading them (extend `_side()` per CFB pull).
-- CFB `talent_gap`: separate call (`/teams/talent`), Task 12 extension.
+Deleted from the catalog (confirmed absent):
+- CFB `havoc_vs_havoc_allowed` — CFBD `/stats/game/advanced` (2024, 3,212 rows) has no `havocRate` on offense or defense
+
+Kept in the catalog (not deleted):
+- CFB `line_play` and `explosiveness`: available in CFBD `/stats/game/advanced` (lineYards, stuffRate, explosiveness, etc.); loader extension needed before use
+- CFB `talent_gap`: separate call (`/teams/talent`), Task 12 extension
 | NBA | `rest_load`, `availability` | back-to-back, minutes-weighted absences | NBA plan blocks | designed in NBA plan |
 
 ---

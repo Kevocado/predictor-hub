@@ -21,12 +21,12 @@ PBP columns confirmed present in nflverse parquet (2024 season, 49,492 plays):
 | Signal | Status | Source |
 |---|---|---|
 | `ppa_pass/rush_off_vs_def` | available | CFBD advanced stats → `epa_off_pass` / `epa_def_pass` / `epa_off_rush` / `epa_def_rush` |
-| `havoc` | available in API, not read by loader yet (extend `_side()`) | CFBD game-advanced response carries defense `havocRate`; not pulled |
-| `line_play` | available in API, not read by loader yet (extend `_side()`) | CFBD game-advanced response carries defense `stuffRate`, line yards |
-| `explosiveness` | available in API, not read by loader yet (extend `_side()`) | CFBD game-advanced response carries offense `explosiveness` |
-| `talent_gap` | separate-call item (not in current pull) | Requires a separate CFBD `/teams/talent` call (Task 12 extension) |
+| `havoc` | **absent** | CFBD `/stats/game/advanced` (2024, 3,212 rows): not present on offense or defense |
+| `line_play` | available in API, not read by loader yet (extend `_side()`) | CFBD `/stats/game/advanced` (2024) carries offense/defense `lineYards`, `lineYardsTotal`, `stuffRate` |
+| `explosiveness` | available in API, not read by loader yet (extend `_side()`) | CFBD `/stats/game/advanced` (2024) carries offense/defense `explosiveness`, plus `powerSuccess`, `openFieldYards`, `secondLevelYards`, `successRate` |
+| `talent_gap` | separate-call item | Requires a separate CFBD `/teams/talent` call (Task 12 extension) |
 
-Note on CFB availability: the loader's `_side()` currently pulls only `ppa`, `passingPlays.ppa`, `rushingPlays.ppa` and `successRate`. That reflects what we chose to keep, not what the CFBD game-advanced response contains. These rows are kept in the catalog rather than deleted pending a first real pull's raw JSON, or the CFBD API docs confirming absence. No key is available to make a call; no rows deleted on loader-evidence alone.
+Note: availability marked on CFBD's real game-advanced response pulled for CFB#36, not on the loader's `_side()` selection. `powerSuccess`, `stuffRate`, `lineYards`, `explosiveness` exist in the API but are not yet read by the CFB loader.
 
 ## PL (pl_predictor)
 
