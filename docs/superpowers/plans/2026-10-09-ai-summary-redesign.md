@@ -43,28 +43,31 @@ Rules: at most 2 Edge, 2 Risk, 1 Price rows. Rows are ordered by duel strength, 
 |---|---|---|---|---|
 | NFL | `pass_off_vs_pass_def:{home,away}` | pass offence EPA/play vs opponent pass defence EPA allowed, as league ranks | play-by-play (`team_game_efficiency`) | built (Task 2) |
 | NFL | `rush_off_vs_rush_def:{home,away}` | rush offence vs rush defence | same | built (Task 2) |
-| NFL | `sack_rate_vs_pass_rush` | offence's sack+hit rate allowed vs defence's sack+hit rate forced | pbp `sack`, `qb_hit` | INVENTORY |
-| NFL | `explosive_vs_explosive_allowed` | 20+ yard play rate for vs against | pbp `yards_gained` | INVENTORY |
-| NFL | `red_zone_td_vs_red_zone_d` | TD rate inside the 20 for vs against | pbp `yardline_100` | INVENTORY |
-| NFL | `third_down_off_vs_def` | 3rd-down conversion rate for vs against | pbp `down`, `first_down` | INVENTORY |
+| NFL | `sack_rate_vs_pass_rush` | offence's sack+hit rate allowed vs defence's sack+hit rate forced | pbp `sack`, `qb_hit` | available in nflverse; not yet in PBP_AGG_COLUMNS |
+| NFL | `explosive_vs_explosive_allowed` | 20+ yard play rate for vs against | pbp `yards_gained` | available in nflverse; not yet in PBP_AGG_COLUMNS |
+| NFL | `red_zone_td_vs_red_zone_d` | TD rate inside the 20 for vs against | pbp `yardline_100` | available in nflverse; not yet in PBP_AGG_COLUMNS |
+| NFL | `third_down_off_vs_def` | 3rd-down conversion rate for vs against | pbp `down`, `first_down` | available in nflverse; not yet in PBP_AGG_COLUMNS |
 | NFL | `qb_situation` | starter experience, backup/new-QB flag, QB EPA/dropback rank | Task 5 of the model plan (`qb_games`, depth chart) | built in model plan |
 | NFL | `conditions` | wind, cold, dome or rain, and how pass-heavy each side is | schedule `roof/temp/wind`; Open-Meteo forecast | built in model plan (Task 7) |
 | NFL | `rest_and_travel` | short week, bye, miles/time zones travelled | schedule + stadium coords | partly built (rest) |
 | NFL | `key_absences` | position-group-weighted starters Out | injuries + depth chart | built (absence signal) |
-| CFB | `ppa_pass/rush_off_vs_def` | PPA per play, pass and rush, as ranks | CFBD advanced stats (model plan Task 11) | pending that task |
-| CFB | `havoc_vs_havoc_allowed` | defence havoc rate vs offence's havoc allowed | CFBD advanced `havoc` | INVENTORY |
-| CFB | `line_play` | line yards / stuff rate / power success, run game vs run defence | CFBD advanced | INVENTORY |
-| CFB | `explosiveness` | explosive-play rate for vs against | CFBD advanced `explosiveness` | INVENTORY |
-| CFB | `talent_gap` | recruiting-talent composite rank gap | CFBD `/teams/talent` | INVENTORY |
+| CFB | `ppa_pass/rush_off_vs_def` | PPA per play, pass and rush, as ranks | CFBD advanced stats (model plan Task 11) | built (CFB#35) |
 | CFB | `turnover_luck` | turnover margin vs what fumble-recovery luck predicts | game stats | INVENTORY |
 | CFB | `qb_situation`, `conditions`, `rest_and_travel`, `key_absences` | as NFL | CFBD + Open-Meteo | INVENTORY |
-| PL | `attack_vs_defence` | xG (or shots on target) created vs conceded, as ranks | whatever PL already stores per match | INVENTORY (Task 0 decides xG vs shots) |
+| PL | `attack_vs_defence` | xG created vs conceded, as ranks | Understat xG per match | built (xG available) |
 | PL | `set_pieces` | set-piece goals for vs against | match events if stored | INVENTORY |
 | PL | `home_away_split` | team's home/away points per game vs league | results | built from results |
 | PL | `congestion` | days since last match, midweek European fixtures | fixtures | INVENTORY |
 | PL | `stakes` | title/European/relegation stakes by table position late in the season | standings | built from standings |
 | PL | `btts_profile` | both teams' scoring and clean-sheet rates | results | built from results |
+| NBA | `four_factors_duel` | offence vs defence on eFG%, TOV%, ORB%, FT rate, as ranks | box scores | built (four_factors.py) |
 | NBA | `style matchups` | pace, offensive rebounding, turnovers, 3-point rate, free-throw rate | the NBA plan's `matchup` signal | designed and merged (NBA plan) |
+
+Deleted from the catalog (Task 0 inventory, absent data):
+- CFB `havoc_vs_havoc_allowed` — CFBD advanced stats do not include havoc rate
+- CFB `line_play` — CFBD advanced stats do not include line-play splits
+- CFB `explosiveness` — CFBD advanced stats do not include explosiveness
+- CFB `talent_gap` — requires a separate CFBD `/teams/talent` call; not in the current pull
 | NBA | `four_factors_duel` | offence vs defence on eFG%, TOV%, ORB%, FT rate, as ranks | box scores | extends NBA plan (Task 9) |
 | NBA | `rest_load`, `availability` | back-to-back, minutes-weighted absences | NBA plan blocks | designed in NBA plan |
 
