@@ -235,13 +235,74 @@ def clean_verdict(body: dict) -> dict:
     }
 
 
+def matchup_rows(facts) -> dict:
+    """The code-computed duels, keyed `matchup:<id>` — the factor vocabulary for
+    offence-versus-defence matchups.
+
+    Keyed by the SAME string a factor is keyed by, so resolution is one set
+    membership rather than a prefix test. A prefix test would also accept
+    `matchup:` with nothing behind it, and a duel id that happens to be a
+    market's name is then indistinguishable from a market.
+    """
+    rows = (as_dict(facts).get("context") or {}).get("matchups") or []
+    return {f"matchup:{r['id']}": r for r in rows
+            if isinstance(r, dict) and isinstance(r.get("id"), str) and r["id"]}
+
+
+#: Where a factor is drawn, and what each place MEANS: `edge` argues for the pick,
+#: `risk` against it, `price` is a statement about a quoted market, and `context`
+#: is everything else -- a statement about the game, the record, or a duel the
+#: code declined to direct. A named set rather than a free string because the
+#: panel groups by it and an unrecognised value would render as nothing.
+SLOTS = ("edge", "risk", "price", "context")
+
+
+def slot_for(direction: str, key: str, facts) -> str:
+    """Where this factor is drawn, and why it may not be anywhere more flattering.
+
+    `edge` = argues for the pick, `risk` = argues against, `price` = a statement
+    about a quoted market, else `context`.
+
+    **A matchup row is directed by CODE, not by the model.** It is Edge only when
+    `toward_pick` is `True` AND the model wrote `up`; Risk only when `toward_pick`
+    is `False` AND the model wrote `down`. Anything else is `context`, which
+    covers three distinct cases and they all fail the same way: a duel type that
+    failed the residual-lift gate (`toward_pick: None`), a model direction that
+    disagrees with the code, and a plain profile row. A model asked to rank its
+    own factors could otherwise promote a duel the code declined to direct into
+    an "Edge" heading, which is the one claim in the redesign that code is
+    supposed to own.
+    """
+    row = matchup_rows(facts).get(key)
+    if row is not None:
+        toward = row.get("toward_pick")
+        if direction == "up" and toward is True:
+            return "edge"
+        if direction == "down" and toward is False:
+            return "risk"
+        return "context"
+    if direction == "up":
+        return "edge"
+    if direction == "down":
+        return "risk"
+    return "price" if key in market_keys(facts) else "context"
+
+
 def resolve_factors(verdict: dict, facts: dict) -> list[dict]:
-    """Keep only the factors whose key names something the facts carry.
+    """Keep only the factors whose key names something the facts carry, and stamp
+    each with the slot it is drawn in.
 
     An absent market renders *nothing* (spec §6), so a factor pointing at one
     would have to render a dash or a zero. Dropping it is the honest answer, and
     it is why this never raises: a key we do not recognise is a reason to show
     less, not to break.
+
+    The `slot` is stamped HERE rather than left to each renderer, because the
+    model path and the template path both end up in this function's vocabulary
+    and a slot computed twice is a slot that can disagree with itself. The
+    template calls `slot_for` itself at the end of its own assembly (it builds
+    rows rather than resolving them), and both go through this one function.
     """
-    allowed = market_keys(facts) | set(PSEUDO_MARKETS)
-    return [f for f in verdict.get("factors") or [] if f.get("key") in allowed]
+    allowed = market_keys(facts) | set(PSEUDO_MARKETS) | set(matchup_rows(facts))
+    return [{**f, "slot": slot_for(f.get("direction"), f.get("key"), facts)}
+            for f in verdict.get("factors") or [] if f.get("key") in allowed]

@@ -14,14 +14,15 @@ for one — there is no background pre-generation.
   "sport": "nfl", "id": "401585",
   "verdict": "Baltimore is the pick, but the line is thinner than the number.",
   "band": "moderate",              // COMPUTED from pick.prob, never asked of the model
-  "factors": [                    // 2-4, each naming a market the facts carry
-    { "key": "moneyline", "direction": "up", "headline": "Model leans Baltimore",
+  "factors": [                    // 2-5, each naming a market or a duel the facts carry
+    { "key": "moneyline", "direction": "up", "slot": "edge",
+      "headline": "Model leans Baltimore",
       "text": "The rating gap has held all week." }
   ],
   "pick": { "label": "BAL" },     // COMPUTED from the facts; the key is OMITTED
                                   // when there is no pick. Never null.
   "source": "llm", "model": "nemotron-3.5-lightning",
-  "generated_at": "2026-10-05T00:20:00Z", "prompt_version": "v7",
+  "generated_at": "2026-10-05T00:20:00Z", "prompt_version": "v8",
   "pick_timing": "pre_kickoff"
 }
 ```
@@ -65,12 +66,23 @@ Three properties worth knowing before changing anything here:
   The end state is a `pick_margin` beside `model_margin`, emitted by each
   sport's own `/facts` builder, which would let the row name the pick again.
   Until that exists in the facts, no renderer here may attribute the margin.
+- **`slot` is where the panel draws a factor: `edge`, `risk`, `price` or
+  `context`.** It is `contract.slot_for`, computed from the direction and the
+  facts, and stamped on both paths (`resolve_factors` for the model, the end of
+  `explain_from_template` for the template). A `matchup:<id>` factor — a duel the
+  sport code computed in `context.matchups` — is directed by **code**, not by the
+  model: it is `edge` only when `toward_pick` is true and the model wrote `up`,
+  `risk` only when it is false and the model wrote `down`, and `context` for every
+  other combination. That is what stops a model promoting a duel that failed the
+  residual-lift gate (`toward_pick: null`) into an "Edge" heading. `price` is
+  reserved for a neutral row on a market the facts quote, so a sport with no
+  quoted line never shows one.
 
 **`prompt_version` is part of the deploy, not of the code.** The cache key
 covers it and a hit is served verbatim, so **a deploy that changes the writer
 and does not move the version changes nothing a reader sees** — the cached
 bodies keep being served under the old version's key and the deploy is green
-while the fix is inert. It is now `v4`; the cache measured on the VPS on
+while the fix is inert. It is now `v8`; the cache measured on the VPS on
 2026-09-27 held `v1`/`v2` rows written before the `neutral` direction default,
 the frame's rule on which number is bigger, the spread sentence that names no
 side, and rule 2's second sentence, which used to hand the model a
@@ -86,6 +98,12 @@ never was: `service._answer` re-derives it on every read, so a cached row
 already gets the right one, and the band chip withheld on a rebuilt pick
 (§13e, in `packages/predictor-ui`) is a reader-side decision that the version
 does not gate either.
+
+`v8` carries the matchup redesign: the frame teaches the `matchup:<id>` key and
+the two-to-five factor cap, and every row now carries a `slot`. The bump is
+load-bearing rather than tidy here — a cached `v7` row has no `slot` on any
+factor, so serving it after this change would put every row in the `context`
+group whatever its direction said.
 
 ## Run
 

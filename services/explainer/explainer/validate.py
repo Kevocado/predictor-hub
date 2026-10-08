@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import re
 
-from .contract import DIRECTIONS, PSEUDO_MARKETS, as_dict, market_keys
+from .contract import DIRECTIONS, PSEUDO_MARKETS, as_dict, market_keys, matchup_rows
 from .template import DEFAULT_MARKET_LINE_KEY, MARKET_LINE_KEY
 
 BANNED = ["lock", "bet", "betting advice", "hammer", "guaranteed", "sure thing", "value play"]
@@ -46,7 +46,17 @@ MAX_VERDICT_WORDS = 18
 MAX_HEADLINE_WORDS = 10
 MAX_FACTOR_WORDS = 35
 MIN_FACTORS = 2
-MAX_FACTORS = 4
+#: Raised 4 -> 5 with the Edge / Risk / Price redesign: two duel rows (one toward
+#: the pick, one against it) on top of the four the old cap allowed, and the
+#: design says the Price row appears only when a quoted line exists, so a full
+#: body is five rows rather than four.
+#:
+#: **Equal to `template.MAX_FACTORS`, and `test_the_cap_is_five_on_both_sides`
+#: holds that.** The template is what a reader gets when the model's body fails
+#: this check, so the two caps disagreeing would mean the service accepts bodies
+#: its own fallback would never produce — the drift spec §8 forbids. The
+#: per-factor length rules are unchanged.
+MAX_FACTORS = 5
 
 
 #: Words that name a MARKET rather than a figure, and the market key each one
@@ -802,7 +812,15 @@ def validate(output: dict, facts_json: str, news_json: str) -> list[str]:
     # here: `contract.resolve_factors` already dropped it on the way in, so
     # reaching this point means the drop was bypassed. An absent market renders
     # *nothing* (spec §6), so the alternative is a row with nothing in it.
-    allowed = market_keys(facts) | set(PSEUDO_MARKETS)
+    #
+    # `matchup:<id>` is in the vocabulary for the same reason a market is: a duel
+    # the facts do not carry is a claim about a matchup nobody computed, and the
+    # panel would draw an empty row for it. The model's own direction is NOT
+    # checked against the duel's `toward_pick` here — that is `contract.slot_for`,
+    # and it downgrades the row to `context` rather than rejecting the whole body,
+    # because a model disagreeing with the code about one row is a reason to show
+    # less, not to cost the reader every other row.
+    allowed = market_keys(facts) | set(PSEUDO_MARKETS) | set(matchup_rows(facts))
     for i, f in enumerate(factors):
         if f.get("direction") not in DIRECTIONS:
             problems.append(f"factor {i + 1} direction must be one of {DIRECTIONS}")

@@ -8,8 +8,9 @@ shape, and this is what checks that they do.
 """
 import pytest
 
-from explainer.contract import DIRECTIONS, NEUTRAL, band_for, market_shape, pick_for, resolve_factors
-from explainer.template import explain_from_template, minimal
+from explainer.contract import (DIRECTIONS, NEUTRAL, SLOTS, band_for, market_shape, pick_for,
+                                resolve_factors)
+from explainer.template import MAX_FACTORS, explain_from_template, minimal
 
 NFL = {
     "sport": "nfl", "id": "g1", "title": "Chiefs at Ravens",
@@ -77,9 +78,18 @@ def test_the_template_emits_the_v2_shape(facts):
     out = explain_from_template(facts)
     assert set(out) == {"verdict", "band", "factors"}, f"wrong shape: {sorted(out)}"
     assert out["band"] in ("leaning", "moderate", "strong")
-    assert 2 <= len(out["factors"]) <= 4, f"{len(out['factors'])} factors"
+    # `MAX_FACTORS` rather than a literal, because this file's job is to check the
+    # SHAPE of every row and the cap moved from 4 to 5 with the matchup redesign.
+    # A literal `4` here would be a second copy of the cap that fails for a reason
+    # having nothing to do with shape.
+    assert 2 <= len(out["factors"]) <= MAX_FACTORS, f"{len(out['factors'])} factors"
     for f in out["factors"]:
-        assert set(f) == {"key", "direction", "headline", "text"}, f"wrong factor shape: {sorted(f)}"
+        # `slot` joined the four contract fields with the Edge / Risk / Price
+        # redesign. It is part of the response now and the panel groups by it, so
+        # a row without one would render in whichever group its absence implies.
+        assert set(f) == {"key", "direction", "headline", "text", "slot"}, \
+            f"wrong factor shape: {sorted(f)}"
+        assert f["slot"] in SLOTS, f"undrawable slot: {f['slot']!r}"
         # `DIRECTIONS` rather than a literal pair, from both directions: a second
         # copy of the vocabulary here is how a "neutral" row would have started
         # failing this file instead of the service, and a hardcoded `("up",

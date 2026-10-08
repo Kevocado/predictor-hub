@@ -135,7 +135,11 @@ class Settings(BaseSettings):
     # with the validator guard that rejects a market named in words when the
     # facts carry no quote for it. It is part of the cache key, so a cached `v5`
     # row would otherwise be served under a frame that was never sent.
-    prompt_version: str = "v7"
+    #: Bumped to `v8` for the matchup redesign: the frame teaches the
+    #: `matchup:<id>` factor key and the two-to-five factor cap. A cached `v7` row
+    #: carries no `slot` on any factor, so serving it after this change would put
+    #: every row in the `context` group whatever its direction said.
+    prompt_version: str = "v8"
     sport_api_pl: str | None = None
     sport_api_f1: str | None = None
     sport_api_nfl: str | None = None
