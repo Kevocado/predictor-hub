@@ -85,7 +85,7 @@ One module, copied into each sport repo (they share no Python package; keep the 
 **Files:** Create `src/nfl_predictor/signals/__init__.py` (empty), `src/nfl_predictor/signals/duel.py`; Test `tests/test_duel.py`. Repeat for `cfb_predictor`, `pl_predictor`, `nba_predictor` (NBA: Python 3.13).
 
 **Interfaces:**
-- Produces: `Duel` (frozen dataclass: `id, attacker, defender, stat, foil, attacker_rank, defender_rank, n_teams, toward, strength`), `ranks(values: dict[str, float], higher_is_better=True) -> dict[str, int]`, `edge_strength(gap, history) -> float`, `make_duel(duel_id, stat, foil, *, home, away, attacker_side, attack_ranks, defence_ranks, history_gaps, min_gap=8) -> Duel | None`.
+- Produces: `Duel` (frozen dataclass: `id, attacker, defender, stat, foil, attacker_rank, defender_rank, n_teams, toward, strength`), `ranks(values: dict[str, float], higher_is_better=True) -> dict[str, int]`, `edge_strength(gap, history, n_teams=None) -> float` (percentile of |gap| among past gaps; with NO history it scales the gap by league size instead of returning 0, so duels still order by gap size and never tie in declaration order), `make_duel(duel_id, stat, foil, *, home, away, attacker_side, attack_ranks, defence_ranks, history_gaps, min_gap=8) -> Duel | None`.
 
 - [ ] **Step 1: Write the tests.**
 
@@ -105,7 +105,13 @@ def test_lower_is_better_flips_order():
 
 def test_strength_is_a_percentile_of_past_gaps():
     hist = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
-    assert edge_strength(5, hist) == 0.5 and edge_strength(-10, hist) == 1.0 and edge_strength(3, np.array([])) == 0.0
+    assert edge_strength(5, hist) == 0.5 and edge_strength(-10, hist) == 1.0
+
+
+def test_without_history_strength_scales_with_the_gap_so_duels_still_order():
+    none = np.array([])
+    assert edge_strength(3, none) == 0.0 and edge_strength(3, none, n_teams=32) < edge_strength(25, none, n_teams=32) <= 1.0
+    assert edge_strength(31, none, n_teams=32) == 1.0
 
 
 def _ranks(n=32):
@@ -133,6 +139,12 @@ def test_close_duel_is_not_produced():
 def test_unranked_team_gives_no_duel():
     assert make_duel("x", "a", "b", home="T1", away="ZZZ", attacker_side="home",
                      attack_ranks=_ranks(), defence_ranks=_ranks(), history_gaps=[5]) is None
+
+
+def test_a_duel_built_without_history_carries_a_gap_based_strength():
+    big = make_duel("a", "x", "y", home="T3", away="T28", attacker_side="home", attack_ranks=_ranks(), defence_ranks=_ranks(), history_gaps=[])
+    small = make_duel("a", "x", "y", home="T10", away="T20", attacker_side="home", attack_ranks=_ranks(), defence_ranks=_ranks(), history_gaps=[])
+    assert big.strength > small.strength > 0
 ```
 
 - [ ] **Step 2: Run to verify failure.** Run: `uv run --python 3.11 --extra dev pytest -q -p no:cacheprovider tests/test_duel.py` Expected: ImportError.
@@ -178,11 +190,12 @@ def ranks(values: dict[str, float], higher_is_better: bool = True) -> dict[str, 
     return out
 
 
-def edge_strength(gap: float, history: np.ndarray) -> float:
-    """Percentile of |gap| among past |gaps|; 0 when there is no history to compare against."""
+def edge_strength(gap: float, history: np.ndarray, n_teams: int | None = None) -> float:
+    """Percentile of |gap| among past |gaps|. With no history the gap is scaled by the league size instead, so duels
+    still order by how big the gap is rather than all tying at zero and keeping declaration order."""
     history = np.abs(np.asarray(history, float))
     if history.size == 0:
-        return 0.0
+        return min(1.0, abs(gap) / (n_teams - 1)) if n_teams and n_teams > 1 else 0.0
     return float((history <= abs(gap)).mean())
 
 
@@ -202,7 +215,7 @@ def make_duel(duel_id: str, stat: str, foil: str, *, home: str, away: str, attac
         return None
     toward = attacker_side if gap > 0 else ("away" if attacker_side == "home" else "home")
     return Duel(duel_id, attacker, defender, stat, foil, a, d, len(attack_ranks), toward,
-                edge_strength(gap, history_gaps))
+                edge_strength(gap, history_gaps, len(attack_ranks)))
 ```
 
 - [ ] **Step 4: Run.** Expected: 7 passed.
@@ -211,13 +224,13 @@ def make_duel(duel_id: str, stat: str, foil: str, *, home: str, away: str, attac
 
 ## Task 2 (verified): NFL offence-versus-defence duels
 
-Four duels per game (pass and rush, each in both directions), from the last 8 games of play-by-play efficiency strictly before the game, at least 3 games of data per team. Output is the facts-bundle form with `toward_pick` computed in code.
+Four duels per game (pass and rush, each in both directions), from each team's last 8 games OF THE SAME SEASON strictly before the game, at least 3 games of data per team (so weeks 1-3 produce no duels: nothing to say beats ranking last year's roster). Output is the facts-bundle form with `toward_pick` computed in code.
 
 **Files:** Create `src/nfl_predictor/signals/matchups.py`; Test `tests/test_matchups.py` (uses `tests/epa_fixtures.py` from the model plan Task 4, so land that first).
 
 **Interfaces:**
 - Consumes: `team_game_efficiency` output (columns `game_id, team, epa_off_pass, epa_off_rush, epa_def_pass, epa_def_rush, ...`), `duel.make_duel`.
-- Produces: `matchups_for_game(home, away, games_df, efficiency, as_of, history_gaps=None, min_gap=8) -> list[Duel]` (strongest first); `to_context(duels, pick_side, limit=4) -> list[dict]` with keys `id, attacker, defender, stat, foil, attacker_rank, defender_rank, n_teams, toward_pick`.
+- Produces: `matchups_for_game(home, away, games_df, efficiency, as_of, season, history_gaps=None, min_gap=8) -> list[Duel]` (strongest first); `to_context(duels, pick_side, limit=4) -> list[dict]` with keys `id, attacker, defender, stat, foil, attacker_rank, defender_rank, n_teams, toward_pick`.
 
 - [ ] **Step 1: Write the tests.**
 
@@ -237,27 +250,35 @@ def _setup():
 def test_uses_only_games_before_as_of():
     games, eff = _setup()
     last = games.iloc[-1]
-    a = matchups_for_game(last["home_team"], last["away_team"], games, eff, last["gameday"], min_gap=2)
+    a = matchups_for_game(last["home_team"], last["away_team"], games, eff, last["gameday"], int(last["season"]), min_gap=2)
     tampered = eff.copy()
     after = tampered["game_id"].isin(games[games["gameday"] >= last["gameday"]]["game_id"])
     tampered.loc[after, ["epa_off_pass", "epa_def_pass", "epa_off_rush", "epa_def_rush"]] = 99.0
-    b = matchups_for_game(last["home_team"], last["away_team"], games, tampered, last["gameday"], min_gap=2)
+    b = matchups_for_game(last["home_team"], last["away_team"], games, tampered, last["gameday"], int(last["season"]), min_gap=2)
     assert a and [(d.id, d.attacker_rank, d.defender_rank) for d in a] == [(d.id, d.attacker_rank, d.defender_rank) for d in b]
 
 
 def test_unknown_team_yields_no_duels():
     games, eff = _setup()
-    assert matchups_for_game("NOPE", "T1", games, eff, pd.Timestamp("2026-01-01")) == []
+    assert matchups_for_game("NOPE", "T1", games, eff, pd.Timestamp("2026-01-01"), 2025) == []
 
 
 def test_context_marks_direction_relative_to_the_pick():
     games, eff = _setup()
     last = games.iloc[-1]
-    duels = matchups_for_game(last["home_team"], last["away_team"], games, eff, last["gameday"], min_gap=1)
+    duels = matchups_for_game(last["home_team"], last["away_team"], games, eff, last["gameday"], int(last["season"]), min_gap=1)
     assert duels
     ctx = to_context(duels, pick_side="home")
     assert all(isinstance(r["toward_pick"], bool) for r in ctx)
     assert all(r["toward_pick"] is None for r in to_context(duels, pick_side=None))
+
+
+def test_only_the_given_season_is_used():
+    games, eff = _setup()
+    first_week_of_last_season = games[games["season"] == 2025].iloc[0]
+    # Week 1 of 2025: prior seasons exist but must not be ranked as if they were this season's form.
+    assert matchups_for_game(first_week_of_last_season["home_team"], first_week_of_last_season["away_team"], games, eff,
+                             first_week_of_last_season["gameday"], 2025, min_gap=1) == []
 ```
 
 - [ ] **Step 2: Run to verify failure.** Expected: ImportError.
@@ -268,7 +289,8 @@ def test_context_marks_direction_relative_to_the_pick():
 """NFL offence-versus-defence duels for one game, from play-by-play efficiency known BEFORE the game.
 
 Each duel is one side's attack (EPA/play, pass or rush) against the other side's matching defence, expressed as league
-ranks. Only games strictly before `as_of`, and only the current season's last `WINDOW` games per team, are used.
+ranks. Only games of `season` strictly before `as_of`, and each team's last `WINDOW` of them, are used: early in a season
+there are fewer than `MIN_GAMES` and the answer is no duels, which is better than ranking last year's roster.
 """
 from __future__ import annotations
 
@@ -286,20 +308,21 @@ DUELS = [
 ]
 
 
-def _recent_means(efficiency: pd.DataFrame, games_df: pd.DataFrame, as_of: pd.Timestamp) -> pd.DataFrame:
-    dates = games_df.set_index("game_id")["gameday"]
-    eff = efficiency.assign(gameday=pd.to_datetime(efficiency["game_id"].map(dates)))
-    eff = eff[eff["gameday"] < as_of].sort_values("gameday")
+def _recent_means(efficiency: pd.DataFrame, games_df: pd.DataFrame, as_of: pd.Timestamp, season: int) -> pd.DataFrame:
+    meta = games_df.set_index("game_id")[["gameday", "season"]]
+    eff = efficiency.assign(gameday=pd.to_datetime(efficiency["game_id"].map(meta["gameday"])),
+                            season=efficiency["game_id"].map(meta["season"]))
+    eff = eff[(eff["gameday"] < as_of) & (eff["season"] == season)].sort_values("gameday")
     last = eff.groupby("team").tail(WINDOW)
     counts = last.groupby("team").size()
     means = last.groupby("team").mean(numeric_only=True)
     return means[counts.reindex(means.index) >= MIN_GAMES]
 
 
-def matchups_for_game(home: str, away: str, games_df: pd.DataFrame, efficiency: pd.DataFrame, as_of,
+def matchups_for_game(home: str, away: str, games_df: pd.DataFrame, efficiency: pd.DataFrame, as_of, season: int,
                       history_gaps: dict[str, np.ndarray] | None = None, min_gap: int = 8) -> list[Duel]:
     """Up to four duels (two kinds x two directions), strongest first. Empty when either team lacks data."""
-    means = _recent_means(efficiency, games_df, pd.Timestamp(as_of))
+    means = _recent_means(efficiency, games_df, pd.Timestamp(as_of), season)
     if home not in means.index or away not in means.index:
         return []
     history_gaps = history_gaps or {}
@@ -360,14 +383,15 @@ def test_started_game_has_no_matchups(monkeypatch):
 - [ ] **Step 3: Implement.** Add to `facts.py`:
 
 ```python
-def _matchup_rows(home, away, games_df, efficiency, as_of, pick_side):
-    from ..signals.matchups import matchups_for_game, to_context
+def _matchup_rows(home, away, games_df, efficiency, as_of, season, pick_side):
+    from ..signals.matchups import load_history_gaps, matchups_for_game, to_context
     if efficiency is None or len(efficiency) == 0:
         return []
-    return to_context(matchups_for_game(home, away, games_df, efficiency, as_of), pick_side)
+    duels = matchups_for_game(home, away, games_df, efficiency, as_of, season, history_gaps=load_history_gaps())
+    return to_context(duels, pick_side)
 ```
 
-and in the context builder, for an UPCOMING game only: `matchups = _matchup_rows(...)`; `if matchups: context["matchups"] = matchups`. `pick_side` is `"home"`/`"away"` from the pick, `None` when there is no pick.
+and in the context builder, for an UPCOMING game only: `matchups = _matchup_rows(...)`; `if matchups: context["matchups"] = matchups`. `pick_side` is `"home"`/`"away"` from the pick, `None` when there is no pick; `season` is the game's season. Add `load_history_gaps()` to `signals/matchups.py`: it reads `data/duel_gaps.json` (`{duel_type: [past rank gaps]}`, written by the Task 10 tool from the walk-forward games) and returns `{}` when the file is absent, in which case `edge_strength` falls back to gap-scaled strength (Task 1). Test both: with the file, strength is a percentile; without it, a 25-place gap outranks a 10-place gap.
 - [ ] **Step 4: Run the full suite.** Expected: pass.
 - [ ] **Step 5: Commit** by name: `feat(nfl): matchup duels in the facts bundle`.
 
@@ -393,11 +417,23 @@ def test_a_matchup_key_the_facts_do_not_carry_is_dropped():
     assert resolve_factors(v, FACTS) == []
 
 
+def _facts(toward):
+    return {"markets": [{"market": "spread"}], "context": {"matchups": [{"id": "x", "toward_pick": toward}]}}
+
+
 def test_slots_follow_direction_and_market():
-    assert slot_for("up", "matchup:x", FACTS) == "edge"
-    assert slot_for("down", "matchup:x", FACTS) == "risk"
+    assert slot_for("up", "matchup:x", _facts(True)) == "edge"
+    assert slot_for("down", "matchup:x", _facts(False)) == "risk"
     assert slot_for("neutral", "spread", FACTS) == "price"
     assert slot_for("neutral", "record", FACTS) == "context"
+
+
+def test_the_model_cannot_promote_a_matchup_the_code_did_not_direct():
+    # code says null (failed the lift gate) or the other side: whatever direction the model wrote, the row is context
+    assert slot_for("up", "matchup:x", _facts(None)) == "context"
+    assert slot_for("down", "matchup:x", _facts(None)) == "context"
+    assert slot_for("up", "matchup:x", _facts(False)) == "context"
+    assert slot_for("down", "matchup:x", _facts(True)) == "context"
 
 
 def test_resolved_factors_carry_their_slot():
@@ -409,13 +445,26 @@ def test_resolved_factors_carry_their_slot():
 - [ ] **Step 3: Implement.** In `contract.py`:
 
 ```python
-def matchup_keys(facts) -> set[str]:
+def matchup_rows(facts) -> dict:
     rows = (as_dict(facts).get("context") or {}).get("matchups") or []
-    return {f"matchup:{r['id']}" for r in rows if isinstance(r, dict) and r.get("id")}
+    return {f"matchup:{r['id']}": r for r in rows if isinstance(r, dict) and r.get("id")}
 
 
 def slot_for(direction: str, key: str, facts) -> str:
-    """edge = argues for the pick, risk = argues against, price = a statement about a quoted market, else context."""
+    """edge = argues for the pick, risk = argues against, price = a statement about a quoted market, else context.
+
+    A matchup row is directed by CODE (`toward_pick`), not by the model: it is Edge only when the code says it favours
+    the pick and the model said "up", Risk only when the code says it favours the other side and the model said "down".
+    Anything else (including a duel type that failed the lift gate, `toward_pick: None`) is context.
+    """
+    row = matchup_rows(facts).get(key)
+    if row is not None:
+        toward = row.get("toward_pick")
+        if direction == "up" and toward is True:
+            return "edge"
+        if direction == "down" and toward is False:
+            return "risk"
+        return "context"
     if direction == "up":
         return "edge"
     if direction == "down":
@@ -426,7 +475,7 @@ def slot_for(direction: str, key: str, facts) -> str:
 and change `resolve_factors`:
 
 ```python
-    allowed = market_keys(facts) | matchup_keys(facts) | set(PSEUDO_MARKETS)
+    allowed = market_keys(facts) | set(matchup_rows(facts)) | set(PSEUDO_MARKETS)
     return [{**f, "slot": slot_for(f.get("direction"), f.get("key"), facts)}
             for f in verdict.get("factors") or [] if f.get("key") in allowed]
 ```
@@ -467,6 +516,17 @@ def test_the_row_text_states_the_ranks_from_facts():
     assert "3" in row["headline"] and "28" in row["headline"]
 
 
+def test_a_duel_the_code_did_not_direct_is_a_neutral_context_row():
+    out = explain_from_template(_facts([DUEL("n", None)]))
+    row = next(f for f in out["factors"] if f["key"] == "matchup:n")
+    assert row["direction"] == "neutral" and row["slot"] == "context"
+
+
+def test_every_factor_carries_a_slot():
+    out = explain_from_template(_facts([DUEL("a", True), DUEL("b", False), DUEL("n", None)]))
+    assert out["factors"] and all(f.get("slot") for f in out["factors"])
+
+
 def test_no_duels_means_no_matchup_rows_and_no_padding_about_them():
     out = explain_from_template(_facts([]))
     assert not [f for f in out["factors"] if f["key"].startswith("matchup:")]
@@ -489,8 +549,16 @@ def _matchup_factors(facts: dict) -> list[dict]:
         text = (f"{row['attacker']} rank {row['attacker_rank']} of {row['n_teams']} in {row['stat']}; "
                 f"{row['defender']} rank {row['defender_rank']} of {row['n_teams']} in {row['foil']}.")
         out.append(_fact(f"matchup:{row['id']}", direction, headline, text))
+    neutral = next((r for r in rows if r.get("toward_pick") is None), None)  # failed the lift gate, or a profile row
+    if neutral is not None and len(out) < 2:
+        out.append(_fact(f"matchup:{neutral['id']}", "neutral",
+                         f"{neutral['attacker']}'s #{neutral['attacker_rank']} {neutral['stat']} and {neutral['defender']}'s #{neutral['defender_rank']} {neutral['foil']}",
+                         f"{neutral['attacker']} rank {neutral['attacker_rank']} of {neutral['n_teams']} in {neutral['stat']}; "
+                         f"{neutral['defender']} rank {neutral['defender_rank']} of {neutral['n_teams']} in {neutral['foil']}."))
     return out
 ```
+
+Then, at the END of `explain_from_template`, after the factor list is final (including padding), stamp every factor: `for f in factors: f["slot"] = slot_for(f["direction"], f["key"], facts)` (import `slot_for` from `.contract`). `_fact` itself returns only `key, direction, headline, text`; the slot is added once, at the end, so the template and model paths agree.
 
 For the Risk row the sentence must read from the pick's point of view: a duel with `toward_pick: False` means the OTHER side holds the edge, so its headline is the same words and the `down` direction supplies the meaning. Do not add "advantage"/"mismatch" adjectives; the ranks carry it.
 - [ ] **Step 4: Run the explainer suite**, including `validate` tests (the template output must pass `validate` with the ranks in the number pool). Expected: pass.
@@ -498,7 +566,7 @@ For the Risk row the sentence must read from the pick's point of view: a duel wi
 
 ## Task 6 (hub, DRAFTED): prompt and validator for the model path
 
-**Files:** Modify `services/explainer/explainer/prompts.py`; Test `services/explainer/tests/test_prompt_instructions.py` (extend).
+**Files:** Modify `services/explainer/explainer/prompts.py`, `services/explainer/explainer/validate.py`; Test `services/explainer/tests/test_prompt_instructions.py` (extend), `services/explainer/tests/test_validate.py`.
 
 - [ ] **Step 1: Failing test.**
 
@@ -523,7 +591,7 @@ def test_prompt_still_forbids_figures_in_panel_text():
 - "matchup:<id>" for any duel listed in context.matchups, using the id exactly as given. Choose at most two "up" factors (Edge: arguing for the pick) and at most two "down" factors (Risk: arguing against it) from the duels whose toward_pick is true and false respectively; prefer the duels listed first, they are strongest. Name the two units in your words ("their passing offence against that pass defence"); do not write the ranks, the panel draws them. If context.matchups is empty or missing, use market and context keys as before.
 ```
 
-and raise the factor cap sentence from "2 to 4" to "2 to 5". The `validate` length rules are unchanged.
+and raise the factor cap sentence from "2 to 4" to "2 to 5". Also raise `MAX_FACTORS` in `explainer/validate.py` from 4 to 5 (find it with `grep -n MAX_FACTORS explainer/validate.py`) and update every test that asserts the four-factor limit, adding one that a five-factor body validates and a six-factor body is rejected. The per-factor length rules are unchanged.
 - [ ] **Step 4: Run the explainer suite.** Expected: pass. Then run `tools/measure_llm_trigger_fps.py` if a key is configured in a safe environment; do not print the key.
 - [ ] **Step 5: Commit.** `feat(explainer): prompt teaches matchup keys, Edge and Risk`.
 
@@ -629,4 +697,4 @@ def lift(rows, n_boot: int = 2000, seed: int = 0) -> dict:
 
 ## Self-review
 
-Coverage: more offence-versus-defence ideas for NFL/CFB/PL/NBA (catalog), intuitive form (ranks, Edge/Risk/Price), targeted (strength-ranked, at most 2+2+1, omitted when empty), AI is only a wording layer (Tasks 4-6), template path first (Task 5), honesty gate (Task 10), NBA independence (Task 9). Placeholders: Tasks 3-10 are drafted code with the unverified parts named; Task 0 exists precisely so no signal is written against data that is not there. Names used consistently: `Duel`, `make_duel`, `matchups_for_game`, `to_context`, `matchup_keys`, `slot_for`, `lift`.
+Coverage: more offence-versus-defence ideas for NFL/CFB/PL/NBA (catalog), intuitive form (ranks, Edge/Risk/Price), targeted (strength-ranked, at most 2+2+1, omitted when empty), AI is only a wording layer (Tasks 4-6), template path first (Task 5), honesty gate (Task 10), NBA independence (Task 9). Placeholders: Tasks 3-10 are drafted code with the unverified parts named; Task 0 exists precisely so no signal is written against data that is not there. Names used consistently: `Duel`, `make_duel`, `matchups_for_game`, `to_context`, `matchup_rows`, `slot_for`, `lift`.

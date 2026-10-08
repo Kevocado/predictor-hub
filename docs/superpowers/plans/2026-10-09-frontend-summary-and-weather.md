@@ -295,6 +295,8 @@ describe("WeatherChip", () => {
     expect(container).toBeEmptyDOMElement();
     rerender(<WeatherChip conditions={{ kind: "tornado" } as unknown as Conditions} />);
     expect(container).toBeEmptyDOMElement();
+    rerender(<WeatherChip conditions={{ kind: "toString" } as unknown as Conditions} />);  // inherited, not ours
+    expect(container).toBeEmptyDOMElement();
   });
 
   it.each(["clear", "partly", "cloudy", "fog", "rain", "snow", "storm", "dome"] as WeatherKind[])("%s draws an icon that is hidden from assistive tech", (kind) => {
@@ -370,7 +372,7 @@ export function weatherSentence(c: Conditions): string {
 }
 
 export function WeatherChip({ conditions }: { conditions?: Conditions | null }) {
-  if (!conditions || !(conditions.kind in WORDS)) return null;
+  if (!conditions || !Object.prototype.hasOwnProperty.call(WORDS, conditions.kind)) return null;
   const sentence = weatherSentence(conditions);
   return (
     <span
@@ -543,6 +545,11 @@ describe("MatchupBrief", () => {
     expect(() => render(<MatchupBrief factors={bad} matchups={[duel]} />)).toThrow(/headline/i);
   });
 
+  it("a number that is not written as a rank does not count as stating it", () => {
+    const bad = [{ ...factors[0], headline: "Bills scored 3 points; Jets allowed 28 points" }];
+    expect(() => render(<MatchupBrief factors={bad} matchups={[duel]} />)).toThrow(/headline/i);
+  });
+
   it("a matchup factor with no matching row in matchups is not drawn as a duel", () => {
     render(<MatchupBrief factors={factors} matchups={[]} />);
     expect(screen.queryByTestId("rank-duel")).toBeNull();
@@ -580,9 +587,9 @@ export class DuelHeadlineMismatchError extends Error {
   }
 }
 
-/** Same rule as SignalRows: the numbers drawn must be the numbers written. */
+/** Same rule as SignalRows: the numbers drawn must be the numbers written, and written AS ranks: "#3", not any 3. */
 function assertStates(f: SlottedFactor, m: MatchupRow) {
-  const nums = (f.headline.match(/\d+/g) ?? []).map(Number);
+  const nums = [...f.headline.matchAll(/#\s?(\d+)/g)].map((x) => Number(x[1]));
   if (!nums.includes(m.attacker_rank) || !nums.includes(m.defender_rank)) throw new DuelHeadlineMismatchError(f.key);
 }
 
