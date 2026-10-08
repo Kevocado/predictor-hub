@@ -30,7 +30,8 @@ defensive: this is the last resort and it must never raise.
 """
 from __future__ import annotations
 
-from .contract import NEUTRAL, as_dict, band_for, market_shape, pick_for, pick_prob
+from .contract import (NEUTRAL, as_dict, band_for, market_shape, pick_for, pick_prob,
+                       slot_for)
 
 _TENS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]
 #: Which key holds the MARKET's quoted line, per sport. Read in order; the first
@@ -151,7 +152,12 @@ PADDING_BOTH = "So the model and the market both have a number here, and little 
 #: true there. `PADDING_BOTH` would not be.
 PADDING_NO_PROJECTION = "So there is no model number for this one yet."
 
-MAX_FACTORS = 4
+#: How many rows the panel shows. Raised from 4 with the matchup redesign, and the
+#: cap is shared with `validate.MAX_FACTORS` because the template and the model
+#: must not disagree about what a valid body is — `test_validate_factors.py` holds
+#: the two equal. Five is enough for an Edge row, a Risk row and a Price row plus
+#: the pick and the record, which is every row the redesign can produce.
+MAX_FACTORS = 5
 
 
 def _num(x) -> float | None:
@@ -368,6 +374,67 @@ def _implied_price(market: dict | None) -> float | None:
     return max(prices) if prices else None
 
 
+def _duel_ranks(row: dict) -> tuple[int, int, int] | None:
+    """The three figures a duel row prints, or None when it cannot be drawn.
+
+    All three or none. A row carrying a rank and no league size would print
+    "#3" beside a bar the panel draws out of 32, and a row carrying neither is a
+    sentence about two teams with nothing to compare them by. Both are the
+    `SignalRows` defect in a different place: a figure on the page that the
+    reader cannot check.
+    """
+    values = (row.get("attacker_rank"), row.get("defender_rank"), row.get("n_teams"))
+    if not all(isinstance(v, int) and not isinstance(v, bool) for v in values):
+        return None
+    return values
+
+
+def _matchup_factors(facts: dict) -> list[dict]:
+    """Edge, Risk and (when the code declined to direct) one neutral duel row.
+
+    Rows arrive strongest first — the sport code sorted them by `Duel.strength`
+    — and this reads that order rather than ranking again: the ranking is a fact
+    about the data, and re-deriving it here would be a second rule for the same
+    decision. At most one toward the pick and one against it, which is the
+    design's 2 Edge / 2 Risk allowance spent on the two that matter; the second
+    duel toward the pick is never the one a reader should act on.
+
+    **The direction is the CODE's word, not this file's.** `toward_pick` is True
+    or False only when the duel type passed the residual-lift test; until it has,
+    it is `None` and the row is neutral context. So there is no branch here that
+    can turn an undirected duel into Edge or Risk, and `slot_for` re-checks the
+    same thing at the end.
+
+    The wording states the two ranks and nothing derived from them: "Bills' #3
+    passing offence meets Jets' #28 pass defence". No "25-place gap", no
+    "advantage", no "mismatch" — a derived figure is a number no fact carries,
+    which the validator's number pool would reject and a reader could not check.
+    """
+    rows = [r for r in ((facts.get("context") or {}).get("matchups") or []) if isinstance(r, dict)]
+    out: list[dict] = []
+    for toward, direction in ((True, "up"), (False, "down")):
+        row = next((r for r in rows if r.get("toward_pick") is toward and _duel_ranks(r)), None)
+        if row is None:
+            continue
+        verb = "meets" if toward else "runs into"
+        attacker_rank, defender_rank, n_teams = _duel_ranks(row)
+        headline = (f"{row['attacker']}'s #{attacker_rank} {row['stat']} {verb} "
+                    f"{row['defender']}'s #{defender_rank} {row['foil']}")
+        text = (f"{row['attacker']} rank {attacker_rank} of {n_teams} in {row['stat']}; "
+                f"{row['defender']} rank {defender_rank} of {n_teams} in {row['foil']}.")
+        out.append(_fact(f"matchup:{row['id']}", direction, headline, text))
+    undirected = next((r for r in rows if r.get("toward_pick") is None and _duel_ranks(r)), None)
+    if undirected is not None and not out:
+        attacker_rank, defender_rank, n_teams = _duel_ranks(undirected)
+        out.append(_fact(
+            f"matchup:{undirected['id']}", NEUTRAL,
+            f"{undirected['attacker']}'s #{attacker_rank} {undirected['stat']} and "
+            f"{undirected['defender']}'s #{defender_rank} {undirected['foil']}",
+            f"{undirected['attacker']} rank {attacker_rank} of {n_teams} in {undirected['stat']}; "
+            f"{undirected['defender']} rank {defender_rank} of {n_teams} in {undirected['foil']}."))
+    return out
+
+
 def explain_from_template(facts: dict) -> dict:
     """The no-model path, in the model's own shape, built from the facts."""
     facts = as_dict(facts)
@@ -421,6 +488,13 @@ def explain_from_template(facts: dict) -> dict:
     if label and prob is not None:
         factors.append(_fact(_outcome_key(by_key, "pick"), "up", "The pick",
                              f"The model makes {label} the pick at {_pct(prob)}."))
+
+    # The duels go next, immediately after the pick: they are the rows that say
+    # WHY, and every row below them is about the market rather than the matchup.
+    # This is also where the redesign's cap is spent, so it is the one place the
+    # order matters — the record row deliberately goes last and is what gets
+    # sliced off when five rows do not fit.
+    factors.extend(_matchup_factors(facts))
 
     margin_market = by_key.get("spread") or by_key.get("handicap")
     margin = _num((margin_market or {}).get("model_margin"))
@@ -705,8 +779,15 @@ def explain_from_template(facts: dict) -> dict:
     # chip for this case (mirroring rebuilt), so we return None and let the
     # response decide whether to render it.
     band = None if timing == "unknown" else band_for(prob, market_shape(facts))
-    return {"verdict": verdict, "band": band,
-            "factors": factors[:MAX_FACTORS]}
+    # The slot is stamped ONCE, here, at the end — after the cap and after
+    # padding. `_fact` returns only the four contract fields, so no row can carry
+    # a slot that was decided before the facts it depends on were known, and the
+    # model path's `resolve_factors` calls the same `slot_for`, which is what
+    # keeps the two renderings from disagreeing about where a row is drawn.
+    kept = factors[:MAX_FACTORS]
+    for f in kept:
+        f["slot"] = slot_for(f["direction"], f["key"], facts)
+    return {"verdict": verdict, "band": band, "factors": kept}
 
 
 def minimal(facts: dict) -> dict:

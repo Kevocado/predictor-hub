@@ -1,6 +1,6 @@
 import json
 
-from explainer.validate import MAX_FACTOR_WORDS, numbers_in, validate
+from explainer.validate import MAX_FACTORS, MAX_FACTOR_WORDS, numbers_in, validate
 
 FACTS = json.dumps({"starts_at": "2026-10-05T00:20:00Z", "pick": {"label": "BAL", "prob": 0.62},
                     "pick_timing": "pre_kickoff",
@@ -115,3 +115,73 @@ def test_whole_number_may_round_a_decimal():
     facts["markets"].append({"market": "total", "model_total": 47.8, "line": 45.5})
     assert validate(good("It projects 48 points against 45.5."), json.dumps(facts), "[]") == []
     assert validate(good("It projects 49 points."), json.dumps(facts), "[]")
+
+
+# --- the matchup factor vocabulary and the raised cap (AI plan Task 6) --------
+#
+# The validator is the last gate before a model's words are served, so a
+# `matchup:<id>` key has to be checked here for the same reason a market key is:
+# a key the facts do not carry would render an empty row, and a duel the facts do
+# not carry is a claim about a matchup that was never computed.
+
+MATCHUP_FACTS = json.dumps({
+    "sport": "nfl", "id": "g1", "title": "Bills at Jets",
+    "starts_at": "2026-10-11T17:00:00Z", "status": "upcoming",
+    "pick_timing": "pre_kickoff", "pick": {"label": "Bills", "prob": 0.64},
+    "markets": [{"market": "moneyline", "model": {"Bills": 0.64, "Jets": 0.36}}],
+    "context": {"matchups": [
+        {"id": "pass_off_vs_pass_def:home", "attacker": "Bills", "defender": "Jets",
+         "stat": "passing offence", "foil": "pass defence", "attacker_rank": 3,
+         "defender_rank": 28, "n_teams": 32, "toward_pick": True}]},
+    "record": {"label": "Picks made before kickoff", "hits": 41, "settled": 68},
+})
+
+
+def _duel(key="matchup:pass_off_vs_pass_def:home"):
+    """One duel factor. No figures in it: the panel draws the ranks from the
+    facts, and a figure the model wrote here would be the thing the prompt forbids."""
+    return {"key": key, "direction": "up",
+            "headline": "Passing offence meets pass defence",
+            "text": "Their passing game against that pass defence."}
+
+
+def _record():
+    return {"key": "record", "direction": "neutral",
+            "headline": "Its record so far", "text": "Most of its picks before the start have landed."}
+
+
+def _duel_body(n: int):
+    """`n` factors: the first a duel, the rest the record."""
+    return {"verdict": "Bills are the pick.",
+            "factors": [_duel()] + [_record() for _ in range(n - 1)]}
+
+
+def test_a_duel_the_facts_carry_validates():
+    assert validate(_duel_body(2), MATCHUP_FACTS, "[]") == []
+
+
+def test_a_duel_the_facts_do_not_carry_is_reported():
+    problems = validate({"verdict": "Bills are the pick.",
+                         "factors": [_duel("matchup:invented"), _record()]},
+                        MATCHUP_FACTS, "[]")
+    assert any("matchup:invented" in p for p in problems), problems
+
+
+def test_five_factors_validate_and_six_are_rejected():
+    assert validate(_duel_body(MAX_FACTORS), MATCHUP_FACTS, "[]") == []
+    problems = validate(_duel_body(MAX_FACTORS + 1), MATCHUP_FACTS, "[]")
+    assert any("factors" in p for p in problems), problems
+
+
+def test_the_cap_is_five_on_both_sides():
+    """`validate.MAX_FACTORS` and `template.MAX_FACTORS` must agree.
+
+    The template is what a reader gets when the model's body fails this check, so
+    a template allowed to emit six rows against a validator that refuses six is a
+    service whose two paths disagree about what a body is — which is exactly the
+    drift spec §8 forbids. Compared rather than pinned twice, so moving one
+    without the other fails here.
+    """
+    from explainer.template import MAX_FACTORS as TEMPLATE_MAX
+
+    assert MAX_FACTORS == TEMPLATE_MAX == 5, (MAX_FACTORS, TEMPLATE_MAX)

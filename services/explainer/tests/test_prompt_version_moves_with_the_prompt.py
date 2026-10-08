@@ -83,6 +83,10 @@ RECORDED_PROMPT_DIGEST = {
     # did not say the answer would be discarded. Recorded rather than re-recorded
     # over v6, same reason as v5->v6.
     "v7": "52e0f6004577c6f7011ccaacd34848628bc78057a3240f4f662f1ca118c770e1",
+    # The matchup redesign: the frame teaches the `matchup:<id>` factor key,
+    # `toward_pick`, and the two-to-five factor cap. Recorded rather than folded
+    # into v7, same reason as v5->v6 and v6->v7.
+    "v8": "1525465377416f7a1ad3da243c2f4d8b6fca44de9d7ae22ed80c5e6504049738",
 }
 
 _HEX64 = re.compile(r"[0-9a-f]{64}")

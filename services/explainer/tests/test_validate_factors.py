@@ -5,12 +5,15 @@ outcome-verdict check are all unchanged and all still load-bearing — this file
 adds the rules that only exist because the shape changed. In particular the
 factor rules, because a v1 body would otherwise pass a v1-shaped check and be
 rendered by a v2 panel as nothing.
+
+The cap moved 4 -> 5 with the Edge / Risk / Price redesign, so the factor-count
+tests below read `MAX_FACTORS` rather than writing the number out a second time.
 """
 import json
 
 import pytest
 
-from explainer.validate import validate
+from explainer.validate import MAX_FACTORS, validate
 
 # Shaped like the real bundle (spec §5c), including a `record`, because the
 # pseudo-markets only resolve if the facts actually carry them.
@@ -71,14 +74,18 @@ def test_malformed_bodies_are_rejected(body):
 
 # --- the factor rules ------------------------------------------------------
 
-@pytest.mark.parametrize("n", [0, 1, 5, 6])
-def test_the_factor_count_is_two_to_four(n):
+# The cap moved 4 -> 5 with the Edge / Risk / Price redesign, so the range is read
+# from `MAX_FACTORS` rather than written out twice: a literal here would be a
+# second copy of the cap, and it would fail for a reason having nothing to do with
+# the validator's behaviour.
+@pytest.mark.parametrize("n", [0, 1, MAX_FACTORS + 1])
+def test_the_factor_count_is_two_to_five(n):
     problems = validate(_v([_f() for _ in range(n)]), F, "[]")
     assert any("factors" in p for p in problems), f"{n} factors was accepted: {problems}"
 
 
-@pytest.mark.parametrize("n", [2, 3, 4])
-def test_two_to_four_factors_pass(n):
+@pytest.mark.parametrize("n", range(2, MAX_FACTORS + 1))
+def test_two_to_five_factors_pass(n):
     assert validate(_v([_f() for _ in range(n)]), F, "[]") == [], f"{n} factors was rejected"
 
 

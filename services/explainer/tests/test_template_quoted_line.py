@@ -28,7 +28,7 @@ never ran before this change.
 and NBA's total market has no `line`, so the factor is dropped without a word. A
 reader sees a shorter explanation and has no way to know a figure was withheld.
 """
-from explainer.template import _quoted_line, explain_from_template
+from explainer.template import MAX_FACTORS, _quoted_line, explain_from_template
 
 UNIT = {"nfl": "points", "cfb": "points", "nba": "points", "pl": "goals"}
 
@@ -415,24 +415,24 @@ def test_a_zero_total_line_drops_the_factor_rather_than_quoting_zero():
     assert "0.5" in factor(body2, "total")["text"]
 
 
-def test_an_nba_rebuilt_pick_with_all_three_markets_loses_the_record():
-    """NBA's factor budget is now full, and this is the displacement.
+def test_an_nba_rebuilt_pick_keeps_the_record_and_duels_displace_it():
+    """The factor budget, and what it spends it on.
 
-    A REBUILT pick adds a `context` factor, so moneyline + spread + total +
-    context + record is five candidates against `MAX_FACTORS = 4`. The record is
-    what gets dropped.
+    `MAX_FACTORS` went 4 -> 5 with the matchup redesign, so the case this test was
+    written for no longer bites: a REBUILT NBA game with all three markets is
+    context + moneyline + spread + total + record = exactly five candidates, and
+    **nothing is dropped any more**. That is the control, and it is asserted
+    first: a cap raised without checking what it un-drops would look like a
+    harmless number change.
 
-    Two corrections to how this was first written, both found by running it
-    rather than reasoning about it. A *final but not rebuilt* NBA game produces
-    exactly four factors and loses nothing -- so "a final game renders five" is
-    wrong, and the review that suggested it was wrong for the same reason I would
-    have been: the fifth factor is the rebuilt note, not the final-score one. And
-    the `context` factor sorts FIRST, not last, so the record is displaced by
-    appearing after it rather than by being appended.
+    The displacement moved rather than disappeared. The sixth row is now a
+    DUEL, because the redesign puts matchup rows in right after the pick, and
+    two of them (one toward the pick, one against) is the ordinary case. So the
+    bundle that loses rows is the same game plus two duels, and the record is
+    still among what goes: it is emitted last on purpose.
 
-    Worth stating plainly: the panel's record strip is NOT this factor. A reader
-    still sees their record; what is lost is the record *sentence* inside the
-    explanation.
+    What is lost is the record *sentence* inside the explanation. The panel's own
+    record strip is a separate field and a reader still sees their record.
     """
     markets = [
         {"market": "moneyline", "model": {"BOS": 0.62, "MIA": 0.38}},
@@ -440,26 +440,41 @@ def test_an_nba_rebuilt_pick_with_all_three_markets_loses_the_record():
          "line": "BOS by 4.2", "market_line": "BOS -3.5"},
         {"market": "total", "model_total": 226.5, "market_line": "224.5"},
     ]
-    rebuilt = explain_from_template(bundle(
+    plain = explain_from_template(bundle(
         "nba", markets, pick_timing="rebuilt", status="final",
         result={"pick_won": True}))
-    keys = [f["key"] for f in rebuilt["factors"]]
+    keys = [f["key"] for f in plain["factors"]]
 
-    assert len(keys) == 4, f"MAX_FACTORS is not being applied: {keys}"
-    assert keys == ["context", "moneyline", "spread", "total"], keys
-    assert "record" not in keys, (
-        f"expected the record sentence to be the one dropped for a rebuilt NBA pick "
-        f"with all three markets: {keys}"
-    )
+    assert len(keys) == MAX_FACTORS == 5, f"the cap moved: {keys}"
+    assert keys == ["context", "moneyline", "spread", "total", "record"], keys
 
-    # And the control: the same game NOT rebuilt fits, so the displacement is
-    # caused by the rebuilt note rather than by NBA's three markets alone.
-    plain = explain_from_template(bundle(
-        "nba", markets, status="final", result={"pick_won": True}))
-    plain_keys = [f["key"] for f in plain["factors"]]
-    assert "record" in plain_keys, (
-        f"a non-rebuilt NBA game should keep its record sentence: {plain_keys}"
+    # And the displaced case, which is the same game plus the two duels the
+    # redesign emits. The record goes, because it is emitted last.
+    with_duels = explain_from_template(bundle(
+        "nba", markets, pick_timing="rebuilt", status="final",
+        result={"pick_won": True},
+        context={"matchups": [_duel("a", True), _duel("b", False)]}))
+    duel_keys = [f["key"] for f in with_duels["factors"]]
+
+    assert len(duel_keys) == MAX_FACTORS, f"MAX_FACTORS is not being applied: {duel_keys}"
+    assert "matchup:a" in duel_keys and "matchup:b" in duel_keys, duel_keys
+    assert "record" not in duel_keys, (
+        f"expected the record sentence to be one of the rows dropped once the duels "
+        f"fill the budget: {duel_keys}"
     )
+    # The rows that survive are the first MAX_FACTORS in emission order, and the
+    # order is: the disclosure and the pick, then the duels, then the market
+    # rows, then the record. So two duels cost the TOTAL and the RECORD here, not
+    # the record alone — measured by running it rather than by counting candidates,
+    # which is what got the first version of this test wrong.
+    assert duel_keys == ["context", "moneyline", "matchup:a", "matchup:b", "spread"], duel_keys
+
+
+def _duel(id_: str, toward_pick) -> dict:
+    """One code-computed duel, in the shape `signals/matchups.to_context` emits."""
+    return {"id": id_, "attacker": "BOS", "defender": "MIA", "stat": "offensive rating",
+            "foil": "defensive rating", "attacker_rank": 3, "defender_rank": 27,
+            "n_teams": 30, "toward_pick": toward_pick}
 
 
 # --- the moment each sport names the start of a game ------------------------

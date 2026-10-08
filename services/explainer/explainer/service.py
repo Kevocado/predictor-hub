@@ -17,7 +17,8 @@ from pydantic import ValidationError
 
 from .cache import Cache
 from .config import SERVED_SPORTS
-from .contract import band_for, clean_verdict, market_shape, pick_for, pick_prob
+from .contract import (as_dict, band_for, clean_verdict, market_shape, pick_for, pick_prob,
+                       resolve_factors)
 from .facts import Facts, PickTiming, render
 from .ledger import Ledger
 from .llm import LLMError, complete
@@ -63,17 +64,37 @@ def news_fingerprint(news: list[dict]) -> str:
     return ""
 
 
-def _clean(body: dict) -> dict:
-    """Coerce a model body to the v2 shape, and refuse a body that is not one.
+def _clean(body: dict, facts) -> dict:
+    """Coerce a model body to the v2 shape, resolve it against the facts, and
+    refuse a body that is not one.
 
     The cache key covers `prompt_version`, so a v1 row cannot reach here. Asserting
     anyway: a reused version must fail loudly rather than render an empty panel,
     and this is the only place that can notice. A missing `verdict` means a shape
     we do not understand, not a shape we can render.
+
+    **`resolve_factors` is called here, and it was not called at all before the
+    matchup redesign.** It existed, the validator's comment said "resolve_factors
+    already dropped it on the way in", and no production path called it — so the
+    model path's factors reached the panel with whatever keys the model wrote, and
+    an unknown key was caught only because `validate` rejects the whole body and
+    the reader got the template instead. Two things follow, and both are why this
+    call is here rather than left to a later reader:
+
+    * the model path needs `slot`, and `resolve_factors` is what stamps it (the
+      template stamps its own, from the same `slot_for`). A model row with no
+      slot would render in the `context` group whatever its direction said.
+    * the comment in `validate.py` about keys having been dropped on the way in
+      is now true, which it was not. Without the drop, `matchup:<id>` rows would
+      reach the panel from the model path with no check that the facts carry that
+      duel at all.
+
+    The facts go in as a dict so the resolver's `as_dict` normalises the shape.
     """
     if not isinstance(body.get("verdict"), str) or not isinstance(body.get("factors"), list):
         raise ValueError(f"cached body is not a v2 verdict: {sorted(body)}")
-    return clean_verdict(body)
+    cleaned = clean_verdict(body)
+    return {**cleaned, "factors": resolve_factors(cleaned, as_dict(facts))}
 
 
 
@@ -232,7 +253,7 @@ class Explainer:
                     continue
                 problems = validate(out, facts_json, news_json)
                 if not problems:
-                    return _clean(out), "llm", model
+                    return _clean(out, facts), "llm", model
                 reason = ""  # the model answered but not honestly enough: don't pay again
                 logger.info("model %s output rejected: %s", model, "; ".join(problems)[:300])
         try:

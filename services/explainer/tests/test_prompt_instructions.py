@@ -496,3 +496,68 @@ def test_every_served_sport_is_shipped_the_whole_rule():
             f"[{sport}] the figures rule is not in the system message the model is sent"
         )
         assert SPORT_NOTES[sport] in system["content"], f"[{sport}] its language note is missing"
+
+
+# --- the matchup vocabulary (AI plan Task 6) ---------------------------------
+#
+# The frame is the only control on the model's key vocabulary. `validate()` checks
+# that a `matchup:<id>` key names a duel the facts carry, but it cannot say which
+# duels to use or how to word one, and a model that has never been told the key
+# will invent a different one and be rejected — so the reader gets the template
+# instead of the summary, for every game, silently.
+
+def test_prompt_teaches_matchup_keys_and_slots():
+    assert "matchup:" in SYSTEM
+    assert "toward_pick" in SYSTEM
+    assert "Edge" in SYSTEM and "Risk" in SYSTEM
+
+
+def test_prompt_still_forbids_figures_in_panel_text():
+    assert "Write NO figures" in SYSTEM
+    # And specifically for a duel, which is the case where the temptation is
+    # strongest: the facts carry two ranks and they are the most quotable numbers
+    # on the page. The panel draws them beside the words, so a model that writes
+    # them duplicates them at best.
+    duel_paragraph = _matchup_paragraph()
+    assert "never write the ranks" in duel_paragraph, duel_paragraph
+
+
+def test_prompt_asks_for_no_more_than_two_edge_and_two_risk_rows():
+    """The design's allowance, stated in the frame so the model cannot exceed it.
+
+    The panel groups by slot and omits an empty group, so a model returning five
+    Edge rows would render five rows under one heading — which passes
+    `validate` (the cap is on the total, not per slot) and reads as a wall. The
+    count has to come from the prompt; nothing downstream checks it per slot.
+    """
+    duel_paragraph = _matchup_paragraph()
+    assert "at most two" in duel_paragraph and "at most two" in duel_paragraph.split("as \"down\"")[0], (
+        f"the frame no longer caps Edge and Risk at two rows each: {duel_paragraph}"
+    )
+
+
+def test_prompt_says_the_cap_is_five():
+    assert "2 to 5 factors" in SYSTEM, (
+        "the frame still asks for two to four factors, so a five-row body is "
+        "something the prompt discourages and the validator now accepts"
+    )
+
+
+def test_the_matchup_paragraph_reaches_every_served_sport():
+    """The wiring, for the paragraph that is new rather than the frame that was
+    already there — the same reason `test_every_served_sport_is_shipped_the_whole_
+    rule` exists, pointed at the edit this change makes.
+    """
+    for sport in SERVED_SPORTS:
+        content = messages(sport, "{}", "[]")[0]["content"]
+        assert "matchup:" in content, f"[{sport}] the matchup vocabulary is not in its prompt"
+
+
+def _matchup_paragraph() -> str:
+    """The paragraph teaching the duel vocabulary, or a failure saying what is there."""
+    paragraphs = [p for p in SYSTEM.split("\n\n") if p.startswith("FACTS may also carry a list of matchups")]
+    assert len(paragraphs) == 1, (
+        f"expected exactly one paragraph starting 'FACTS may also carry a list of matchups', "
+        f"found {len(paragraphs)}: {paragraphs}"
+    )
+    return paragraphs[0]

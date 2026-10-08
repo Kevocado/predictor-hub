@@ -65,7 +65,7 @@ import subprocess
 import pytest
 
 from explainer.config import SERVED_SPORTS
-from explainer.contract import resolve_factors
+from explainer.contract import resolve_factors, slot_for
 from explainer.template import explain_from_template
 
 #: The pair both rows above name, as a set so the assertion is order-independent
@@ -857,3 +857,48 @@ def test_the_runner_notices_when_the_builder_emits_something_else(sport):
             f"the comparison is not looking at what the builder returned -- and "
             f"either way the five checks above are evidence about nothing."
         )
+
+
+# --- matchup keys and the Edge / Risk / Price slots (AI plan Task 4) ---------
+#
+# A `matchup:<id>` factor names a code-computed duel in `context.matchups` rather
+# than a market, and its SLOT is not a re-reading of the model's `direction`: a
+# duel is Edge only when the code says it favours the pick, and Risk only when the
+# code says it favours the other side. The model chooses the words and the
+# ordering; which side a duel points at is computed, and a duel that failed the
+# lift gate carries `toward_pick: None` and is never Edge or Risk at all.
+FACTS = {"markets": [{"market": "spread"}], "context": {"matchups": [{"id": "pass_off_vs_pass_def:home"}]}}
+
+
+def test_a_matchup_key_that_the_facts_carry_is_kept():
+    v = {"factors": [{"key": "matchup:pass_off_vs_pass_def:home", "direction": "up", "headline": "h", "text": "t"}]}
+    assert [f["key"] for f in resolve_factors(v, FACTS)] == ["matchup:pass_off_vs_pass_def:home"]
+
+
+def test_a_matchup_key_the_facts_do_not_carry_is_dropped():
+    v = {"factors": [{"key": "matchup:invented", "direction": "up", "headline": "h", "text": "t"}]}
+    assert resolve_factors(v, FACTS) == []
+
+
+def _facts(toward):
+    return {"markets": [{"market": "spread"}], "context": {"matchups": [{"id": "x", "toward_pick": toward}]}}
+
+
+def test_slots_follow_direction_and_market():
+    assert slot_for("up", "matchup:x", _facts(True)) == "edge"
+    assert slot_for("down", "matchup:x", _facts(False)) == "risk"
+    assert slot_for("neutral", "spread", FACTS) == "price"
+    assert slot_for("neutral", "record", FACTS) == "context"
+
+
+def test_the_model_cannot_promote_a_matchup_the_code_did_not_direct():
+    # code says null (failed the lift gate) or the other side: whatever direction the model wrote, the row is context
+    assert slot_for("up", "matchup:x", _facts(None)) == "context"
+    assert slot_for("down", "matchup:x", _facts(None)) == "context"
+    assert slot_for("up", "matchup:x", _facts(False)) == "context"
+    assert slot_for("down", "matchup:x", _facts(True)) == "context"
+
+
+def test_resolved_factors_carry_their_slot():
+    v = {"factors": [{"key": "spread", "direction": "neutral", "headline": "h", "text": "t"}]}
+    assert resolve_factors(v, FACTS)[0]["slot"] == "price"

@@ -7,6 +7,7 @@ import respx
 
 from conftest import facts, good
 from explainer import news
+from explainer.contract import SLOTS
 from explainer.llm import OPENROUTER_URL
 from explainer.template import explain_from_template
 from explainer.validate import validate
@@ -155,8 +156,14 @@ async def test_answer_coerces_junk_factor_fields_and_drops_the_rest(tmp_path, no
     out = await make(tmp_path).explain("nfl", "g1")
     assert out["source"] == "llm"
     for f in out["factors"]:
-        assert set(f) == {"key", "direction", "headline", "text"}, f"leaked keys: {sorted(f)}"
+        # `slot` is the one key the service ADDS rather than drops: it is derived
+        # from the facts by `resolve_factors`, and the panel groups rows by it.
+        # Everything else in the model body is still stripped, which is what this
+        # test is about -- a model that invents a field must not have it echoed.
+        assert set(f) == {"key", "direction", "headline", "text", "slot"}, \
+            f"leaked keys: {sorted(f)}"
         assert isinstance(f["headline"], str) and isinstance(f["text"], str)
+        assert f["slot"] in SLOTS
 
 
 async def test_id_is_quoted_into_the_sport_api_url(tmp_path, no_news):
