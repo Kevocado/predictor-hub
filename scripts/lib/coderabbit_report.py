@@ -22,15 +22,24 @@ while i < len(raw):
     while i < len(raw) and raw[i].isspace():
         i += 1
 
+# A finding counts as addressed when the author said so ("Addressed in commit") OR CodeRabbit itself re-checked the code
+# in a reply on that thread and resolved it. CodeRabbit posts "Review thread resolved" only when it has done that, so a
+# reviewer's own claim ("I verified it") does not clear a Critical/Major by itself.
+RESOLVED_BY_BOT = set()
+for c in comments:
+    if "coderabbit" in c.get("user", {}).get("login", "").lower() and c.get("in_reply_to_id") \
+            and re.search(r"Review thread resolved", c.get("body", "")):
+        RESOLVED_BY_BOT.add(c["in_reply_to_id"])
+
 ORDER = {"Critical": 0, "Major": 1, "Minor": 2, "Trivial": 3, "?": 4}
 rows = []
 for c in comments:
-    if "coderabbit" not in c.get("user", {}).get("login", "").lower():
-        continue
+    if "coderabbit" not in c.get("user", {}).get("login", "").lower() or c.get("in_reply_to_id"):
+        continue  # only the top-level findings; CodeRabbit's replies are read above
     body = c.get("body", "")
     m = re.search(r"(Critical|Major|Minor|Trivial)", body[:400])
     sev = m.group(1) if m else "?"
-    addressed = bool(re.search(r"Addressed in commit", body))
+    addressed = bool(re.search(r"Addressed in commit", body)) or c.get("id") in RESOLVED_BY_BOT
     text = re.sub(r"<details>.*?</details>", "", body, flags=re.S)
     text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
     lines = [l.strip() for l in text.splitlines() if l.strip() and not l.strip().startswith(("_", "<"))]

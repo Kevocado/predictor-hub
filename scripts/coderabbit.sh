@@ -8,7 +8,9 @@
 # Chainable:  scripts/coderabbit.sh R N && gh pr merge N -R R --merge --match-head-commit SHA
 #
 # A finding CodeRabbit marks "Addressed in commit ..." is shown as ADDRESSED and does not fail the
-# gate. For a Critical/Major, check the fix rather than trusting the marker.
+# gate, and neither does one where CodeRabbit ITSELF replied in the thread with "Review thread resolved"
+# (it posts that only after re-checking the code). A reviewer's own "verified" reply does not clear it.
+# For a Critical/Major, check the fix rather than trusting the marker.
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=${1:-}; PR=${2:-}; MODE=${3:-}
