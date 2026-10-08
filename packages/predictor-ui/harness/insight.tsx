@@ -30,6 +30,9 @@ import {
   MAX_HEADLINE_WORDS,
   signalIsDrawn,
   UndrawableSignalVisualError,
+  MatchupBrief,
+  RankDuel,
+  WeatherChip,
   type MarketTile,
   type Segment,
   type BoxScoreGroup,
@@ -37,6 +40,9 @@ import {
   type OutPlayer,
   type PicksListProps,
   type Signal,
+  type MatchupRow,
+  type SlottedFactor,
+  type Conditions,
 } from "../src/index";
 import {
   FIX,
@@ -59,6 +65,44 @@ import {
 
 /** The game and every player figure live in ./fixture — nothing restates them. */
 const pct = (p: number) => `${Math.round(p * 100)}%`;
+
+/* --- NEW: MatchupBrief / WeatherChip / RankDuel fixture data -------------------- */
+const MATCHUP_FULL_MATCHUPS: MatchupRow[] = [
+  { id: "pass_off_vs_pass_def:home", attacker: "Bills", defender: "Jets", stat: "passing offence", foil: "pass defence", attacker_rank: 3, defender_rank: 28, n_teams: 32, toward_pick: true },
+  { id: "rush_off_vs_rush_def:away", attacker: "Jets", defender: "Bills", stat: "rushing offence", foil: "run defence", attacker_rank: 4, defender_rank: 19, n_teams: 32, toward_pick: false },
+];
+const MATCHUP_FULL_FACTORS: SlottedFactor[] = [
+  { key: "matchup:pass_off_vs_pass_def:home", direction: "up", slot: "edge", headline: "Bills' #3 passing offence meets Jets' #28 pass defence", text: "Bills rank 3 of 32 in passing offence; Jets rank 28 of 32 in pass defence." },
+  { key: "matchup:rush_off_vs_rush_def:away", direction: "down", slot: "risk", headline: "Jets' #4 rushing offence runs into Bills' #19 run defence", text: "Jets rank 4 of 32 in rushing offence; Bills rank 19 of 32 in run defence." },
+  { key: "spread", direction: "neutral", slot: "price", headline: "Model -4.0 against a quoted -6.5", text: "Both figures, no verdict on them." },
+];
+
+const MATCHUP_EDGE_ONLY_FACTORS: SlottedFactor[] = [
+  { key: "matchup:a", direction: "up", slot: "edge", headline: "Bills' #3 passing offence meets Jets' #28 pass defence", text: "t" },
+];
+const MATCHUP_EDGE_ONLY_MATCHUPS: MatchupRow[] = [
+  { id: "a", attacker: "Bills", defender: "Jets", stat: "passing offence", foil: "pass defence", attacker_rank: 3, defender_rank: 28, n_teams: 32, toward_pick: true },
+];
+
+const MATCHUP_NO_MATCHUPS_FACTORS: SlottedFactor[] = [
+  { key: "matchup:pass_off_vs_pass_def:home", direction: "up", slot: "edge", headline: "Bills' #3 passing offence meets Jets' #28 pass defence", text: "t" },
+  { key: "spread", direction: "neutral", slot: "price", headline: "Model -4.0 against a quoted -6.5", text: "t" },
+];
+
+const MATCHUP_LONG_FACTORS: SlottedFactor[] = [
+  { key: "matchup:b", direction: "up", slot: "edge", headline: "San Francisco 49ers' #2 passing offence meets Dallas Cowboys' #31 pass defence", text: "t" },
+  { key: "matchup:c", direction: "down", slot: "risk", headline: "Dallas Cowboys' #5 rushing offence runs into San Francisco 49ers' #18 run defence", text: "t" },
+];
+const MATCHUP_LONG_MATCHUPS: MatchupRow[] = [
+  { id: "b", attacker: "San Francisco 49ers", defender: "Dallas Cowboys", stat: "passing offence", foil: "pass defence", attacker_rank: 2, defender_rank: 31, n_teams: 32, toward_pick: true },
+  { id: "c", attacker: "Dallas Cowboys", defender: "San Francisco 49ers", stat: "rushing offence", foil: "run defence", attacker_rank: 5, defender_rank: 18, n_teams: 32, toward_pick: false },
+];
+
+const WEATHER_CLEAR: Conditions = { kind: "clear", temp_f: 61 };
+const WEATHER_RAIN_WIND: Conditions = { kind: "rain", temp_f: 50, wind_mph: 18, precip_pct: 70 };
+const WEATHER_SNOW: Conditions = { kind: "snow", temp_f: 28, wind_mph: 8, precip_pct: 40 };
+const WEATHER_STORM: Conditions = { kind: "storm", temp_f: 45, wind_mph: 22, precip_pct: 90 };
+const WEATHER_DOME: Conditions = { kind: "dome", temp_f: 72, wind_mph: 30, precip_pct: 100 };
 
 const NFL_TILES: MarketTile[] = [
   { market: "moneyline", label: "moneyline", value: pct(FIX.homeWinProb), sub: `win · ${FIX.home}` },
@@ -754,6 +798,72 @@ function App() {
           bundle={F1_BUNDLE}
           extras={{ record: { label: "Picks made before the session", hits: 9, settled: 14 } }}
         />
+      </Case>
+
+      {/* --- NEW: MatchupBrief (Edge / Risk / Price grouping) ---------------------- */}
+      <Case id="matchup-full" title="13 · MatchupBrief — full (2 Edge, 1 Risk, 1 Price)"
+        note="The four groups: Edge (strongest duel toward pick), Risk (strongest against), Price (quoted market), context (fallback). Ranks stated in headlines must match the duel rows. Empty groups omitted.">
+        <MatchupBrief factors={MATCHUP_FULL_FACTORS} matchups={MATCHUP_FULL_MATCHUPS} onSelect={() => {}} />
+      </Case>
+
+      <Case id="matchup-edge-only" title="14 · MatchupBrief — Edge only"
+        note="Only an Edge row. No Risk, no Price, no context headings.">
+        <MatchupBrief factors={MATCHUP_EDGE_ONLY_FACTORS} matchups={MATCHUP_EDGE_ONLY_MATCHUPS} onSelect={() => {}} />
+      </Case>
+
+      <Case id="matchup-no-matchups" title="15 · MatchupBrief — no matchups (template path)"
+        note="Factors carry slots but no duel rows exist in the response. Headings render, RankDuel absent. This is the template path when the LLM is off.">
+        <MatchupBrief factors={MATCHUP_NO_MATCHUPS_FACTORS} matchups={[]} onSelect={() => {}} />
+      </Case>
+
+      <Case id="matchup-long-names" title="16 · MatchupBrief — long team names"
+        note="Team and stat names that stress the layout. Words truncate, bars don't shift.">
+        <MatchupBrief factors={MATCHUP_LONG_FACTORS} matchups={MATCHUP_LONG_MATCHUPS} onSelect={() => {}} />
+      </Case>
+
+      {/* --- NEW: WeatherChip ------------------------------------------------------- */}
+      <Case id="weather-clear" title="17 · WeatherChip — clear"
+        note="No wind, no rain chance. Just sky and temperature.">
+        <WeatherChip conditions={WEATHER_CLEAR} />
+      </Case>
+
+      <Case id="weather-rain-wind" title="18 · WeatherChip — rain + wind"
+        note="Wind ≥15 mph, rain chance ≥30%, wet sky. All three parts render.">
+        <WeatherChip conditions={WEATHER_RAIN_WIND} />
+      </Case>
+
+      <Case id="weather-snow" title="19 · WeatherChip — snow"
+        note="Snow with chance. Wind under threshold.">
+        <WeatherChip conditions={WEATHER_SNOW} />
+      </Case>
+
+      <Case id="weather-storm" title="20 · WeatherChip — storm"
+        note="Storm with wind and high precip chance.">
+        <WeatherChip conditions={WEATHER_STORM} />
+      </Case>
+
+      <Case id="weather-dome" title="21 · WeatherChip — dome (indoors)"
+        note="Indoors, no temperature, no wind, no precip. Just 'Indoors'.">
+        <WeatherChip conditions={WEATHER_DOME} />
+      </Case>
+
+      <Case id="weather-no-conditions" title="22 · WeatherChip — no conditions"
+        note="Renders nothing. No chip, no words. The empty space says nothing.">
+        <div className="flex items-center gap-2 p-2 border border-dashed border-pr-rule rounded-pr">
+          <span className="text-xs text-pr-text-faint">(empty above — no chip renders)</span>
+          <WeatherChip conditions={null} />
+        </div>
+      </Case>
+
+      {/* --- NEW: RankDuel ---------------------------------------------------------- */}
+      <Case id="rankduel-normal" title="23 · RankDuel — normal"
+        note="Two units, ranks 3 and 28 of 32. Strong bar long, weak bar stub.">
+        <RankDuel attacker="Bills" attackerStat="passing offence" attackerRank={3} defender="Jets" defenderStat="pass defence" defenderRank={28} nTeams={32} />
+      </Case>
+
+      <Case id="rankduel-extremes" title="24 · RankDuel — first vs last"
+        note="Full bar (1st) and minimum stub (32nd). Both visible.">
+        <RankDuel attacker="Bills" attackerStat="passing offence" attackerRank={1} defender="Jets" defenderStat="pass defence" defenderRank={32} nTeams={32} />
       </Case>
     </main>
   );
