@@ -30,6 +30,15 @@ export type Factor = {
   direction: "up" | "down" | "neutral";
   headline: string;
   text: string;
+  /** Where the panel draws this row, computed by the explainer from the
+   *  direction and the facts. OPTIONAL and IGNORED here: this list renders every
+   *  row the same way, which is what a response from an explainer that predates
+   *  the slot needs. `MatchupBrief` is the component that groups by it.
+   *
+   *  It lives on the factor rather than in a parallel array because the explainer
+   *  sends it per row, and a site building an `Explanation` should not have to
+   *  widen the response type to pass one through. */
+  slot?: "edge" | "risk" | "price" | "context";
 };
 
 const TRIANGLE = (up: boolean) => (
