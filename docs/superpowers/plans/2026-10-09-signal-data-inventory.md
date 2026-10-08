@@ -21,13 +21,12 @@ PBP columns confirmed present in nflverse parquet (2024 season, 49,492 plays):
 | Signal | Status | Source |
 |---|---|---|
 | `ppa_pass/rush_off_vs_def` | available | CFBD advanced stats → `epa_off_pass` / `epa_def_pass` / `epa_off_rush` / `epa_def_rush` |
-| `havoc` | **absent** | CFBD advanced stats do not include havoc rate |
-| `explosiveness` | **absent** | CFBD advanced stats do not include explosiveness |
-| `line_play` | **absent** | CFBD advanced stats do not include line-play splits |
-| `talent_gap` | **absent** | Requires a separate CFBD `/teams/talent` call (Task 12 extension) |
+| `havoc` | available in API, not read by loader yet (extend `_side()`) | CFBD game-advanced response carries defense `havocRate`; not pulled |
+| `line_play` | available in API, not read by loader yet (extend `_side()`) | CFBD game-advanced response carries defense `stuffRate`, line yards |
+| `explosiveness` | available in API, not read by loader yet (extend `_side()`) | CFBD game-advanced response carries offense `explosiveness` |
+| `talent_gap` | separate-call item (not in current pull) | Requires a separate CFBD `/teams/talent` call (Task 12 extension) |
 
-CFBD `_side()` pulls only: `ppa` (→ epa), `passingPlays.ppa`, `rushingPlays.ppa`, `successRate`.
-No explosiveness, havoc, or line-play fields are fetched.
+Note on CFB availability: the loader's `_side()` currently pulls only `ppa`, `passingPlays.ppa`, `rushingPlays.ppa` and `successRate`. That reflects what we chose to keep, not what the CFBD game-advanced response contains. These rows are kept in the catalog rather than deleted pending a first real pull's raw JSON, or the CFBD API docs confirming absence. No key is available to make a call; no rows deleted on loader-evidence alone.
 
 ## PL (pl_predictor)
 
@@ -45,12 +44,3 @@ No shots-on-target column is currently loaded; xG is the available underlying me
 | `four_factors_duel` | available | box scores → `efg_pct_roll`, `tov_rate_roll`, `orb_pct_roll`, `ft_rate_roll` |
 
 All four factors are computed and rolling (Task 9 of the NBA feature-blocks plan).
-
-## Deleted from the catalog
-
-- CFB `havoc` — absent
-- CFB `explosiveness` — absent
-- CFB `line_play` — absent
-- CFB `talent_gap` — absent (requires a separate API call; not in the current pull)
-
-These rows are removed from the signal catalog in the AI summary redesign plan.

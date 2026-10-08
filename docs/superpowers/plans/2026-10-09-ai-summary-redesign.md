@@ -52,6 +52,10 @@ Rules: at most 2 Edge, 2 Risk, 1 Price rows. Rows are ordered by duel strength, 
 | NFL | `rest_and_travel` | short week, bye, miles/time zones travelled | schedule + stadium coords | partly built (rest) |
 | NFL | `key_absences` | position-group-weighted starters Out | injuries + depth chart | built (absence signal) |
 | CFB | `ppa_pass/rush_off_vs_def` | PPA per play, pass and rush, as ranks | CFBD advanced stats (model plan Task 11) | built (CFB#35) |
+| CFB | `havoc_vs_havoc_allowed` | defence havoc rate vs offence's havoc allowed | CFBD game-advanced `havocRate` | available in API; loader not yet reading (extend `_side()`) |
+| CFB | `line_play` | line yards / stuff rate / power success, run game vs run defence | CFBD game-advanced `stuffRate`, line yards | available in API; loader not yet reading (extend `_side()`) |
+| CFB | `explosiveness` | explosive-play rate for vs against | CFBD game-advanced `explosiveness` | available in API; loader not yet reading (extend `_side()`) |
+| CFB | `talent_gap` | recruiting-talent composite rank gap | CFBD `/teams/talent` | separate call (Task 12 extension) |
 | CFB | `turnover_luck` | turnover margin vs what fumble-recovery luck predicts | game stats | INVENTORY |
 | CFB | `qb_situation`, `conditions`, `rest_and_travel`, `key_absences` | as NFL | CFBD + Open-Meteo | INVENTORY |
 | PL | `attack_vs_defence` | xG created vs conceded, as ranks | Understat xG per match | built (xG available) |
@@ -63,12 +67,9 @@ Rules: at most 2 Edge, 2 Risk, 1 Price rows. Rows are ordered by duel strength, 
 | NBA | `four_factors_duel` | offence vs defence on eFG%, TOV%, ORB%, FT rate, as ranks | box scores | built (four_factors.py) |
 | NBA | `style matchups` | pace, offensive rebounding, turnovers, 3-point rate, free-throw rate | the NBA plan's `matchup` signal | designed and merged (NBA plan) |
 
-Deleted from the catalog (Task 0 inventory, absent data):
-- CFB `havoc_vs_havoc_allowed` — CFBD advanced stats do not include havoc rate
-- CFB `line_play` — CFBD advanced stats do not include line-play splits
-- CFB `explosiveness` — CFBD advanced stats do not include explosiveness
-- CFB `talent_gap` — requires a separate CFBD `/teams/talent` call; not in the current pull
-| NBA | `four_factors_duel` | offence vs defence on eFG%, TOV%, ORB%, FT rate, as ranks | box scores | extends NBA plan (Task 9) |
+Deleted from the catalog: none on confirmed-absent evidence.
+- CFB `havoc`, `line_play`, `explosiveness`: kept (not deleted) — CFBD game-advanced carries these; loader `_side()` not yet reading them (extend `_side()` per CFB pull).
+- CFB `talent_gap`: separate call (`/teams/talent`), Task 12 extension.
 | NBA | `rest_load`, `availability` | back-to-back, minutes-weighted absences | NBA plan blocks | designed in NBA plan |
 
 ---
