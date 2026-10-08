@@ -77,9 +77,9 @@ Deleted from the catalog (Task 0 inventory, absent data):
 
 **Files:** Create `docs/superpowers/plans/2026-10-09-signal-data-inventory.md` in predictor-hub (the output).
 
-- [ ] **Step 1:** In each of CFB_Predictor and PL_Predictor, list what the per-match / per-game data actually contains (column names, seasons covered, nulls). Method: read the loaders under `src/*/data/` and the snapshot builder; for NFL confirm pbp columns `sack`, `qb_hit`, `yards_gained`, `yardline_100`, `down`, `first_down` exist in the nflverse parquet already loaded by `load_pbp_agg`.
-- [ ] **Step 2:** For every row marked INVENTORY above write one line: `available (column names, coverage)` or `absent`. Absent rows are deleted from the catalog.
-- [ ] **Step 3:** Open a docs PR with the inventory. No code changes.
+- [x] **Step 1:** In each of CFB_Predictor and PL_Predictor, list what the per-match / per-game data actually contains (column names, seasons covered, nulls). Method: read the loaders under `src/*/data/` and the snapshot builder; for NFL confirm pbp columns `sack`, `qb_hit`, `yards_gained`, `yardline_100`, `down`, `first_down` exist in the nflverse parquet already loaded by `load_pbp_agg`.
+- [x] **Step 2:** For every row marked INVENTORY above write one line: `available (column names, coverage)` or `absent`. Absent rows are deleted from the catalog.
+- [x] **Step 3:** Open a docs PR with the inventory. No code changes.
 
 ## Task 1 (verified): the duel primitive
 
