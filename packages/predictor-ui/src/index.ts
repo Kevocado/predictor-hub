@@ -10,6 +10,9 @@ export { ExplainerPanel, type Explanation, type Verdict, type Common } from "./c
 export { BandChip, PanelHeading, type Band } from "./components/ExplainerVerdict";
 export { KeyNumberTile, type MarketTile } from "./components/KeyNumberTile";
 export { FactorList, type Factor } from "./components/FactorList";
+export { MatchupBrief, groupBySlot, DuelHeadlineMismatchError, type MatchupRow, type SlottedFactor, type Slot } from "./components/MatchupBrief";
+export { RankDuel, rankFill, RankOutOfRangeError, type RankDuelProps } from "./components/RankDuel";
+export { WeatherChip, weatherSentence, WINDY_MPH, WET_ENOUGH_PCT, type Conditions, type WeatherKind } from "./components/WeatherChip";
 export { RecordStrip } from "./components/RecordStrip";
 export { FixtureFlow, type FixtureFlowProps, type FlowState } from "./components/FixtureFlow";
 export { SummaryButton, type SummaryButtonProps } from "./components/SummaryButton";
