@@ -119,3 +119,36 @@ describe("createContextLoader", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("FixtureExplainer: switching fixtures never shows the previous fixture's context", () => {
+  const props = { sport: "nfl", state: { kind: "idle" } as any, request: async () => ({}) };
+  const A = { id: "A", home_team: "BUF" };
+
+  it("B's bundle has matchups but no form_rows: A's loaded form_rows must not appear", async () => {
+    const load = vi.fn(async () => ({ form_rows: [form] }));
+    const { rerender } = render(<FixtureExplainer {...props} bundle={A} loadContext={load} />);
+    expect(await screen.findByTestId("form-quali")).toBeTruthy();
+    rerender(<FixtureExplainer {...props} bundle={{ id: "B", context: { matchups: [duel] } }} loadContext={load} />);
+    expect(screen.getByTestId("matchup-section")).toBeTruthy();
+    expect(screen.queryByTestId("form-quali")).toBeNull();
+  });
+
+  it("a late response for A after switching to B is ignored", async () => {
+    let resolveA: (c: any) => void = () => {};
+    const load = vi.fn((id: string) => id === "A" ? new Promise<any>((r) => { resolveA = r; }) : Promise.resolve({}));
+    const { rerender } = render(<FixtureExplainer {...props} bundle={A} loadContext={load} />);
+    rerender(<FixtureExplainer {...props} bundle={{ id: "B" }} loadContext={load} />);
+    await waitFor(() => expect(load).toHaveBeenCalledWith("B"));
+    resolveA({ matchups: [duel], form_rows: [form] });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByTestId("matchup-section")).toBeNull();
+  });
+
+  it("A's data is dropped immediately while B is still loading", async () => {
+    const load = vi.fn((id: string) => id === "A" ? Promise.resolve({ matchups: [duel] }) : new Promise<any>(() => {}));
+    const { rerender } = render(<FixtureExplainer {...props} bundle={A} loadContext={load} />);
+    expect(await screen.findByTestId("matchup-section")).toBeTruthy();
+    rerender(<FixtureExplainer {...props} bundle={{ id: "B" }} loadContext={load} />);
+    expect(screen.queryByTestId("matchup-section")).toBeNull();
+  });
+});

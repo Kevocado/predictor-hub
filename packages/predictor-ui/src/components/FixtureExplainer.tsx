@@ -111,13 +111,16 @@ function SummaryView({ summary, extras }: { summary: Summary; extras?: FixtureEx
 export function FixtureExplainer({ sport, state, bundle, request, extras, promise = AI_PROMISE, loadContext, fixtureId: idProp }: FixtureExplainerProps) {
   const [panelState, setPanelState] = useState<PanelState>("flow");
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [loaded, setLoaded] = useState<MatchupContext | null>(null);
+  // Stored with the id it was loaded for: it is used only while that is still the current fixture.
+  const [loadedFor, setLoadedFor] = useState<{ id: string; ctx: MatchupContext } | null>(null);
   const fixtureId = idProp ?? bundle?.id ?? bundle?.game_id ?? bundle?.fixture_id ?? bundle?.event_id;
+  const loaded = loadedFor && fixtureId != null && loadedFor.id === String(fixtureId) ? loadedFor.ctx : null;
   const hasBundleContext = !!bundle?.context?.matchups || !!bundle?.context?.form_rows;
   useEffect(() => {
     if (!loadContext || fixtureId == null || hasBundleContext) return;
     let live = true;
-    loadContext(String(fixtureId)).then((c) => live && setLoaded(c), () => live && setLoaded(null));
+    const id = String(fixtureId);
+    loadContext(id).then((ctx) => live && setLoadedFor({ id, ctx }), () => live && setLoadedFor(null));
     return () => { live = false; };
   }, [loadContext, fixtureId, hasBundleContext]);
 
