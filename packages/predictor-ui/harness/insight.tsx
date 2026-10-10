@@ -22,6 +22,8 @@ import {
   ProbabilityBar,
   RecordStrip,
   BoxScore,
+  StickyStatTable,
+  TeamSwitch,
   SummaryButton,
   InstantBlock,
   PicksList,
@@ -274,6 +276,14 @@ function ProjRow({ name, detail, value, sub, record }: { name: string; detail: s
     </div>
   );
 }
+
+const NBA_COLS = ["MIN", "PTS", "REB", "AST", "STL", "BLK", "3PM", "TO"];
+const NBA_ROWS = [
+  { key: "g", header: "Giannis Antetokounmpo", cells: [34, 31.4, 11.8, 5.6, 1.2, 1.1, 0.4, 3.5] },
+  { key: "d", header: "Damian Lillard", cells: [35, 24.1, 4.4, 7, 1, 0.2, 3.1, null] },
+  { key: "b", header: "Bobby Portis Jr.", cells: [24, 12, 8.2, 1.4, 0.8, 0.3, 1.2, 1.1] },
+  { key: "k", header: "Khris Middleton", cells: [28, 15.3, 4.7, 4.1, 1.1, 0.2, 1.8, 2] },
+];
 
 const BOX_COLUMNS = [
   { key: "yds", label: "Yds" },
@@ -922,6 +932,23 @@ function App() {
       <Case id="rankduel-extremes" title="24 · RankDuel — first vs last"
         note="Full bar (1st) and minimum stub (32nd). Both visible.">
         <RankDuel attacker="Bills" attackerStat="passing offence" attackerRank={1} defender="Jets" defenderStat="pass defence" defenderRank={32} nTeams={32} />
+      </Case>
+
+      <Case id="sticky-boxscore" title="25 · sticky box score — one team at a time (NBA-shaped)"
+        note="TeamSwitch + StickyStatTable. Home first and default. Names never move or clip; stat columns slide inside the scroller. Missing stat = em dash; the second team has no rows, so it shows the one-line message.">
+        <div data-shot="sticky-boxscore" className="mx-auto max-w-[375px] px-4">
+          <TeamSwitch teams={[{ key: "MIL", label: "MIL" }, { key: "DAL", label: "DAL" }]} label="Team box score">
+            {(team) => (
+              <StickyStatTable
+                caption={`${team} box score`}
+                empty={`No box score for ${team} yet`}
+                columns={NBA_COLS.map((c) => ({ key: c, label: c }))}
+                sections={[{ rows: team === "MIL" ? NBA_ROWS : [] }]}
+                footer={team === "MIL" ? [{ key: "tot", header: "Total", total: true, cells: [112.4, 44.1, 25.3, 7.2, 4.1, 13.5, 33, 14] }] : []}
+              />
+            )}
+          </TeamSwitch>
+        </div>
       </Case>
     </main>
   );
