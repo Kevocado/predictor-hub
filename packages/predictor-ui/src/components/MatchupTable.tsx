@@ -20,14 +20,16 @@ function RankBox({ rank, teamName, label, n, tier }: {
       </td>
     );
   }
+  const ord = ordinal(rank);
   return (
     <td className="pr-matchup-rank">
       <div 
         className={`pr-rank-box pr-rank-${tier}`}
         data-testid="rank-box"
-        aria-label={`${teamName}: ${ordinal(rank)} of ${n} for ${label}`}
+        aria-label={`${teamName}: ${ord} of ${n} for ${label}`}
       >
-        {rank}
+        <span className="pr-rank-value">{rank}</span>
+        <span className="pr-rank-ordinal" aria-hidden="true">{ord} of {n}</span>
       </div>
     </td>
   );

@@ -49,12 +49,15 @@ describe("MatchupTable", () => {
     expect(cells[2]).toHaveTextContent("12"); // away rank
   });
 
-  it("each rank box shows only the number", () => {
+  it("each rank box shows the number and ordinal text", () => {
     render(<MatchupTable pivot={PIVOT} />);
     const rankBoxes = getRankBoxes(document.body);
     expect(rankBoxes).toHaveLength(6); // 3 rows * 2 ranks
     rankBoxes.forEach((box) => {
-      expect(box.textContent?.trim()).toMatch(/^\d+$/);
+      const text = box.textContent?.trim() || "";
+      // Should contain the rank number and ordinal text (e.g., "33rd of 20")
+      expect(text).toMatch(/^\d+/); // starts with the rank number
+      expect(text).toMatch(/\d+(st|nd|rd|th) of \d+/); // contains ordinal
     });
   });
 

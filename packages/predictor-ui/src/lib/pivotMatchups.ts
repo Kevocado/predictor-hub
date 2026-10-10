@@ -146,19 +146,19 @@ export function pivotMatchups(rows: MatchupRow[]): {
         n,
       });
     } else if (!homeRow && awayRow) {
-      // Only :away row: offence (away has stat, home has foil)
+      // Only :away row: offence (away has stat rank, home null), defence (home has foil rank, away null)
       outRows.push({
         key: `${key}_offence`,
         label: capitalizeFirst(awayRow.stat),
-        homeRank: awayRow.defender_rank,
+        homeRank: null,
         awayRank: awayRow.attacker_rank,
         n,
       });
       outRows.push({
         key: `${key}_defence`,
         label: capitalizeFirst(awayRow.foil),
-        homeRank: awayRow.attacker_rank,
-        awayRank: awayRow.defender_rank,
+        homeRank: awayRow.defender_rank,
+        awayRank: null,
         n,
       });
     }

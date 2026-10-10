@@ -11,14 +11,15 @@ const PL_LIVE_ROWS: MatchupRow[] = [
   { id: "goals_attack_vs_defence:away", attacker: "Sunderland", defender: "Bournemouth", stat: "goals scored per match", foil: "goals conceded per match", attacker_rank: 11, defender_rank: 10, n_teams: 20, toward_pick: null },
 ];
 
-/** NFL three-row case (pass, rush, turnover) */
-const NFL_THREE_ROWS: MatchupRow[] = [
+/** NFL rows with real ids (both sides for pass and rush, n=32) */
+const NFL_REAL_ROWS: MatchupRow[] = [
   { id: "pass_off_vs_pass_def:home", attacker: "Bills", defender: "Jets", stat: "passing offence", foil: "pass defence", attacker_rank: 3, defender_rank: 28, n_teams: 32, toward_pick: true },
-  { id: "rush_off_vs_rush_def:away", attacker: "Jets", defender: "Bills", stat: "rushing offence", foil: "run defence", attacker_rank: 4, defender_rank: 19, n_teams: 32, toward_pick: false },
-  { id: "turnover_diff:home", attacker: "Bills", defender: "Jets", stat: "turnover diff", foil: "turnover diff", attacker_rank: 5, defender_rank: 20, n_teams: 32, toward_pick: null },
+  { id: "pass_off_vs_pass_def:away", attacker: "Jets", defender: "Bills", stat: "passing offence", foil: "pass defence", attacker_rank: 28, defender_rank: 3, n_teams: 32, toward_pick: false },
+  { id: "rush_off_vs_rush_def:home", attacker: "Bills", defender: "Jets", stat: "rushing offence", foil: "run defence", attacker_rank: 12, defender_rank: 19, n_teams: 32, toward_pick: true },
+  { id: "rush_off_vs_rush_def:away", attacker: "Jets", defender: "Bills", stat: "rushing offence", foil: "run defence", attacker_rank: 19, defender_rank: 12, n_teams: 32, toward_pick: false },
 ];
 
-/** One-sided: only :home row */
+/** One-sided: only :home row — genuinely missing away defender rank (null) */
 const ONE_SIDED_ONLY_HOME: MatchupRow[] = [
   { id: "goals_scored_per_match:home", attacker: "Arsenal", defender: "Chelsea", stat: "goals scored per match", foil: "goals conceded per match", attacker_rank: 3, defender_rank: 12, n_teams: 20, toward_pick: true },
 ];
@@ -53,7 +54,7 @@ describe("pivotMatchups", () => {
       "Goals conceded per match",
       "Recent form (points per match)",
     ]);
-    // Home always left, away always right
+    // Home always left, away always right — matches plan's expected table
     expect(result!.rows[0]).toEqual({ key: "strength_attack_vs_defence_offence", label: "Attack strength", homeRank: 11, awayRank: 19, n: 20 });
     expect(result!.rows[1]).toEqual({ key: "strength_attack_vs_defence_defence", label: "Defence strength", homeRank: 16, awayRank: 3, n: 20 });
     expect(result!.rows[2]).toEqual({ key: "goals_attack_vs_defence_offence", label: "Goals scored per match", homeRank: 11, awayRank: 11, n: 20 });
@@ -61,39 +62,30 @@ describe("pivotMatchups", () => {
     expect(result!.rows[4]).toEqual({ key: "form", label: "Recent form (points per match)", homeRank: 17, awayRank: 14, n: 20 });
   });
 
-  it("pivots NFL three-row case (first-appearance order, offence then defence)", () => {
-    const result = pivotMatchups(NFL_THREE_ROWS);
+  it("pivots NFL real-id rows (first-appearance order, offence then defence)", () => {
+    const result = pivotMatchups(NFL_REAL_ROWS);
     expect(result).not.toBeNull();
     expect(result!.home).toBe("Bills");
     expect(result!.away).toBe("Jets");
-    expect(result!.rows).toHaveLength(6); // pass(offence, defence), rush(offence, defence), turnover(offence, defence)
+    expect(result!.rows).toHaveLength(4);
 
     expect(result!.rows.map(r => r.key)).toEqual([
       "pass_off_vs_pass_def_offence",
       "pass_off_vs_pass_def_defence",
       "rush_off_vs_rush_def_offence",
       "rush_off_vs_rush_def_defence",
-      "turnover_diff_offence",
-      "turnover_diff_defence",
     ]);
     expect(result!.rows.map(r => r.label)).toEqual([
       "Passing offence",
       "Pass defence",
       "Rushing offence",
       "Run defence",
-      "Turnover diff",
-      "Turnover diff",
     ]);
     // Home always left
-    // pass: only :home -> offence has home rank, defence has away rank
-    expect(result!.rows[0]).toEqual({ key: "pass_off_vs_pass_def_offence", label: "Passing offence", homeRank: 3, awayRank: null, n: 32 });
-    expect(result!.rows[1]).toEqual({ key: "pass_off_vs_pass_def_defence", label: "Pass defence", homeRank: null, awayRank: 28, n: 32 });
-    // rush: only :away -> offence has both, defence has both
-    expect(result!.rows[2]).toEqual({ key: "rush_off_vs_rush_def_offence", label: "Rushing offence", homeRank: 19, awayRank: 4, n: 32 });
-    expect(result!.rows[3]).toEqual({ key: "rush_off_vs_rush_def_defence", label: "Run defence", homeRank: 4, awayRank: 19, n: 32 });
-    // turnover: only :home -> offence has home rank, defence has away rank
-    expect(result!.rows[4]).toEqual({ key: "turnover_diff_offence", label: "Turnover diff", homeRank: 5, awayRank: null, n: 32 });
-    expect(result!.rows[5]).toEqual({ key: "turnover_diff_defence", label: "Turnover diff", homeRank: null, awayRank: 20, n: 32 });
+    expect(result!.rows[0]).toEqual({ key: "pass_off_vs_pass_def_offence", label: "Passing offence", homeRank: 3, awayRank: 28, n: 32 });
+    expect(result!.rows[1]).toEqual({ key: "pass_off_vs_pass_def_defence", label: "Pass defence", homeRank: 3, awayRank: 28, n: 32 });
+    expect(result!.rows[2]).toEqual({ key: "rush_off_vs_rush_def_offence", label: "Rushing offence", homeRank: 12, awayRank: 19, n: 32 });
+    expect(result!.rows[3]).toEqual({ key: "rush_off_vs_rush_def_defence", label: "Run defence", homeRank: 12, awayRank: 19, n: 32 });
   });
 
   it("one-sided case (only :home row) produces offence and defence rows with null on missing side", () => {
@@ -116,6 +108,21 @@ describe("pivotMatchups", () => {
       awayRank: 12,
       n: 20,
     });
+  });
+
+  it(":away-only row — offence away has rank, home null; defence home has rank, away null", () => {
+    const onlyAway: MatchupRow[] = [
+      { id: "pass_off_vs_pass_def:away", attacker: "Jets", defender: "Bills", stat: "passing offence", foil: "pass defence", attacker_rank: 4, defender_rank: 19, n_teams: 32, toward_pick: false },
+    ];
+    const result = pivotMatchups(onlyAway);
+    expect(result).not.toBeNull();
+    expect(result!.home).toBe("Bills");
+    expect(result!.away).toBe("Jets");
+    expect(result!.rows).toHaveLength(2);
+    // Offence: home null, away has attacker_rank
+    expect(result!.rows[0]).toEqual({ key: "pass_off_vs_pass_def_offence", label: "Passing offence", homeRank: null, awayRank: 4, n: 32 });
+    // Defence: home has defender_rank, away null
+    expect(result!.rows[1]).toEqual({ key: "pass_off_vs_pass_def_defence", label: "Pass defence", homeRank: 19, awayRank: null, n: 32 });
   });
 
   it("drops malformed rows", () => {
@@ -142,18 +149,5 @@ describe("pivotMatchups", () => {
       { id: "bad_n", attacker: "Arsenal", defender: "Chelsea", stat: "goals scored per match", foil: "goals conceded per match", attacker_rank: 3, defender_rank: 12, n_teams: 1, toward_pick: true },
     ];
     expect(pivotMatchups(allBad)).toBeNull();
-  });
-
-  it("handles only :away rows (falls back to :away for team names)", () => {
-    const onlyAway: MatchupRow[] = [
-      { id: "pass_off_vs_pass_def:away", attacker: "Jets", defender: "Bills", stat: "passing offence", foil: "pass defence", attacker_rank: 4, defender_rank: 19, n_teams: 32, toward_pick: false },
-    ];
-    const result = pivotMatchups(onlyAway);
-    expect(result).not.toBeNull();
-    expect(result!.home).toBe("Bills");
-    expect(result!.away).toBe("Jets");
-    expect(result!.rows).toHaveLength(2);
-    expect(result!.rows[0]).toEqual({ key: "pass_off_vs_pass_def_offence", label: "Passing offence", homeRank: 19, awayRank: 4, n: 32 });
-    expect(result!.rows[1]).toEqual({ key: "pass_off_vs_pass_def_defence", label: "Pass defence", homeRank: 4, awayRank: 19, n: 32 });
   });
 });

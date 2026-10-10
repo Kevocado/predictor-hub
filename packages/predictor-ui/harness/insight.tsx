@@ -86,7 +86,7 @@ const PL_LIVE_MATCHUPS: MatchupRow[] = [
   { id: "goals_attack_vs_defence:away", attacker: "Sunderland", defender: "Bournemouth", stat: "goals scored per match", foil: "goals conceded per match", attacker_rank: 11, defender_rank: 10, n_teams: 20, toward_pick: null },
 ];
 
-// NFL rows with both sides for pass and rush (n=32)
+// NFL rows with real ids (both sides for pass and rush, n=32)
 const NFL_MATCHUPS: MatchupRow[] = [
   { id: "pass_off_vs_pass_def:home", attacker: "Bills", defender: "Jets", stat: "passing offence", foil: "pass defence", attacker_rank: 3, defender_rank: 28, n_teams: 32, toward_pick: true },
   { id: "pass_off_vs_pass_def:away", attacker: "Jets", defender: "Bills", stat: "passing offence", foil: "pass defence", attacker_rank: 28, defender_rank: 3, n_teams: 32, toward_pick: false },
@@ -94,7 +94,7 @@ const NFL_MATCHUPS: MatchupRow[] = [
   { id: "rush_off_vs_rush_def:away", attacker: "Jets", defender: "Bills", stat: "rushing offence", foil: "run defence", attacker_rank: 19, defender_rank: 12, n_teams: 32, toward_pick: false },
 ];
 
-// One-sided: only :home rows
+// One-sided: only :home row — genuinely missing away defender rank (null in table)
 const ONE_SIDED_MATCHUPS: MatchupRow[] = [
   { id: "goals_scored_per_match:home", attacker: "Arsenal", defender: "Chelsea", stat: "goals scored per match", foil: "goals conceded per match", attacker_rank: 3, defender_rank: 12, n_teams: 20, toward_pick: true },
 ];
