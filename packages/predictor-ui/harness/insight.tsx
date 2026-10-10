@@ -32,6 +32,7 @@ import {
   UndrawableSignalVisualError,
   MatchupBrief,
   ExplainerPanel,
+  FixtureExplainer,
   RankDuel,
   WeatherChip,
   type MarketTile,
@@ -42,7 +43,6 @@ import {
   type PicksListProps,
   type Signal,
   type MatchupRow,
-  type FormRow,
   type Conditions,
 } from "../src/index";
 import {
@@ -106,11 +106,13 @@ const MALFORMED_MATCHUPS: MatchupRow[] = [
   { id: "bad_rank", attacker: "Arsenal", defender: "Chelsea", stat: "goals scored per match", foil: "goals conceded per match", attacker_rank: 25, defender_rank: 12, n_teams: 20, toward_pick: true },
 ];
 
-const F1_FORM_ROWS: FormRow[] = [
+// Untyped on purpose: this is the shape the F1 site puts in its bundle, and the
+// point of the case below is that none of it reaches the panel.
+const F1_FORM_ROWS = [
   { id: "quali", subject: "Norris", label: "qualifying pace", value: "+0.08s to pole", rank: 2, n: 20 },
+  { id: "form", subject: "Norris", label: "recent form", value: "avg finish P6.1 (last 5)", rank: 6, n: 23 },
   { id: "track", subject: "Norris", label: "track history", value: "2 podiums in 4", rank: null, n: null },
 ];
-
 const WEATHER_CLEAR: Conditions = { kind: "clear", temp_f: 61 };
 const WEATHER_RAIN_WIND: Conditions = { kind: "rain", temp_f: 50, wind_mph: 18, precip_pct: 70 };
 const WEATHER_SNOW: Conditions = { kind: "snow", temp_f: 28, wind_mph: 8, precip_pct: 40 };
@@ -826,9 +828,20 @@ function App() {
         </div>
       </Case>
 
-      <Case id="matchup-f1" title="14 · Matchup section — F1 form rows"
-        note="Plain labelled rows, rank shown only when present.">
-        <MatchupBrief formRows={F1_FORM_ROWS} />
+      <Case id="matchup-f1" title="14 · Matchup section — F1 form rows are not drawn"
+        note="An F1 bundle whose context is form rows only, the shape the site really sends. The rows feed the AI read; the section renders nothing.">
+        <div data-testid="absent-markers"><span className="text-xs text-pr-text-faint">before</span>
+          <FixtureExplainer
+            sport="f1"
+            state={{ kind: "idle" } as any}
+            request={async () => ({})}
+            bundle={{
+              id: "2026-12-race", home_team: "Piastri", away_team: "Norris",
+              pick: { label: "Piastri", prob: 0.58 },
+              context: { form_rows: F1_FORM_ROWS },
+            }}
+          />
+          <span className="text-xs text-pr-text-faint">after</span></div>
       </Case>
 
       <Case id="matchup-absent" title="15 · Matchup section — no data (renders nothing)"
