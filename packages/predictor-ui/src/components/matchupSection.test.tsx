@@ -29,6 +29,17 @@ describe("MatchupBrief (the Matchup section)", () => {
     const junk = render(<MatchupBrief matchups={"x" as any} formRows={{} as any} />);
     expect(junk.container.innerHTML).toBe("");
   });
+
+  it("drops a row whose text fields are not strings instead of throwing when React renders them", () => {
+    // A truthy object passes a bare `!!x` check and then crashes the whole fixture view on render.
+    const badForm = [{ ...form, value: {} }, { ...form, id: "x", subject: [] }, { ...form, id: 7 }] as any;
+    const badDuel = [{ ...duel, attacker: {} }, { ...duel, id: "y", stat: 3 }, { ...duel, id: "" }] as any;
+    const { container } = render(<MatchupBrief matchups={badDuel} formRows={badForm} />);
+    expect(container.innerHTML).toBe("");
+    // and one bad row does not take the good one down with it
+    const mixed = render(<MatchupBrief matchups={[...badDuel, duel]} formRows={[...badForm, form]} />);
+    expect(mixed.getAllByRole("listitem")).toHaveLength(2);
+  });
 });
 
 const base: any = {
