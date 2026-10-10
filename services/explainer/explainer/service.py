@@ -24,7 +24,7 @@ from .ledger import Ledger
 from .llm import LLMError, complete
 from .news import headlines
 from .prompts import messages
-from .template import explain_from_template, minimal
+from .template import MAX_FACTORS, _matchup_factors, explain_from_template, minimal
 from .validate import validate
 
 logger = logging.getLogger(__name__)
@@ -94,7 +94,21 @@ def _clean(body: dict, facts) -> dict:
     if not isinstance(body.get("verdict"), str) or not isinstance(body.get("factors"), list):
         raise ValueError(f"cached body is not a v2 verdict: {sorted(body)}")
     cleaned = clean_verdict(body)
-    return {**cleaned, "factors": resolve_factors(cleaned, as_dict(facts))}
+    facts_d = as_dict(facts)
+    factors = resolve_factors(cleaned, facts_d)
+    if not any(str(f.get("key", "")).startswith("matchup:") for f in factors):
+        # The prompt lets the model skip a duel whose toward_pick is null, so the rank
+        # rows would vanish on exactly the games the code could not direct. They are
+        # facts, not prose: backfill the template's rows, trimming non-matchup context
+        # rows (last first) to stay inside the cap.
+        extra = resolve_factors({"factors": _matchup_factors(facts_d)}, facts_d)
+        factors = factors + extra
+        for i in range(len(factors) - 1, -1, -1):
+            if len(factors) <= MAX_FACTORS:
+                break
+            if factors[i].get("slot") == "context" and not str(factors[i].get("key", "")).startswith("matchup:"):
+                del factors[i]
+    return {**cleaned, "factors": factors}
 
 
 
