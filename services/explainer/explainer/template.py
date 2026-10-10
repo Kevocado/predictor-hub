@@ -390,7 +390,7 @@ def _duel_ranks(row: dict) -> tuple[int, int, int] | None:
 
 
 def _matchup_factors(facts: dict) -> list[dict]:
-    """Edge, Risk and (when the code declined to direct) one neutral duel row.
+    """Edge, Risk and (when the code declined to direct) up to two neutral duel rows, one per duel type.
 
     Rows arrive strongest first — the sport code sorted them by `Duel.strength`
     — and this reads that order rather than ranking again: the ranking is a fact
@@ -423,15 +423,26 @@ def _matchup_factors(facts: dict) -> list[dict]:
         text = (f"{row['attacker']} rank {attacker_rank} of {n_teams} in {row['stat']}; "
                 f"{row['defender']} rank {defender_rank} of {n_teams} in {row['foil']}.")
         out.append(_fact(f"matchup:{row['id']}", direction, headline, text))
-    undirected = next((r for r in rows if r.get("toward_pick") is None and _duel_ranks(r)), None)
-    if undirected is not None and not out:
-        attacker_rank, defender_rank, n_teams = _duel_ranks(undirected)
-        out.append(_fact(
-            f"matchup:{undirected['id']}", NEUTRAL,
-            f"{undirected['attacker']}'s #{attacker_rank} {undirected['stat']} and "
-            f"{undirected['defender']}'s #{defender_rank} {undirected['foil']}",
-            f"{undirected['attacker']} rank {attacker_rank} of {n_teams} in {undirected['stat']}; "
-            f"{undirected['defender']} rank {defender_rank} of {n_teams} in {undirected['foil']}."))
+    if not out:
+        # Nothing was directed (the lift gate has not proven any duel type yet), so show the strongest undirected duel
+        # of each TYPE -- at most two, one passing and one rushing -- as neutral context. Rows arrive strongest first.
+        seen: set[str] = set()
+        for row in rows:
+            if row.get("toward_pick") is not None or not _duel_ranks(row):
+                continue
+            duel_type = str(row.get("id", "")).split(":")[0]
+            if duel_type in seen:
+                continue
+            seen.add(duel_type)
+            attacker_rank, defender_rank, n_teams = _duel_ranks(row)
+            out.append(_fact(
+                f"matchup:{row['id']}", NEUTRAL,
+                f"{row['attacker']}'s #{attacker_rank} {row['stat']} and "
+                f"{row['defender']}'s #{defender_rank} {row['foil']}",
+                f"{row['attacker']} rank {attacker_rank} of {n_teams} in {row['stat']}; "
+                f"{row['defender']} rank {defender_rank} of {n_teams} in {row['foil']}."))
+            if len(seen) == 2:
+                break
     return out
 
 

@@ -87,3 +87,23 @@ def test_a_bundle_with_no_matchups_still_resolves_every_row():
     out = explain_from_template(facts)
     assert {f["slot"] for f in out["factors"]} <= {"edge", "risk", "price", "context"}
     assert 2 <= len(out["factors"]) <= 4
+
+
+def test_two_neutral_rows_one_per_duel_type_when_nothing_is_directed():
+    rows = [DUEL("pass_off_vs_pass_def:home", None), DUEL("pass_off_vs_pass_def:away", None),
+            {**DUEL("rush_off_vs_rush_def:home", None), "stat": "rushing offence", "foil": "run defence"}]
+    out = explain_from_template(_facts(rows))
+    neutral = [(s, k) for s, k in _rows(out)]
+    assert neutral == [("context", "matchup:pass_off_vs_pass_def:home"), ("context", "matchup:rush_off_vs_rush_def:home")]
+
+
+def test_neutral_rows_do_not_appear_next_to_directed_ones():
+    out = explain_from_template(_facts([DUEL("a", True), DUEL("n", None)]))
+    assert [k for _, k in _rows(out)] == ["matchup:a"]
+
+
+def test_neutral_row_headlines_still_state_both_ranks_for_the_ui_guard():
+    out = explain_from_template(_facts([DUEL("pass_off_vs_pass_def:home", None)]))
+    row = next(f for f in out["factors"] if f["key"].startswith("matchup:"))
+    assert "#3" in row["headline"] and "#28" in row["headline"]
+
