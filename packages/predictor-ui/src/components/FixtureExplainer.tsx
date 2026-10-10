@@ -12,12 +12,12 @@
  *  true, and keeping them mounted is what "the flow does not flicker away" means:
  *  the summary appears above them, not instead of them after a gap.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FixtureFlow, type FlowState } from "./FixtureFlow";
 import { SummaryButton } from "./SummaryButton";
 import { ExplainerPanel, type Explanation } from "./ExplainerPanel";
 import { AI_PROMISE, InstantBlock } from "./InstantBlock";
-import { MatchupBrief } from "./MatchupBrief";
+import { MatchupBrief, type MatchupContext } from "./MatchupBrief";
 import type { Moment } from "./StatusBadge";
 import type { MarketTile } from "./KeyNumberTile";
 import type { Segment } from "./ProbabilityBar";
@@ -70,6 +70,14 @@ export interface FixtureExplainerProps {
   /** What the button adds, said before it is pressed. Defaults to the package's
    *  own words (`AI_PROMISE`); a site may name its own surface instead. */
   promise?: string;
+  /** Loads the fixture's matchup context on mount (never behind the button). Used
+   *  only for what `bundle.context` does not already carry; a failure is silent:
+   *  no section, no banner. */
+  loadContext?: (id: string) => Promise<MatchupContext>;
+  /** The id `loadContext` is called with. Defaults to the bundle's own `id`,
+   *  `game_id`, `fixture_id` or `event_id`; a site whose bundle names it
+   *  otherwise passes it here. */
+  fixtureId?: string;
 }
 
 /** The AI prose, rendered from the summary the button fetched. Reuses the
@@ -100,9 +108,18 @@ function SummaryView({ summary, extras }: { summary: Summary; extras?: FixtureEx
   );
 }
 
-export function FixtureExplainer({ sport, state, bundle, request, extras, promise = AI_PROMISE }: FixtureExplainerProps) {
+export function FixtureExplainer({ sport, state, bundle, request, extras, promise = AI_PROMISE, loadContext, fixtureId: idProp }: FixtureExplainerProps) {
   const [panelState, setPanelState] = useState<PanelState>("flow");
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [loaded, setLoaded] = useState<MatchupContext | null>(null);
+  const fixtureId = idProp ?? bundle?.id ?? bundle?.game_id ?? bundle?.fixture_id ?? bundle?.event_id;
+  const hasBundleContext = !!bundle?.context?.matchups || !!bundle?.context?.form_rows;
+  useEffect(() => {
+    if (!loadContext || fixtureId == null || hasBundleContext) return;
+    let live = true;
+    loadContext(String(fixtureId)).then((c) => live && setLoaded(c), () => live && setLoaded(null));
+    return () => { live = false; };
+  }, [loadContext, fixtureId, hasBundleContext]);
 
   const handleSummary = (s: Explanation) => {
     // The button has already validated the shape; the news date rides along.
@@ -121,7 +138,7 @@ export function FixtureExplainer({ sport, state, bundle, request, extras, promis
       <InstantBlock sport={sport} bundle={bundle} extras={extras} />
       {/* The Matchup section is data from the bundle's `context`, not AI: it is
           there before the button is pressed and stays above the summary. */}
-      <MatchupBrief matchups={bundle?.context?.matchups} formRows={bundle?.context?.form_rows} />
+      <MatchupBrief matchups={bundle?.context?.matchups ?? loaded?.matchups} formRows={bundle?.context?.form_rows ?? loaded?.form_rows} />
       {panelState === "summary" && summary && <SummaryView summary={summary} extras={extras} />}
       <FixtureFlow sport={sport} state={state} bundle={bundle} request={request} />
       {panelState !== "summary" && (

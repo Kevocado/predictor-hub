@@ -34,6 +34,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Predictor explainer", lifespan=lifespan)
 
+    # Registered BEFORE the catch-all below, or `{id:path}` swallows `/context`.
+    @app.get("/explain/{sport}/{id:path}/context")
+    async def context(sport: str, id: str):
+        try:
+            return await app.state.explainer.context(sport, id)
+        except NotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from None
+        except Upstream as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from None
+
     @app.get("/explain/{sport}/{id:path}")
     async def explain(sport: str, id: str):
         try:

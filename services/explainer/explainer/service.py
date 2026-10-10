@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from urllib.parse import quote
 from datetime import datetime, timezone
 
@@ -33,6 +34,8 @@ logger = logging.getLogger(__name__)
 TEMPLATE_RETRY_SECONDS = 3 * 3600
 # Stored in the model column of a template row the model may retry later.
 UNAVAILABLE = "unavailable"
+# How long a fixture's matchup context is reused before the sport API is asked again.
+CONTEXT_TTL_SECONDS = 300
 
 
 class NotFound(Exception):
@@ -92,6 +95,7 @@ class Explainer:
         # failure of each kind would have thrown, degraded the whole response,
         # and left no counter at all. A Counter reads a missing key as zero.
         self.failures: Counter[str] = Counter()
+        self._context_cache: dict[tuple[str, str], tuple[float, dict]] = {}
 
     async def _facts(self, sport: str, id: str) -> Facts:
         base = self.settings.sport_api.get(sport)
@@ -154,6 +158,25 @@ class Explainer:
             return True
         age = (datetime.now(timezone.utc) - datetime.fromisoformat(row["created_at"])).total_seconds()
         return age < TEMPLATE_RETRY_SECONDS
+
+    async def context(self, sport: str, id: str) -> dict:
+        """The matchup context of one fixture, for the always-visible Matchup section.
+
+        No model call, no ledger spend, no news fetch: the facts are fetched the
+        same way `explain` does (so the same NotFound/Upstream sanitisation) and
+        only the three tactical lists are returned, absent keys omitted. Cached
+        briefly in memory so a page of fixtures does not hammer the sport API.
+        """
+        if sport not in SERVED_SPORTS:
+            raise NotFound(f"{sport} is not served")
+        key = (sport, id)
+        hit = self._context_cache.get(key)
+        if hit and time.monotonic() - hit[0] < CONTEXT_TTL_SECONDS:
+            return hit[1]
+        ctx = (await self._facts(sport, id)).context or {}
+        out = {k: ctx[k] for k in ("matchups", "form_rows", "player_context") if ctx.get(k)}
+        self._context_cache[key] = (time.monotonic(), out)
+        return out
 
     async def explain(self, sport: str, id: str) -> dict:
         if sport not in SERVED_SPORTS:

@@ -36,6 +36,31 @@ export type FormRow = {
   n: number | null;
 };
 
+/** What `/explain/{sport}/{id}/context` returns; every key optional. */
+export type MatchupContext = { matchups?: MatchupRow[]; form_rows?: FormRow[]; player_context?: unknown[] };
+
+/**
+ * A loader for the context route, next to the site's own explain request.
+ * `baseUrl` is the site's explain base (no trailing slash needed); the id is
+ * encoded per path segment so a slash-bearing id still reaches the route.
+ * Rejects on a non-2xx, a timeout or bad JSON; callers treat any rejection as
+ * "no section".
+ */
+export function createContextLoader(baseUrl: string, timeoutMs = 10_000) {
+  const base = baseUrl.replace(/\/+$/, "");
+  return async (id: string): Promise<MatchupContext> => {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${base}/${id.split("/").map(encodeURIComponent).join("/")}/context`, { signal: ctl.signal });
+      if (!res.ok) throw new Error(`context ${res.status}`);
+      return (await res.json()) as MatchupContext;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+}
+
 const isInt = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v);
 
 /** A duel the component can draw: both ranks and the league size are integers.

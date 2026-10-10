@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
-import { MatchupBrief, type MatchupRow } from "./MatchupBrief";
+import { describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import { MatchupBrief, createContextLoader, type MatchupRow } from "./MatchupBrief";
 import { ExplainerPanel, type Explanation } from "./ExplainerPanel";
 import { FixtureExplainer } from "./FixtureExplainer";
 
@@ -65,5 +65,57 @@ describe("FixtureExplainer", () => {
   it("shows no Matchup section for a bundle without context", () => {
     render(<FixtureExplainer {...props} bundle={{ ...bundle, context: undefined }} />);
     expect(screen.queryByTestId("matchup-section")).toBeNull();
+  });
+});
+
+describe("FixtureExplainer.loadContext", () => {
+  const noCtx = { id: "g1", home_team: "BUF", away_team: "NYJ", pick: { label: "BUF", prob: 0.6 } };
+  const props = { sport: "nfl", state: { kind: "idle" } as any, request: async () => ({}) };
+
+  it("loads on mount, without pressing the button, and draws the section", async () => {
+    const load = vi.fn(async () => ({ matchups: [duel] }));
+    render(<FixtureExplainer {...props} bundle={noCtx} loadContext={load} />);
+    expect(await screen.findByTestId("matchup-section")).toBeTruthy();
+    expect(load).toHaveBeenCalledWith("g1");
+  });
+
+  it("a failed load renders nothing and no error banner", async () => {
+    const load = vi.fn(async () => { throw new Error("502"); });
+    render(<FixtureExplainer {...props} bundle={noCtx} loadContext={load} />);
+    await waitFor(() => expect(load).toHaveBeenCalled());
+    expect(screen.queryByTestId("matchup-section")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("an empty context renders nothing", async () => {
+    const load = vi.fn(async () => ({}));
+    render(<FixtureExplainer {...props} bundle={noCtx} loadContext={load} />);
+    await waitFor(() => expect(load).toHaveBeenCalled());
+    expect(screen.queryByTestId("matchup-section")).toBeNull();
+  });
+
+  it("prefers bundle.context and does not load when the site supplies it", () => {
+    const load = vi.fn(async () => ({ matchups: [] }));
+    render(<FixtureExplainer {...props} bundle={{ ...noCtx, context: { matchups: [duel] } }} loadContext={load} />);
+    expect(screen.getByTestId("matchup-section")).toBeTruthy();
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it("uses fixtureId when the bundle has no id", async () => {
+    const load = vi.fn(async () => ({}));
+    render(<FixtureExplainer {...props} bundle={{ home_team: "A" }} fixtureId="x/y" loadContext={load} />);
+    await waitFor(() => expect(load).toHaveBeenCalledWith("x/y"));
+  });
+});
+
+describe("createContextLoader", () => {
+  it("GETs <base>/<id>/context and throws on a non-2xx", async () => {
+    const f = vi.fn(async () => new Response(JSON.stringify({ matchups: [] }), { status: 200 }));
+    vi.stubGlobal("fetch", f);
+    expect(await createContextLoader("/api/explain/nfl/")("a/b c")).toEqual({ matchups: [] });
+    expect((f.mock.calls[0] as any)[0]).toBe("/api/explain/nfl/a/b%20c/context");
+    vi.stubGlobal("fetch", async () => new Response("x", { status: 502 }));
+    await expect(createContextLoader("/e")("g")).rejects.toThrow(/502/);
+    vi.unstubAllGlobals();
   });
 });
