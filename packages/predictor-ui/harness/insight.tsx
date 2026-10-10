@@ -76,6 +76,36 @@ const MATCHUP_LONG_MATCHUPS: MatchupRow[] = [
   { id: "b", attacker: "San Francisco 49ers", defender: "Dallas Cowboys", stat: "passing offence", foil: "pass defence", attacker_rank: 2, defender_rank: 31, n_teams: 32, toward_pick: null },
   { id: "c", attacker: "Dallas Cowboys", defender: "San Francisco 49ers", stat: "rushing offence", foil: "run defence", attacker_rank: 5, defender_rank: 18, n_teams: 32, toward_pick: null },
 ];
+
+// PL live rows from plan (Bournemouth v Sunderland, event ockw-Aksg-QRth)
+const PL_LIVE_MATCHUPS: MatchupRow[] = [
+  { id: "strength_attack_vs_defence:home", attacker: "Bournemouth", defender: "Sunderland", stat: "attack strength", foil: "defence strength", attacker_rank: 11, defender_rank: 3, n_teams: 20, toward_pick: null },
+  { id: "goals_attack_vs_defence:home", attacker: "Bournemouth", defender: "Sunderland", stat: "goals scored per match", foil: "goals conceded per match", attacker_rank: 11, defender_rank: 16, n_teams: 20, toward_pick: null },
+  { id: "strength_attack_vs_defence:away", attacker: "Sunderland", defender: "Bournemouth", stat: "attack strength", foil: "defence strength", attacker_rank: 19, defender_rank: 16, n_teams: 20, toward_pick: null },
+  { id: "form", attacker: "Bournemouth", defender: "Sunderland", stat: "recent form (points per match)", foil: "recent form (points per match)", attacker_rank: 17, defender_rank: 14, n_teams: 20, toward_pick: null },
+  { id: "goals_attack_vs_defence:away", attacker: "Sunderland", defender: "Bournemouth", stat: "goals scored per match", foil: "goals conceded per match", attacker_rank: 11, defender_rank: 10, n_teams: 20, toward_pick: null },
+];
+
+// NFL rows with both sides for pass and rush (n=32)
+const NFL_MATCHUPS: MatchupRow[] = [
+  { id: "pass_off_vs_pass_def:home", attacker: "Bills", defender: "Jets", stat: "passing offence", foil: "pass defence", attacker_rank: 3, defender_rank: 28, n_teams: 32, toward_pick: true },
+  { id: "pass_off_vs_pass_def:away", attacker: "Jets", defender: "Bills", stat: "passing offence", foil: "pass defence", attacker_rank: 28, defender_rank: 3, n_teams: 32, toward_pick: false },
+  { id: "rush_off_vs_rush_def:home", attacker: "Bills", defender: "Jets", stat: "rushing offence", foil: "run defence", attacker_rank: 12, defender_rank: 19, n_teams: 32, toward_pick: true },
+  { id: "rush_off_vs_rush_def:away", attacker: "Jets", defender: "Bills", stat: "rushing offence", foil: "run defence", attacker_rank: 19, defender_rank: 12, n_teams: 32, toward_pick: false },
+];
+
+// One-sided: only :home rows
+const ONE_SIDED_MATCHUPS: MatchupRow[] = [
+  { id: "goals_scored_per_match:home", attacker: "Arsenal", defender: "Chelsea", stat: "goals scored per match", foil: "goals conceded per match", attacker_rank: 3, defender_rank: 12, n_teams: 20, toward_pick: true },
+];
+
+// Malformed rows mixed with valid
+const MALFORMED_MATCHUPS: MatchupRow[] = [
+  { id: "valid:home", attacker: "Arsenal", defender: "Chelsea", stat: "goals scored per match", foil: "goals conceded per match", attacker_rank: 3, defender_rank: 12, n_teams: 20, toward_pick: true },
+  { id: "", attacker: "Arsenal", defender: "Chelsea", stat: "goals scored per match", foil: "goals conceded per match", attacker_rank: 3, defender_rank: 12, n_teams: 20, toward_pick: true },
+  { id: "bad_rank", attacker: "Arsenal", defender: "Chelsea", stat: "goals scored per match", foil: "goals conceded per match", attacker_rank: 25, defender_rank: 12, n_teams: 20, toward_pick: true },
+];
+
 // Untyped on purpose: this is the shape the F1 site puts in its bundle, and the
 // point of the case below is that none of it reaches the panel.
 const F1_FORM_ROWS = [
@@ -822,6 +852,31 @@ function App() {
       <Case id="matchup-long-names" title="16 · Matchup section — long team names"
         note="Words truncate, bars don't shift.">
         <MatchupBrief matchups={MATCHUP_LONG_MATCHUPS} />
+      </Case>
+
+      {/* --- NEW: MatchupTable harness cases ------------------------------------------ */}
+      <Case id="matchup-pl-live" title="17 · MatchupTable — PL live rows (Bournemouth v Sunderland)"
+        note="Five live PL rows: strength attack/defence, goals attack/defence, form. Home left, away right, three discrete colour tiers by thirds (n=20).">
+        <div data-sport="pl">
+          <MatchupBrief matchups={PL_LIVE_MATCHUPS} />
+        </div>
+      </Case>
+
+      <Case id="matchup-nfl" title="18 · MatchupTable — NFL (pass & rush, both sides, n=32)"
+        note="Four NFL rows: pass offence vs pass defence (both sides), rush offence vs run defence (both sides). Home left, away right, three tiers by thirds (n=32).">
+        <div data-sport="nfl">
+          <MatchupBrief matchups={NFL_MATCHUPS} />
+        </div>
+      </Case>
+
+      <Case id="matchup-one-sided" title="19 · MatchupTable — one-sided (only :home)"
+        note="Only home-side rows present; missing away ranks show em dash.">
+        <MatchupBrief matchups={ONE_SIDED_MATCHUPS} />
+      </Case>
+
+      <Case id="matchup-malformed" title="20 · MatchupTable — malformed rows dropped"
+        note="Empty id, rank out of range, and valid row mixed. Only valid row renders.">
+        <MatchupBrief matchups={MALFORMED_MATCHUPS} />
       </Case>
 
       {/* --- NEW: WeatherChip ------------------------------------------------------- */}

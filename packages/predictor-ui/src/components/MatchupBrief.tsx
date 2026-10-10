@@ -3,7 +3,8 @@
  *
  * Rendered above the AI panel and visible before anything is asked for. It draws
  * what the fixture's `context` carries: code-computed rank duels (`matchups`)
- * through `RankDuel`. With none the component renders NOTHING, not a heading over
+ * pivoted by `pivotMatchups` into a home-left / away-right table (`MatchupTable`) with rank
+ * boxes coloured by thirds of the field. With none the component renders NOTHING, not a heading over
  * an empty list and not a placeholder.
  *
  * **Form rows (`form_rows`) are deliberately not drawn.** F1 emits one per driver
@@ -17,7 +18,8 @@
  * "advantage", no "edge", until a lift-gate run proves a duel type predicts.
  * NFL player props are a different block and are not touched here.
  */
-import { RankDuel } from "./RankDuel";
+import { pivotMatchups } from "../lib/pivotMatchups";
+import { MatchupTable } from "./MatchupTable";
 
 /** One code-computed duel, in the shape `signals/matchups.to_context` emits. */
 export type MatchupRow = {
@@ -85,7 +87,8 @@ const drawable = (m: MatchupRow) =>
 export function MatchupBrief({ matchups = [] }: { matchups?: MatchupRow[] }) {
   // `bundle.context` is untyped site data: anything that is not a list is nothing.
   const duels = (Array.isArray(matchups) ? matchups : []).filter(drawable);
-  if (duels.length === 0) return null;
+  const pivot = pivotMatchups(duels);
+  if (!pivot) return null;
   return (
     <section aria-labelledby="matchup-heading" data-testid="matchup-section">
       <h3
@@ -94,17 +97,7 @@ export function MatchupBrief({ matchups = [] }: { matchups?: MatchupRow[] }) {
       >
         Matchup
       </h3>
-      <ul className="divide-y divide-pr-rule border-t border-pr-rule">
-        {duels.map((m) => (
-          <li key={m.id} className="py-2.5" data-testid={`matchup-${m.id}`}>
-            <RankDuel
-              attacker={m.attacker} attackerStat={m.stat} attackerRank={m.attacker_rank}
-              defender={m.defender} defenderStat={m.foil} defenderRank={m.defender_rank}
-              nTeams={m.n_teams}
-            />
-          </li>
-        ))}
-      </ul>
+      <MatchupTable pivot={pivot} />
     </section>
   );
 }

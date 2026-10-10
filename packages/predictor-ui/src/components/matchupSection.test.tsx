@@ -12,10 +12,13 @@ const duel: MatchupRow = {
 const form = { id: "quali", subject: "Verstappen", label: "qualifying pace", value: "+0.12s", rank: 2, n: 20 };
 
 describe("MatchupBrief (the Matchup section)", () => {
-  it("draws a RankDuel per duel, neutrally", () => {
+  it("draws the duel as a home-vs-away table with rank boxes, neutrally", () => {
     render(<MatchupBrief matchups={[duel]} />);
     expect(screen.getByRole("heading", { name: "Matchup" })).toBeTruthy();
-    expect(screen.getAllByTestId("rank-duel")).toHaveLength(1);
+    // One :home row gives an offence row and a defence row; the away side of each is an em dash (no :away row).
+    expect(screen.getAllByTestId("rank-box")).toHaveLength(4);
+    expect(screen.getByLabelText(/Bills: 3rd of 32 for passing offence/i)).toBeTruthy();
+    expect(screen.getByLabelText(/Jets: 28th of 32 for pass defence/i)).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/advantage|favou?rs|edge|risk/i);
   });
 
@@ -25,7 +28,7 @@ describe("MatchupBrief (the Matchup section)", () => {
     const rows = [form, { ...form, id: "t", label: "track history", rank: null, n: null }];
     // A caller still passing the removed prop gets the duels and nothing else.
     const stray = render(<MatchupBrief {...({ matchups: [duel], formRows: rows } as any)} />);
-    expect(stray.getAllByTestId("rank-duel")).toHaveLength(1);
+    expect(stray.getAllByTestId("rank-box")).toHaveLength(4); // the duel's table (offence + defence rows, away side a dash)
     expect(stray.container.textContent).not.toContain("Verstappen");
     expect(stray.queryByText(/qualifying pace|track history/)).toBeNull();
   });
@@ -46,7 +49,7 @@ describe("MatchupBrief (the Matchup section)", () => {
     expect(container.innerHTML).toBe("");
     // and one bad row does not take the good one down with it
     const mixed = render(<MatchupBrief matchups={[...badDuel, duel]} />);
-    expect(mixed.getAllByRole("listitem")).toHaveLength(1);
+    expect(mixed.getAllByTestId("rank-box")).toHaveLength(4); // only the good duel is drawn
   });
 });
 
@@ -88,7 +91,7 @@ describe("FixtureExplainer", () => {
     expect(document.body.textContent).not.toContain("Verstappen");
     // a bundle with both draws the duel alone
     render(<FixtureExplainer {...props} bundle={bundle} />);
-    expect(screen.getAllByTestId("rank-duel")).toHaveLength(1);
+    expect(screen.getAllByTestId("rank-box")).toHaveLength(4);
     expect(document.body.textContent).not.toContain("Verstappen");
   });
 
@@ -155,12 +158,13 @@ describe("FixtureExplainer: switching fixtures never shows the previous fixture'
   const A = { id: "A", home_team: "BUF" };
 
   it("B's bundle has its own matchups: A's loaded context must not appear", async () => {
-    const load = vi.fn(async () => ({ matchups: [{ ...duel, id: "a-duel" }] }));
+    // Distinguish the two fixtures by team name: the table has no per-duel test id any more.
+    const load = vi.fn(async () => ({ matchups: [{ ...duel, id: "x_vs_y:home", attacker: "Alpha", defender: "Beta" }] }));
     const { rerender } = render(<FixtureExplainer {...props} bundle={A} loadContext={load} />);
-    expect(await screen.findByTestId("matchup-a-duel")).toBeTruthy();
+    expect(await screen.findByText("Alpha")).toBeTruthy();
     rerender(<FixtureExplainer {...props} bundle={{ id: "B", context: { matchups: [duel] } }} loadContext={load} />);
-    expect(screen.getByTestId(`matchup-${duel.id}`)).toBeTruthy();
-    expect(screen.queryByTestId("matchup-a-duel")).toBeNull();
+    expect(screen.getByText("Bills")).toBeTruthy();
+    expect(screen.queryByText("Alpha")).toBeNull();
   });
 
   it("a late response for A after switching to B is ignored", async () => {

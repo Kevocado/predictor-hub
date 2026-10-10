@@ -100,3 +100,63 @@ describe("contrast", () => {
     expect(contrast("#777777", "#ffffff")).toBeCloseTo(4.48, 1);
   });
 });
+
+describe("rank tier tokens", () => {
+  // Dark theme (base @theme)
+  const dark = {
+    stage: base.stage,
+    panel: base.panel,
+    text: base.text,
+    "rank-good-bg": base["rank-good-bg"],
+    "rank-good-ink": base["rank-good-ink"],
+    "rank-mid-bg": base["rank-mid-bg"],
+    "rank-mid-ink": base["rank-mid-ink"],
+    "rank-bad-bg": base["rank-bad-bg"],
+    "rank-bad-ink": base["rank-bad-ink"],
+  };
+
+  // Light theme ([data-theme="light"])
+  const lightScope = scope(/\[data-theme="light"\]\s*\{([^}]*)\}/);
+  const light = {
+    stage: lightScope.stage,
+    panel: lightScope.panel,
+    text: lightScope.text,
+    "rank-good-bg": lightScope["rank-good-bg"],
+    "rank-good-ink": lightScope["rank-good-ink"],
+    "rank-mid-bg": lightScope["rank-mid-bg"],
+    "rank-mid-ink": lightScope["rank-mid-ink"],
+    "rank-bad-bg": lightScope["rank-bad-bg"],
+    "rank-bad-ink": lightScope["rank-bad-ink"],
+  };
+
+  for (const [themeName, theme] of [["dark", dark], ["light", light]] as const) {
+    // Type assertion to allow string indexing
+    const t = theme as Record<string, string>;
+    describe(`${themeName} theme`, () => {
+      it("has all rank tier bg/ink tokens defined", () => {
+        for (const k of ["rank-good-bg", "rank-good-ink", "rank-mid-bg", "rank-mid-ink", "rank-bad-bg", "rank-bad-ink"]) {
+          expect(t[k], k).toMatch(/^#/);
+        }
+      });
+
+      it("every tier bg/ink pair meets 4.5:1 contrast", () => {
+        for (const tier of ["good", "mid", "bad"] as const) {
+          const bg = t[`rank-${tier}-bg`];
+          const ink = t[`rank-${tier}-ink`];
+          const ratio = contrast(ink, bg);
+          expect(ratio, `${tier} ink on bg (${themeName})`).toBeGreaterThanOrEqual(4.5);
+        }
+      });
+
+      it("every tier bg meets 4.5:1 on stage and panel with default text", () => {
+        for (const surface of ["stage", "panel"] as const) {
+          for (const tier of ["good", "mid", "bad"] as const) {
+            const bg = t[`rank-${tier}-bg`];
+            const ratio = contrast(t.text, bg);
+            expect(ratio, `${tier} bg on ${surface} (${themeName})`).toBeGreaterThanOrEqual(4.5);
+          }
+        }
+      });
+    });
+  }
+});
