@@ -147,18 +147,20 @@ export function pivotMatchups(rows: MatchupRow[]): {
       });
     } else if (!homeRow && awayRow) {
       // Only :away row: offence (away has stat, home has foil)
+      // A lone :away row carries ONLY away offence (attacker_rank) and home defence (defender_rank); the other
+      // two cells have no source and stay empty rather than borrowing a rank for a different metric.
       outRows.push({
         key: `${key}_offence`,
         label: capitalizeFirst(awayRow.stat),
-        homeRank: awayRow.defender_rank,
+        homeRank: null,
         awayRank: awayRow.attacker_rank,
         n,
       });
       outRows.push({
         key: `${key}_defence`,
         label: capitalizeFirst(awayRow.foil),
-        homeRank: awayRow.attacker_rank,
-        awayRank: awayRow.defender_rank,
+        homeRank: awayRow.defender_rank,
+        awayRank: null,
         n,
       });
     }

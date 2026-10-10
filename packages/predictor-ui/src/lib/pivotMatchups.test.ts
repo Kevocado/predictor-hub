@@ -88,9 +88,10 @@ describe("pivotMatchups", () => {
     // pass: only :home -> offence has home rank, defence has away rank
     expect(result!.rows[0]).toEqual({ key: "pass_off_vs_pass_def_offence", label: "Passing offence", homeRank: 3, awayRank: null, n: 32 });
     expect(result!.rows[1]).toEqual({ key: "pass_off_vs_pass_def_defence", label: "Pass defence", homeRank: null, awayRank: 28, n: 32 });
-    // rush: only :away -> offence has both, defence has both
-    expect(result!.rows[2]).toEqual({ key: "rush_off_vs_rush_def_offence", label: "Rushing offence", homeRank: 19, awayRank: 4, n: 32 });
-    expect(result!.rows[3]).toEqual({ key: "rush_off_vs_rush_def_defence", label: "Run defence", homeRank: 4, awayRank: 19, n: 32 });
+    // rush: only :away (attacker Jets #4, defender Bills #19) -> away OFFENCE 4 and home DEFENCE 19; the other two
+    // cells have no source row and stay empty (never borrow a rank for a different metric).
+    expect(result!.rows[2]).toEqual({ key: "rush_off_vs_rush_def_offence", label: "Rushing offence", homeRank: null, awayRank: 4, n: 32 });
+    expect(result!.rows[3]).toEqual({ key: "rush_off_vs_rush_def_defence", label: "Run defence", homeRank: 19, awayRank: null, n: 32 });
     // turnover: only :home -> offence has home rank, defence has away rank
     expect(result!.rows[4]).toEqual({ key: "turnover_diff_offence", label: "Turnover diff", homeRank: 5, awayRank: null, n: 32 });
     expect(result!.rows[5]).toEqual({ key: "turnover_diff_defence", label: "Turnover diff", homeRank: null, awayRank: 20, n: 32 });
@@ -153,7 +154,8 @@ describe("pivotMatchups", () => {
     expect(result!.home).toBe("Bills");
     expect(result!.away).toBe("Jets");
     expect(result!.rows).toHaveLength(2);
-    expect(result!.rows[0]).toEqual({ key: "pass_off_vs_pass_def_offence", label: "Passing offence", homeRank: 19, awayRank: 4, n: 32 });
-    expect(result!.rows[1]).toEqual({ key: "pass_off_vs_pass_def_defence", label: "Pass defence", homeRank: 4, awayRank: 19, n: 32 });
+    // Jets (away) attack #4 -> away offence 4; Bills (home) defence #19 -> home defence 19. Nothing else is known.
+    expect(result!.rows[0]).toEqual({ key: "pass_off_vs_pass_def_offence", label: "Passing offence", homeRank: null, awayRank: 4, n: 32 });
+    expect(result!.rows[1]).toEqual({ key: "pass_off_vs_pass_def_defence", label: "Pass defence", homeRank: 19, awayRank: null, n: 32 });
   });
 });
