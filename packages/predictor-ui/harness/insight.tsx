@@ -77,20 +77,21 @@ const MATCHUP_LONG_MATCHUPS: MatchupRow[] = [
   { id: "c", attacker: "Dallas Cowboys", defender: "San Francisco 49ers", stat: "rushing offence", foil: "run defence", attacker_rank: 5, defender_rank: 18, n_teams: 32, toward_pick: null },
 ];
 
-// PL live rows (5 rows matching the pivot test data)
+// PL live rows from plan (Bournemouth v Sunderland, event ockw-Aksg-QRth)
 const PL_LIVE_MATCHUPS: MatchupRow[] = [
-  { id: "goals_scored_per_match:home", attacker: "Arsenal", defender: "Chelsea", stat: "goals scored per match", foil: "goals conceded per match", attacker_rank: 3, defender_rank: 12, n_teams: 20, toward_pick: true },
-  { id: "goals_conceded_per_match:away", attacker: "Chelsea", defender: "Arsenal", stat: "goals conceded per match", foil: "goals scored per match", attacker_rank: 5, defender_rank: 2, n_teams: 20, toward_pick: false },
-  { id: "shots_on_target_per_match:home", attacker: "Arsenal", defender: "Chelsea", stat: "shots on target per match", foil: "shots on target faced per match", attacker_rank: 4, defender_rank: 15, n_teams: 20, toward_pick: null },
-  { id: "shots_on_target_faced_per_match:away", attacker: "Chelsea", defender: "Arsenal", stat: "shots on target faced per match", foil: "shots on target per match", attacker_rank: 8, defender_rank: 6, n_teams: 20, toward_pick: null },
-  { id: "possession_pct:home", attacker: "Arsenal", defender: "Chelsea", stat: "possession %", foil: "possession %", attacker_rank: 2, defender_rank: 10, n_teams: 20, toward_pick: true },
+  { id: "strength_attack_vs_defence:home", attacker: "Bournemouth", defender: "Sunderland", stat: "attack strength", foil: "defence strength", attacker_rank: 11, defender_rank: 3, n_teams: 20, toward_pick: null },
+  { id: "goals_attack_vs_defence:home", attacker: "Bournemouth", defender: "Sunderland", stat: "goals scored per match", foil: "goals conceded per match", attacker_rank: 11, defender_rank: 16, n_teams: 20, toward_pick: null },
+  { id: "strength_attack_vs_defence:away", attacker: "Sunderland", defender: "Bournemouth", stat: "attack strength", foil: "defence strength", attacker_rank: 19, defender_rank: 16, n_teams: 20, toward_pick: null },
+  { id: "form", attacker: "Bournemouth", defender: "Sunderland", stat: "recent form (points per match)", foil: "recent form (points per match)", attacker_rank: 17, defender_rank: 14, n_teams: 20, toward_pick: null },
+  { id: "goals_attack_vs_defence:away", attacker: "Sunderland", defender: "Bournemouth", stat: "goals scored per match", foil: "goals conceded per match", attacker_rank: 11, defender_rank: 10, n_teams: 20, toward_pick: null },
 ];
 
-// NFL rows (3 rows)
+// NFL rows with both sides for pass and rush (n=32)
 const NFL_MATCHUPS: MatchupRow[] = [
   { id: "pass_off_vs_pass_def:home", attacker: "Bills", defender: "Jets", stat: "passing offence", foil: "pass defence", attacker_rank: 3, defender_rank: 28, n_teams: 32, toward_pick: true },
-  { id: "rush_off_vs_rush_def:away", attacker: "Jets", defender: "Bills", stat: "rushing offence", foil: "run defence", attacker_rank: 4, defender_rank: 19, n_teams: 32, toward_pick: false },
-  { id: "turnover_diff:home", attacker: "Bills", defender: "Jets", stat: "turnover diff", foil: "turnover diff", attacker_rank: 5, defender_rank: 20, n_teams: 32, toward_pick: null },
+  { id: "pass_off_vs_pass_def:away", attacker: "Jets", defender: "Bills", stat: "passing offence", foil: "pass defence", attacker_rank: 28, defender_rank: 3, n_teams: 32, toward_pick: false },
+  { id: "rush_off_vs_rush_def:home", attacker: "Bills", defender: "Jets", stat: "rushing offence", foil: "run defence", attacker_rank: 12, defender_rank: 19, n_teams: 32, toward_pick: true },
+  { id: "rush_off_vs_rush_def:away", attacker: "Jets", defender: "Bills", stat: "rushing offence", foil: "run defence", attacker_rank: 19, defender_rank: 12, n_teams: 32, toward_pick: false },
 ];
 
 // One-sided: only :home rows
@@ -841,15 +842,15 @@ function App() {
       </Case>
 
       {/* --- NEW: MatchupTable harness cases ------------------------------------------ */}
-      <Case id="matchup-pl-live" title="17 · MatchupTable — PL live rows (5 rows)"
-        note="Five live PL rows: goals scored/conceded, shots on target (for/against), possession. Home left, away right, three discrete colour tiers.">
+      <Case id="matchup-pl-live" title="17 · MatchupTable — PL live rows (Bournemouth v Sunderland)"
+        note="Five live PL rows: strength attack/defence, goals attack/defence, form. Home left, away right, three discrete colour tiers by thirds (n=20).">
         <div data-sport="pl">
           <MatchupBrief matchups={PL_LIVE_MATCHUPS} />
         </div>
       </Case>
 
-      <Case id="matchup-nfl" title="18 · MatchupTable — NFL (3 rows)"
-        note="Three NFL rows: pass offence vs pass defence, rush offence vs run defence, turnover diff.">
+      <Case id="matchup-nfl" title="18 · MatchupTable — NFL (pass & rush, both sides, n=32)"
+        note="Four NFL rows: pass offence vs pass defence (both sides), rush offence vs run defence (both sides). Home left, away right, three tiers by thirds (n=32).">
         <div data-sport="nfl">
           <MatchupBrief matchups={NFL_MATCHUPS} />
         </div>

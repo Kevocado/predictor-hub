@@ -85,6 +85,7 @@ function FormRankBox({ rank, n }: { rank: number | null; n: number | null }) {
   return (
     <span
       className={`pr-rank-box pr-rank-${tier} inline-block min-w-[2rem] text-center rounded-pr font-semibold text-sm`}
+      data-testid="rank-box"
       aria-label={`${rank === 1 ? "1st" : rank === 2 ? "2nd" : rank === 3 ? "3rd" : `${rank}th`} of ${n}`}
     >
       {rank}

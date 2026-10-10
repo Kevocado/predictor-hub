@@ -15,8 +15,9 @@ describe("MatchupBrief (the Matchup section)", () => {
   it("draws a MatchupTable per duel and coloured rank boxes for form, neutrally", () => {
     render(<MatchupBrief matchups={[duel]} formRows={[form, { ...form, id: "t", label: "track history", rank: null, n: null }]} />);
     expect(screen.getByRole("heading", { name: "Matchup" })).toBeTruthy();
-    // MatchupTable renders rank boxes with data-testid="rank-box"
-    expect(screen.getAllByTestId("rank-box")).toHaveLength(2); // home + away rank boxes
+    // MatchupTable renders rank boxes with data-testid="rank-box" (2 rows × 2 teams = 4 boxes for one-sided duel)
+    // Form row with rank adds 1 more = 5 total
+    expect(screen.getAllByTestId("rank-box")).toHaveLength(5);
     // Form row with rank shows coloured box with the rank number
     expect(screen.getByTestId("form-quali").querySelector(".pr-rank-box")).toHaveTextContent("2");
     // Form row without rank shows no rank box
@@ -41,8 +42,8 @@ describe("MatchupBrief (the Matchup section)", () => {
     expect(container.innerHTML).toBe("");
     // and one bad row does not take the good one down with it
     const mixed = render(<MatchupBrief matchups={[...badDuel, duel]} formRows={[...badForm, form]} />);
-    // Table + 1 form row = 2 data rows in form list + table is not a listitem
-    expect(mixed.getAllByTestId("rank-box")).toHaveLength(2);
+    // Table (2 rows × 2 teams = 4 rank boxes) + 1 form row with rank box = 5 rank boxes total
+    expect(mixed.getAllByTestId("rank-box")).toHaveLength(5);
     expect(mixed.getAllByRole("listitem")).toHaveLength(1); // only the good form row
   });
 });
