@@ -455,21 +455,11 @@ def test_nba_is_served(tmp_path, respx_mock):
 
     answer = asyncio.run(build(tmp_path, sport_api_nba="http://nba.test/api").explain("nba", "g1"))
 
-    keys = {f["key"] for f in answer.get("factors", [])}
-    assert keys, f"NBA produced no factors at all: {answer}"
-    # Subset, not intersection. An intersection tolerates the spread factor being
-    # ABSENT -- which is precisely the state commit f1d14b9 was written about, so an
-    # intersection here would pass with the very bug this test exists to protect
-    # against reintroduced. The bundle carries a quoted `market_line`, so the
-    # spread is free to assert and names the thing at stake.
-    for required in ("moneyline", "spread", "total"):
-        assert required in keys, (
-            f"NBA's answer has no {required} factor: {sorted(keys)}. Its own facts "
-            f"supply all three, and this bundle supplies a quoted `market_line`, so "
-            f"the spread is the one that must not be dropped. A `minimal()` "
-            f"fallback would pass an `answer.get('verdict')` assertion with "
-            f"{answer.get('verdict')!r}, which is why this asserts factors."
-        )
+    # The v9 panel is a verdict and a read. `service._generate` swallows every
+    # exception into `minimal()`, whose verdict is also truthy, so assert the one
+    # thing only the real template says: it names the pick.
+    assert answer.get("verdict") == "BOS is the pick.", f"NBA did not get the template's own answer: {answer}"
+    assert answer["factors"] == [] and "read" in answer and answer["band"] in ("leaning", "moderate", "strong")
 
 
 def _nba_facts() -> dict:

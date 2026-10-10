@@ -446,6 +446,45 @@ def _matchup_factors(facts: dict) -> list[dict]:
     return out
 
 
+_ROLE_WORDS = {"top_rusher": "rusher", "top_passer": "passer", "top_receiver": "receiver"}
+
+
+def _poss(name) -> str:
+    name = str(name)
+    return name + ("'" if name.endswith("s") else "'s")
+
+
+def tactical_read(facts: dict) -> str:
+    """The deterministic read: two or three neutral sentences (fewer when the rows are few) built from the
+    matchup rows, the named players and the form rows. Empty when there are none.
+
+    Neutral on purpose: it states ranks and names and never says a unit has the
+    advantage or favours a side, whatever `toward_pick` says. A direction is the
+    code's claim to make on the row, not this sentence's.
+    """
+    ctx = facts.get("context") or {}
+    sentences: list[str] = []
+    duels = [r for r in _dicts(ctx.get("matchups")) if _duel_ranks(r)][:2]
+    for r in duels:
+        a, d, n = _duel_ranks(r)
+        sentences.append(f"{_poss(r['attacker'])} {r['stat']} ranks #{a} of {n} and "
+                         f"{_poss(r['defender'])} {r['foil']} ranks #{d}.")
+    players = [r for r in _dicts(ctx.get("player_context"))
+               if r.get("name") and r.get("role") in _ROLE_WORDS][:3]
+    if players:
+        named = ", ".join(f"{r['name']}" + (f" ({r['team']})" if r.get("team") else "")
+                          + f" as a top {_ROLE_WORDS[r['role']]}" for r in players)
+        sentences.append(f"The names to watch are {named}.")
+    forms = [r for r in _dicts(ctx.get("form_rows")) if r.get("subject") and r.get("label") and r.get("value")][:3]
+    if forms:
+        bits = [f"{_poss(r['subject'])} {r['label']} is {r['value']}"
+                + (f" (#{r['rank']}" + (f" of {r['n']}" if r.get("n") else "") + ")"
+                   if isinstance(r.get("rank"), int) and not isinstance(r.get("rank"), bool) else "")
+                for r in forms]
+        sentences.append("; ".join(bits) + ".")
+    return " ".join(sentences[:3])
+
+
 def explain_from_template(facts: dict) -> dict:
     """The no-model path, in the model's own shape, built from the facts."""
     facts = as_dict(facts)
@@ -798,7 +837,7 @@ def explain_from_template(facts: dict) -> dict:
     kept = factors[:MAX_FACTORS]
     for f in kept:
         f["slot"] = slot_for(f["direction"], f["key"], facts)
-    return {"verdict": verdict, "band": band, "factors": kept}
+    return {"verdict": verdict, "band": band, "read": tactical_read(facts), "factors": kept}
 
 
 def minimal(facts: dict) -> dict:
@@ -812,10 +851,6 @@ def minimal(facts: dict) -> dict:
     return {
         "verdict": "No explanation is available for this one yet.",
         "band": "leaning",
-        "factors": [
-            _fact("context", NEUTRAL, "Not ready",
-                  "The explanation service could not build a summary for this fixture."),
-            _fact("context", NEUTRAL, "Try again",
-                  "A later visit may find the facts in place."),
-        ],
+        "read": "The explanation service could not build a summary for this fixture. A later visit may find the facts in place.",
+        "factors": [],
     }

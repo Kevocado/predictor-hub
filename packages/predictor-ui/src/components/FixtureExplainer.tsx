@@ -17,6 +17,7 @@ import { FixtureFlow, type FlowState } from "./FixtureFlow";
 import { SummaryButton } from "./SummaryButton";
 import { ExplainerPanel, type Explanation } from "./ExplainerPanel";
 import { AI_PROMISE, InstantBlock } from "./InstantBlock";
+import { MatchupBrief } from "./MatchupBrief";
 import type { Moment } from "./StatusBadge";
 import type { MarketTile } from "./KeyNumberTile";
 import type { Segment } from "./ProbabilityBar";
@@ -118,6 +119,9 @@ export function FixtureExplainer({ sport, state, bundle, request, extras, promis
       {/* Facts first, interpretation after: the block is the finished "what", so the
           AI summary reads as what it adds and never as a second copy of the page. */}
       <InstantBlock sport={sport} bundle={bundle} extras={extras} />
+      {/* The Matchup section is data from the bundle's `context`, not AI: it is
+          there before the button is pressed and stays above the summary. */}
+      <MatchupBrief matchups={bundle?.context?.matchups} formRows={bundle?.context?.form_rows} />
       {panelState === "summary" && summary && <SummaryView summary={summary} extras={extras} />}
       <FixtureFlow sport={sport} state={state} bundle={bundle} request={request} />
       {panelState !== "summary" && (

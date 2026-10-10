@@ -14,26 +14,28 @@ for one — there is no background pre-generation.
   "sport": "nfl", "id": "401585",
   "verdict": "Baltimore is the pick, but the line is thinner than the number.",
   "band": "moderate",              // COMPUTED from pick.prob, never asked of the model
-  "factors": [                    // 2-5, each naming a market or a duel the facts carry
-    { "key": "moneyline", "direction": "up", "slot": "edge",
-      "headline": "Model leans Baltimore",
-      "text": "The rating gap has held all week." }
-  ],
+  "read": "Buffalo's passing offence ranks #3 of 32 and meets ...",  // 2-3 sentences about the
+                                  // matchup; never restates pick probability, spread,
+                                  // total, rest or moneyline figures (validator-enforced).
+                                  // "" when the facts carry no matchup rows.
+  "factors": [],                  // always empty since v9; kept so older panels still parse
   "pick": { "label": "BAL" },     // COMPUTED from the facts; the key is OMITTED
                                   // when there is no pick. Never null.
   "source": "llm", "model": "nemotron-3.5-lightning",
-  "generated_at": "2026-10-05T00:20:00Z", "prompt_version": "v8",
+  "generated_at": "2026-10-05T00:20:00Z", "prompt_version": "v9",
   "pick_timing": "pre_kickoff"
 }
 ```
 
 Three properties worth knowing before changing anything here:
 
-- **The model supplies no figure.** A factor is a *reference* to a market by
-  `key`; the panel resolves it against the facts and draws the numbers itself.
-  That is what makes the template path structurally as good as the model path —
-  the layout is driven by the data the panel is handed and does not know which
-  path produced it.
+- **The read is about the matchup, not the market.** The input is
+  `context.matchups`, `context.player_context` (NFL names) and
+  `context.form_rows` (F1); market numbers are background only. The validator
+  rejects a read that repeats the pick probability, a market figure or rest days
+  (`validate._restated_figures`) and the template read
+  (`template.tactical_read`) is served instead. The rank rows themselves are drawn
+  by the site's Matchup section, not by this service.
 - **`band` is derived, not requested.** It is `contract.band_for(pick.prob,
   market_shape)`, with thresholds in the spec, and the model is not asked for
   one. A band is a *word*, and a word is the same defect as a number when

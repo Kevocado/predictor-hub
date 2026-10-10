@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import re
 
-from .contract import DIRECTIONS, PSEUDO_MARKETS, as_dict, market_keys, matchup_rows
+from .contract import PSEUDO_MARKETS, as_dict, market_keys
 from .template import DEFAULT_MARKET_LINE_KEY, MARKET_LINE_KEY
 
 BANNED = ["lock", "bet", "betting advice", "hammer", "guaranteed", "sure thing", "value play"]
@@ -36,27 +36,12 @@ UNVERIFIED_PHRASES = (
     "schedule did not provide",
 )
 
-#: Word caps for the v2 body. A verdict line inherits v1's 18-word headline cap;
-#: a factor headline and sentence are new, and are tighter because a factor is
-#: one row of a panel rather than a paragraph beside it. There is deliberately
-#: **no minimum**: v1 demanded 120-220 words, and a v2 body is short by
-#: construction because the figures are drawn rather than written. A floor kept
-#: from v1 would reject the honest short answer and push the model into padding.
+#: Word caps for the v9 body: a verdict line (v1's 18-word headline cap) and a read.
 MAX_VERDICT_WORDS = 18
-MAX_HEADLINE_WORDS = 10
-MAX_FACTOR_WORDS = 35
-MIN_FACTORS = 2
-#: Raised 4 -> 5 with the Edge / Risk / Price redesign: two duel rows (one toward
-#: the pick, one against it) on top of the four the old cap allowed, and the
-#: design says the Price row appears only when a quoted line exists, so a full
-#: body is five rows rather than four.
-#:
-#: **Equal to `template.MAX_FACTORS`, and `test_the_cap_is_five_on_both_sides`
-#: holds that.** The template is what a reader gets when the model's body fails
-#: this check, so the two caps disagreeing would mean the service accepts bodies
-#: its own fallback would never produce — the drift spec §8 forbids. The
-#: per-factor length rules are unchanged.
-MAX_FACTORS = 5
+#: The read is the tactical paragraph: two or three sentences, no more.
+MIN_READ_SENTENCES = 2
+MAX_READ_SENTENCES = 3
+MAX_READ_WORDS = 90
 
 
 #: Words that name a MARKET rather than a figure, and the market key each one
@@ -783,6 +768,33 @@ def _verdict_problems(facts: dict, body: str) -> list[str]:
     return problems
 
 
+#: Context keys whose figures are market numbers. Matched by substring so
+#: `home_rest_days`, `spread_line` and the like are all covered.
+_MARKET_CONTEXT = ("rest", "spread", "total", "line", "prob", "moneyline", "odds")
+#: Context keys that ARE the matchup read's input; their figures are allowed.
+_TACTICAL_CONTEXT = ("matchups", "player_context", "form_rows")
+
+
+def _restated_figures(facts: dict, read: str) -> list[str]:
+    """A read (the verdict is exempt: it names the pick) is about the matchup. A figure that is the pick probability, a
+    market number or rest days, and is not also a matchup/player/form figure,
+    restates what the fixture detail already shows, so the body is refused.
+
+    ponytail: a figure that is both (a rank 3 and a spread of 3) cannot be told
+    apart by value and is allowed; upgrade to per-clause attribution if it bites.
+    """
+    ctx = facts.get("context") if isinstance(facts.get("context"), dict) else {}
+    market = {"pick": facts.get("pick"), "markets": facts.get("markets"),
+              "context": {k: v for k, v in ctx.items()
+                          if k not in _TACTICAL_CONTEXT and any(w in k for w in _MARKET_CONTEXT)}}
+    tactical = {k: ctx.get(k) for k in _TACTICAL_CONTEXT}
+    mn, mp, mf = _pool(market)
+    tn, tp, tf = _pool(tactical)
+    bad = sorted({tok for tok in _NUM_RE.findall(read)
+                  if _known(tok, mn, mp, mf) and not _known(tok, tn, tp, tf)})
+    return ["restates a market or rest figure: " + ", ".join(bad)] if bad else []
+
+
 def validate(output: dict, facts_json: str, news_json: str) -> list[str]:
     """Problems with a model's output; [] means it may be shown."""
     # The facts are parsed BEFORE the shape check, because the key rule below
@@ -796,49 +808,23 @@ def validate(output: dict, facts_json: str, news_json: str) -> list[str]:
     if not isinstance(facts, dict):
         facts = {}
 
-    factors = output.get("factors") if isinstance(output, dict) else None
     verdict = output.get("verdict") if isinstance(output, dict) else None
-    if not isinstance(verdict, str) or not isinstance(factors, list) \
-            or not all(isinstance(f, dict) for f in factors):
-        return ["output must be {verdict: str, factors: [{key, direction, headline, text}]}"]
+    read = output.get("read") if isinstance(output, dict) else None
+    if not isinstance(verdict, str) or not isinstance(read, str):
+        return ["output must be {verdict: str, read: str}"]
 
     problems = []
-    if not MIN_FACTORS <= len(factors) <= MAX_FACTORS:
-        problems.append(f"needs {MIN_FACTORS}-{MAX_FACTORS} factors, got {len(factors)}")
     if len(verdict.split()) > MAX_VERDICT_WORDS:
         problems.append(f"verdict is over {MAX_VERDICT_WORDS} words")
-
-    # A key the facts do not carry is a problem rather than something to drop
-    # here: `contract.resolve_factors` already dropped it on the way in, so
-    # reaching this point means the drop was bypassed. An absent market renders
-    # *nothing* (spec §6), so the alternative is a row with nothing in it.
-    #
-    # `matchup:<id>` is in the vocabulary for the same reason a market is: a duel
-    # the facts do not carry is a claim about a matchup nobody computed, and the
-    # panel would draw an empty row for it. The model's own direction is NOT
-    # checked against the duel's `toward_pick` here — that is `contract.slot_for`,
-    # and it downgrades the row to `context` rather than rejecting the whole body,
-    # because a model disagreeing with the code about one row is a reason to show
-    # less, not to cost the reader every other row.
-    allowed = market_keys(facts) | set(PSEUDO_MARKETS) | set(matchup_rows(facts))
-    for i, f in enumerate(factors):
-        if f.get("direction") not in DIRECTIONS:
-            problems.append(f"factor {i + 1} direction must be one of {DIRECTIONS}")
-        if f.get("key") not in allowed:
-            problems.append(f"factor {i + 1} names {f.get('key')!r}, which the facts do not carry")
-        if len(str(f.get("headline", "")).split()) > MAX_HEADLINE_WORDS:
-            problems.append(f"factor {i + 1} headline is over {MAX_HEADLINE_WORDS} words")
-        if len(str(f.get("text", "")).split()) > MAX_FACTOR_WORDS:
-            problems.append(f"factor {i + 1} text is over {MAX_FACTOR_WORDS} words")
+    if not MIN_READ_SENTENCES <= len(_sentences(read)) <= MAX_READ_SENTENCES:
+        problems.append(f"read needs {MIN_READ_SENTENCES}-{MAX_READ_SENTENCES} sentences")
+    if len(read.split()) > MAX_READ_WORDS:
+        problems.append(f"read is over {MAX_READ_WORDS} words")
 
     # No band rule: the band is computed by `contract.band_for` from the facts,
     # never supplied by the model (§13a). Validating a field nothing writes
     # would be a check that cannot fail.
-    texts = [verdict]
-    for f in factors:
-        texts.append(str(f.get("headline", "")))
-        texts.append(str(f.get("text", "")))
-    body = " ".join(texts)
+    body = f"{verdict} {read}"
     # "Hammers" is West Ham's nickname, not betting slang.
     banned = [m.group(0) for m in _BANNED_RE.finditer(body) if m.group(0) != "Hammers"]
     if banned:
@@ -871,4 +857,5 @@ def validate(output: dict, facts_json: str, news_json: str) -> list[str]:
             )
     problems.extend(_verdict_problems(facts, body))
     problems.extend(_market_problems(facts, body))
+    problems.extend(_restated_figures(facts, read))
     return problems

@@ -31,6 +31,7 @@ import {
   signalIsDrawn,
   UndrawableSignalVisualError,
   MatchupBrief,
+  ExplainerPanel,
   RankDuel,
   WeatherChip,
   type MarketTile,
@@ -41,7 +42,7 @@ import {
   type PicksListProps,
   type Signal,
   type MatchupRow,
-  type SlottedFactor,
+  type FormRow,
   type Conditions,
 } from "../src/index";
 import {
@@ -71,31 +72,13 @@ const MATCHUP_FULL_MATCHUPS: MatchupRow[] = [
   { id: "pass_off_vs_pass_def:home", attacker: "Bills", defender: "Jets", stat: "passing offence", foil: "pass defence", attacker_rank: 3, defender_rank: 28, n_teams: 32, toward_pick: true },
   { id: "rush_off_vs_rush_def:away", attacker: "Jets", defender: "Bills", stat: "rushing offence", foil: "run defence", attacker_rank: 4, defender_rank: 19, n_teams: 32, toward_pick: false },
 ];
-const MATCHUP_FULL_FACTORS: SlottedFactor[] = [
-  { key: "matchup:pass_off_vs_pass_def:home", direction: "up", slot: "edge", headline: "Bills' #3 passing offence meets Jets' #28 pass defence", text: "Bills rank 3 of 32 in passing offence; Jets rank 28 of 32 in pass defence." },
-  { key: "matchup:rush_off_vs_rush_def:away", direction: "down", slot: "risk", headline: "Jets' #4 rushing offence runs into Bills' #19 run defence", text: "Jets rank 4 of 32 in rushing offence; Bills rank 19 of 32 in run defence." },
-  { key: "spread", direction: "neutral", slot: "price", headline: "Model -4.0 against a quoted -6.5", text: "Both figures, no verdict on them." },
-];
-
-const MATCHUP_EDGE_ONLY_FACTORS: SlottedFactor[] = [
-  { key: "matchup:a", direction: "up", slot: "edge", headline: "Bills' #3 passing offence meets Jets' #28 pass defence", text: "t" },
-];
-const MATCHUP_EDGE_ONLY_MATCHUPS: MatchupRow[] = [
-  { id: "a", attacker: "Bills", defender: "Jets", stat: "passing offence", foil: "pass defence", attacker_rank: 3, defender_rank: 28, n_teams: 32, toward_pick: true },
-];
-
-const MATCHUP_NO_MATCHUPS_FACTORS: SlottedFactor[] = [
-  { key: "matchup:pass_off_vs_pass_def:home", direction: "up", slot: "edge", headline: "Bills' #3 passing offence meets Jets' #28 pass defence", text: "t" },
-  { key: "spread", direction: "neutral", slot: "price", headline: "Model -4.0 against a quoted -6.5", text: "t" },
-];
-
-const MATCHUP_LONG_FACTORS: SlottedFactor[] = [
-  { key: "matchup:b", direction: "up", slot: "edge", headline: "San Francisco 49ers' #2 passing offence meets Dallas Cowboys' #31 pass defence", text: "t" },
-  { key: "matchup:c", direction: "down", slot: "risk", headline: "Dallas Cowboys' #5 rushing offence runs into San Francisco 49ers' #18 run defence", text: "t" },
-];
 const MATCHUP_LONG_MATCHUPS: MatchupRow[] = [
-  { id: "b", attacker: "San Francisco 49ers", defender: "Dallas Cowboys", stat: "passing offence", foil: "pass defence", attacker_rank: 2, defender_rank: 31, n_teams: 32, toward_pick: true },
-  { id: "c", attacker: "Dallas Cowboys", defender: "San Francisco 49ers", stat: "rushing offence", foil: "run defence", attacker_rank: 5, defender_rank: 18, n_teams: 32, toward_pick: false },
+  { id: "b", attacker: "San Francisco 49ers", defender: "Dallas Cowboys", stat: "passing offence", foil: "pass defence", attacker_rank: 2, defender_rank: 31, n_teams: 32, toward_pick: null },
+  { id: "c", attacker: "Dallas Cowboys", defender: "San Francisco 49ers", stat: "rushing offence", foil: "run defence", attacker_rank: 5, defender_rank: 18, n_teams: 32, toward_pick: null },
+];
+const F1_FORM_ROWS: FormRow[] = [
+  { id: "quali", subject: "Norris", label: "qualifying pace", value: "+0.08s to pole", rank: 2, n: 20 },
+  { id: "track", subject: "Norris", label: "track history", value: "2 podiums in 4", rank: null, n: null },
 ];
 
 const WEATHER_CLEAR: Conditions = { kind: "clear", temp_f: 61 };
@@ -800,42 +783,32 @@ function App() {
         />
       </Case>
 
-      {/* --- NEW: MatchupBrief (Edge / Risk / Price grouping) ---------------------- */}
-      <Case id="matchup-full" title="13 · MatchupBrief — full (2 Edge, 1 Risk, 1 Price)"
-        note="The four groups: Edge (strongest duel toward pick), Risk (strongest against), Price (quoted market), context (fallback). Ranks stated in headlines must match the duel rows. Empty groups omitted.">
-        <MatchupBrief factors={MATCHUP_FULL_FACTORS} matchups={MATCHUP_FULL_MATCHUPS} onSelect={() => {}} />
+      {/* --- NEW: Matchup section + verdict/read panel ------------------------------ */}
+      <Case id="matchup-full" title="13 · Matchup section + AI read (NFL)"
+        note="Always-visible Matchup section above the AI panel: neutral rank duels, no Edge/Risk/Price. The panel is the verdict and a 2-3 sentence read.">
+        <div className="flex flex-col gap-3">
+          <MatchupBrief matchups={MATCHUP_FULL_MATCHUPS} />
+          <ExplainerPanel loading={false} error={false} onRetry={() => {}} data={{
+            source: "llm", model: "nemotron", generated_at: new Date().toISOString(), sport: "nfl",
+            pick_timing: "pre_kickoff", verdict: "Buffalo is the pick.", band: "moderate", factors: [],
+            read: "Buffalo's passing game meets a Jets pass defence near the bottom of the league, while New York's best unit is its running game. Josh Allen and Breece Hall are the names that decide how those two units meet.",
+          }} />
+        </div>
       </Case>
 
-      <Case id="matchup-edge-only" title="14 · MatchupBrief — Edge only"
-        note="Only an Edge row. No Risk, no Price, no context headings.">
-        <MatchupBrief factors={MATCHUP_EDGE_ONLY_FACTORS} matchups={MATCHUP_EDGE_ONLY_MATCHUPS} onSelect={() => {}} />
+      <Case id="matchup-f1" title="14 · Matchup section — F1 form rows"
+        note="Plain labelled rows, rank shown only when present.">
+        <MatchupBrief formRows={F1_FORM_ROWS} />
       </Case>
 
-      <Case id="matchup-no-matchups" title="15 · MatchupBrief — no matchups (template path)"
-        note="Factors carry slots but no duel rows exist in the response. Headings render, RankDuel absent. This is the template path when the LLM is off.">
-        <MatchupBrief factors={MATCHUP_NO_MATCHUPS_FACTORS} matchups={[]} onSelect={() => {}} />
+      <Case id="matchup-absent" title="15 · Matchup section — no data (renders nothing)"
+        note="Nothing between the markers: no heading, no placeholder.">
+        <div data-testid="absent-markers"><span className="text-xs text-pr-text-faint">before</span><MatchupBrief /><span className="text-xs text-pr-text-faint">after</span></div>
       </Case>
 
-      <Case id="matchup-neutral" title="17 · MatchupBrief — undirected duels (what production shows today)"
-        note="The lift gate has not proven any duel type yet, so both duels arrive neutral: a plain Matchup heading, the rank bars, and no Edge/Risk claim.">
-        <MatchupBrief
-          factors={[
-            { key: "matchup:pass_off_vs_pass_def:home", direction: "neutral", slot: "context",
-              headline: "Bills' #3 passing offence and Jets' #28 pass defence", text: "Bills rank 3 of 32 in passing offence; Jets rank 28 of 32 in pass defence." },
-            { key: "matchup:rush_off_vs_rush_def:away", direction: "neutral", slot: "context",
-              headline: "Jets' #19 rushing offence and Bills' #6 run defence", text: "Jets rank 19 of 32 in rushing offence; Bills rank 6 of 32 in run defence." },
-          ]}
-          matchups={[
-            { id: "pass_off_vs_pass_def:home", attacker: "Bills", defender: "Jets", stat: "passing offence", foil: "pass defence", attacker_rank: 3, defender_rank: 28, n_teams: 32, toward_pick: null },
-            { id: "rush_off_vs_rush_def:away", attacker: "Jets", defender: "Bills", stat: "rushing offence", foil: "run defence", attacker_rank: 19, defender_rank: 6, n_teams: 32, toward_pick: null },
-          ]}
-          onSelect={() => {}}
-        />
-      </Case>
-
-      <Case id="matchup-long-names" title="16 · MatchupBrief — long team names"
-        note="Team and stat names that stress the layout. Words truncate, bars don't shift.">
-        <MatchupBrief factors={MATCHUP_LONG_FACTORS} matchups={MATCHUP_LONG_MATCHUPS} onSelect={() => {}} />
+      <Case id="matchup-long-names" title="16 · Matchup section — long team names"
+        note="Words truncate, bars don't shift.">
+        <MatchupBrief matchups={MATCHUP_LONG_MATCHUPS} />
       </Case>
 
       {/* --- NEW: WeatherChip ------------------------------------------------------- */}

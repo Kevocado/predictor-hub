@@ -41,7 +41,8 @@ So a clause is the unit of ownership, and this file pins three things about it:
 """
 import pytest
 
-from explainer.validate import _market_problems, _named_markets, validate
+from explainer.validate import _market_problems, _named_markets
+from conftest import rule_validate as validate
 
 from test_market_words import NBA_FACTS, PL_FACTS
 

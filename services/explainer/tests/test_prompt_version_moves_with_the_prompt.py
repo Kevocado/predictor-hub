@@ -87,6 +87,9 @@ RECORDED_PROMPT_DIGEST = {
     # `toward_pick`, and the two-to-five factor cap. Recorded rather than folded
     # into v7, same reason as v5->v6 and v6->v7.
     "v8": "1525465377416f7a1ad3da243c2f4d8b6fca44de9d7ae22ed80c5e6504049738",
+    # The matchup summary: the input is matchups / player_context / form_rows,
+    # market numbers are background, the output is {verdict, read}.
+    "v9": "fa26bcd79189f8e6b4681ca04a473e2e1cea89fb60ba995d71f3bdfb213ab5ae",
 }
 
 _HEX64 = re.compile(r"[0-9a-f]{64}")

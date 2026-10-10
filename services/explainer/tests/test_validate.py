@@ -1,187 +1,107 @@
+"""validate() on the v9 body: {verdict, read}.
+
+The number pool, banned words, rebuilt/unknown-timing disclosure, verdict-claim
+and market-word rules still run over the prose (their own files). This file owns
+the shape, the read-length rules, and the new rule: a read may not restate the
+pick probability, the spread, the total, the moneyline or rest days.
+"""
 import json
 
-from explainer.validate import MAX_FACTORS, MAX_FACTOR_WORDS, numbers_in, validate
+import pytest
 
-FACTS = json.dumps({"starts_at": "2026-10-05T00:20:00Z", "pick": {"label": "BAL", "prob": 0.62},
-                    "pick_timing": "pre_kickoff",
-                    "markets": [{"market": "spread", "line": "BAL -2.5", "model_margin": 3.4}],
-                    "record": {"hits": 41, "settled": 66}})
+from explainer.validate import MAX_READ_WORDS, numbers_in, validate
 
-# Converted from the v1 sections. Every assertion below is the one it was; only
-# the shape changed, and the texts are shorter because a v2 factor text is capped
-# at 35 words where a v1 section was allowed 60. `extra` is appended to the first
-# factor's text, which is the v2 equivalent of appending to a section.
-VERDICT = "Baltimore is the pick at 62%, though the line asks more than the model does."
-SPREAD = "It rates Baltimore 3.4 points better, a little more than the -2.5 line the market offers."
-RECORD = "Its picks made before kickoff are 41/66, so read this as a lean rather than a certainty."
-CONTEXT = "Kansas City can win this one, and the ratings behind it have held all week."
-
-
-def good(extra=""):
-    body = {"verdict": VERDICT, "factors": [
-        {"key": "spread", "direction": "up", "headline": "The model likes Baltimore", "text": SPREAD},
-        {"key": "record", "direction": "up", "headline": "Its record so far", "text": RECORD},
-        {"key": "context", "direction": "down", "headline": "And the other way", "text": CONTEXT},
-    ]}
-    if extra:
-        body["factors"][0]["text"] += " " + extra
-    return body
+FACTS = {
+    "sport": "nfl", "id": "g1", "title": "Bills at Jets",
+    "starts_at": "2026-10-11T17:00:00Z", "status": "upcoming",
+    "pick_timing": "pre_kickoff", "pick": {"label": "Bills", "prob": 0.64},
+    "markets": [{"market": "moneyline", "model": {"Bills": 0.64, "Jets": 0.36}},
+                {"market": "spread", "model_margin": 6.5, "line": "BUF -3.5"},
+                {"market": "total", "model_total": 44.5, "line": 43.5}],
+    "context": {
+        "home_rest_days": 10, "away_rest_days": 7,
+        "matchups": [{"id": "pass_off_vs_pass_def:home", "attacker": "Bills", "defender": "Jets",
+                      "stat": "passing offence", "foil": "pass defence", "attacker_rank": 3,
+                      "defender_rank": 28, "n_teams": 32, "toward_pick": None}],
+        "player_context": [{"team": "BUF", "name": "Josh Allen", "role": "top_passer",
+                            "stat": "passing yards", "value": 265}],
+    },
+    "record": {"label": "Picks made before kickoff", "hits": 41, "settled": 68},
+}
+F = json.dumps(FACTS)
+READ = ("Buffalo's passing offence ranks #3 of 32 and meets a Jets pass defence ranked #28. "
+        "Josh Allen is the passer to watch in that matchup.")
 
 
-def test_fixture_is_within_the_v2_caps():
-    """v1 asserted a 120-220 word band. v2 has caps and **no floor**.
-
-    Kept as a test because the absence of a floor is a decision: a minimum
-    carried over from v1 would reject the honest short answer and push the model
-    into padding, which is the opposite of what the redesign is for.
-    """
-    for f in good()["factors"]:
-        assert len(f["text"].split()) <= MAX_FACTOR_WORDS
-    assert len(good()["verdict"].split()) <= 18
-    assert len(" ".join(f["text"] for f in good()["factors"]).split()) < 120, (
-        "if this fixture has grown past 120 words it no longer proves that a short "
-        "body is acceptable"
-    )
+def body(read=READ, verdict="Bills are the pick."):
+    return {"verdict": verdict, "read": read}
 
 
-def test_accepts_numbers_from_facts():
-    assert validate(good(), FACTS, "[]") == []
+def test_an_honest_read_passes():
+    assert validate(body(), F, "[]") == []
 
 
-def test_rejects_invented_number():
-    assert any("70" in p for p in validate(good("A 70% chance."), FACTS, "[]"))
+def test_a_figure_free_read_passes():
+    assert validate(body("The Bills' passing game meets a weak pass defence. Allen decides how it goes."), F, "[]") == []
 
 
-def test_true_minus_and_rounding_are_tolerated():
-    out = good("Or −2.50 if you like decimals.")
-    assert validate(out, FACTS, "[]") == []
+def test_extra_keys_are_ignored_and_factors_are_not_required():
+    assert validate({**body(), "factors": [], "band": "strong"}, F, "[]") == []
 
 
-def test_numbers_from_news_are_allowed():
-    news = json.dumps([{"headline": "Ravens sign 7 practice-squad players", "date": "2026-10-02"}])
-    assert validate(good("The team added 7 players."), FACTS, news) == []
+@pytest.mark.parametrize("bad", [{"nope": 1}, {"verdict": "x"}, {"read": "x. y."}, {"verdict": "x", "read": 3},
+                                 {"verdict": "x", "factors": []}])
+def test_the_shape_needs_a_verdict_and_a_read(bad):
+    assert validate(bad, F, "[]")
 
 
-def test_kickoff_time_digits_are_not_a_free_pass():
-    assert any("20" in p for p in validate(good("A 20% chance of rain."), FACTS, "[]"))
+def test_read_length_rules():
+    assert any("sentences" in p for p in validate(body("One sentence only."), F, "[]"))
+    assert any("sentences" in p for p in validate(body("A. B. C. D."), F, "[]"))
+    long = " ".join(["Word"] * (MAX_READ_WORDS // 2) + ["."]) + " " + " ".join(["word"] * (MAX_READ_WORDS // 2 + 1)) + "."
+    assert any("words" in p for p in validate(body(long), F, "[]"))
+    assert any("verdict" in p for p in validate(body(verdict="word " * 19), F, "[]"))
 
 
-def test_rejects_banned_word():
-    assert validate(good("Lock it in."), FACTS, "[]")
-    assert validate(good("Not betting advice."), FACTS, "[]")
-    assert validate(good("A better team."), FACTS, "[]") == []
+# --- the new rule: no restated market, probability or rest figure ------------
+
+@pytest.mark.parametrize("figure", ["64%", "3.5", "43.5", "44.5", "6.5", "10", "36%"])
+def test_a_read_that_restates_a_market_or_rest_figure_is_rejected(figure):
+    problems = validate(body(f"The matchup is about {figure} of the story. Allen is the passer to watch."), F, "[]")
+    assert any("restates" in p for p in problems), (figure, problems)
+
+
+def test_the_verdict_may_name_the_pick_probability():
+    assert validate(body(verdict="Bills are the pick at 64%."), F, "[]") == []
+
+
+def test_a_rank_is_not_a_market_figure():
+    assert validate(body("The #3 passing offence meets the #28 pass defence. It is one of 32 such duels."), F, "[]") == []
+
+
+def test_a_player_stat_is_allowed():
+    assert validate(body("Allen projects for 265 yards through the air. That is the figure the Jets must answer."), F, "[]") == []
+
+
+def test_the_number_pool_still_applies():
+    assert any("not in the facts" in p for p in validate(body("A 70-point swing. Allen decides it."), F, "[]"))
+
+
+def test_a_figure_that_is_both_market_and_tactical_is_allowed():
+    """Documented ceiling: value alone cannot say which it is. Here a rank of 3 and
+    a spread of 3 are the same token."""
+    f = json.loads(F)
+    f["markets"][1]["line"] = "BUF -3"
+    assert validate(body("The #3 passing offence meets the #28 pass defence. Allen is the passer to watch."),
+                    json.dumps(f), "[]") == []
 
 
 def test_rebuilt_must_say_so():
-    rebuilt = FACTS.replace("pre_kickoff", "rebuilt")
-    assert any("rebuilt" in p for p in validate(good(), rebuilt, "[]"))
-    ok = good("This pick was rebuilt after kickoff and is not counted.")
-    assert validate(ok, rebuilt, "[]") == []
-
-
-def test_shape_and_length_rules():
-    body = good()
-    one = {"verdict": body["verdict"], "factors": body["factors"][:1]}
-    assert any("factors" in p for p in validate(one, FACTS, "[]"))
-
-    long_verdict = good() | {"verdict": "word " * 19}
-    assert any("verdict" in p for p in validate(long_verdict, FACTS, "[]"))
-
-    long_text = good()
-    long_text["factors"][0]["text"] = "word " * (MAX_FACTOR_WORDS + 1)
-    assert any("text" in p for p in validate(long_text, FACTS, "[]"))
-
-    long_headline = good()
-    long_headline["factors"][0]["headline"] = "word " * 11
-    assert any("headline" in p for p in validate(long_headline, FACTS, "[]"))
-
-    assert validate({"nope": 1}, FACTS, "[]")
+    rebuilt = json.dumps({**FACTS, "pick_timing": "rebuilt"})
+    assert any("rebuilt" in p for p in validate(body(), rebuilt, "[]"))
+    ok = body(READ + " This pick was rebuilt after kickoff.")
+    assert not any("rebuilt" in p for p in validate({**ok, "read": ok["read"]}, rebuilt, "[]"))
 
 
 def test_numbers_in_reads_percents_both_ways():
     assert {0.62, 62.0, -2.5, 6.0, 10.0} <= numbers_in("62% vs −2.5, 6/10")
-
-
-def test_tolerance_is_rounding_of_the_written_figure_not_five_points():
-    facts = json.loads(FACTS)
-    facts["pick"]["prob"] = 0.64
-    assert any("62%" in p for p in validate(good(), json.dumps(facts), "[]"))  # 62% vs 64%: a misstatement
-    facts["pick"]["prob"] = 0.6234
-    assert validate(good(), json.dumps(facts), "[]") == []  # 62% is 0.6234 rounded
-
-
-def test_whole_number_may_round_a_decimal():
-    facts = json.loads(FACTS)
-    facts["markets"].append({"market": "total", "model_total": 47.8, "line": 45.5})
-    assert validate(good("It projects 48 points against 45.5."), json.dumps(facts), "[]") == []
-    assert validate(good("It projects 49 points."), json.dumps(facts), "[]")
-
-
-# --- the matchup factor vocabulary and the raised cap (AI plan Task 6) --------
-#
-# The validator is the last gate before a model's words are served, so a
-# `matchup:<id>` key has to be checked here for the same reason a market key is:
-# a key the facts do not carry would render an empty row, and a duel the facts do
-# not carry is a claim about a matchup that was never computed.
-
-MATCHUP_FACTS = json.dumps({
-    "sport": "nfl", "id": "g1", "title": "Bills at Jets",
-    "starts_at": "2026-10-11T17:00:00Z", "status": "upcoming",
-    "pick_timing": "pre_kickoff", "pick": {"label": "Bills", "prob": 0.64},
-    "markets": [{"market": "moneyline", "model": {"Bills": 0.64, "Jets": 0.36}}],
-    "context": {"matchups": [
-        {"id": "pass_off_vs_pass_def:home", "attacker": "Bills", "defender": "Jets",
-         "stat": "passing offence", "foil": "pass defence", "attacker_rank": 3,
-         "defender_rank": 28, "n_teams": 32, "toward_pick": True}]},
-    "record": {"label": "Picks made before kickoff", "hits": 41, "settled": 68},
-})
-
-
-def _duel(key="matchup:pass_off_vs_pass_def:home"):
-    """One duel factor. No figures in it: the panel draws the ranks from the
-    facts, and a figure the model wrote here would be the thing the prompt forbids."""
-    return {"key": key, "direction": "up",
-            "headline": "Passing offence meets pass defence",
-            "text": "Their passing game against that pass defence."}
-
-
-def _record():
-    return {"key": "record", "direction": "neutral",
-            "headline": "Its record so far", "text": "Most of its picks before the start have landed."}
-
-
-def _duel_body(n: int):
-    """`n` factors: the first a duel, the rest the record."""
-    return {"verdict": "Bills are the pick.",
-            "factors": [_duel()] + [_record() for _ in range(n - 1)]}
-
-
-def test_a_duel_the_facts_carry_validates():
-    assert validate(_duel_body(2), MATCHUP_FACTS, "[]") == []
-
-
-def test_a_duel_the_facts_do_not_carry_is_reported():
-    problems = validate({"verdict": "Bills are the pick.",
-                         "factors": [_duel("matchup:invented"), _record()]},
-                        MATCHUP_FACTS, "[]")
-    assert any("matchup:invented" in p for p in problems), problems
-
-
-def test_five_factors_validate_and_six_are_rejected():
-    assert validate(_duel_body(MAX_FACTORS), MATCHUP_FACTS, "[]") == []
-    problems = validate(_duel_body(MAX_FACTORS + 1), MATCHUP_FACTS, "[]")
-    assert any("factors" in p for p in problems), problems
-
-
-def test_the_cap_is_five_on_both_sides():
-    """`validate.MAX_FACTORS` and `template.MAX_FACTORS` must agree.
-
-    The template is what a reader gets when the model's body fails this check, so
-    a template allowed to emit six rows against a validator that refuses six is a
-    service whose two paths disagree about what a body is — which is exactly the
-    drift spec §8 forbids. Compared rather than pinned twice, so moving one
-    without the other fails here.
-    """
-    from explainer.template import MAX_FACTORS as TEMPLATE_MAX
-
-    assert MAX_FACTORS == TEMPLATE_MAX == 5, (MAX_FACTORS, TEMPLATE_MAX)
