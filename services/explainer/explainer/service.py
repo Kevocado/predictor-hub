@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from urllib.parse import quote
 from datetime import datetime, timezone
 
@@ -17,14 +18,13 @@ from pydantic import ValidationError
 
 from .cache import Cache
 from .config import SERVED_SPORTS
-from .contract import (as_dict, band_for, clean_verdict, market_shape, pick_for, pick_prob,
-                       resolve_factors)
+from .contract import band_for, market_shape, pick_for, pick_prob
 from .facts import Facts, PickTiming, render
 from .ledger import Ledger
 from .llm import LLMError, complete
 from .news import headlines
 from .prompts import messages
-from .template import MAX_FACTORS, _matchup_factors, explain_from_template, minimal
+from .template import explain_from_template, minimal
 from .validate import validate
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,8 @@ logger = logging.getLogger(__name__)
 TEMPLATE_RETRY_SECONDS = 3 * 3600
 # Stored in the model column of a template row the model may retry later.
 UNAVAILABLE = "unavailable"
+# How long a fixture's matchup context is reused before the sport API is asked again.
+CONTEXT_TTL_SECONDS = 300
 
 
 class NotFound(Exception):
@@ -65,51 +67,16 @@ def news_fingerprint(news: list[dict]) -> str:
 
 
 def _clean(body: dict, facts) -> dict:
-    """Coerce a model body to the v2 shape, resolve it against the facts, and
-    refuse a body that is not one.
+    """Coerce a model body to the v9 shape: a verdict and a read, no factors.
 
-    The cache key covers `prompt_version`, so a v1 row cannot reach here. Asserting
-    anyway: a reused version must fail loudly rather than render an empty panel,
-    and this is the only place that can notice. A missing `verdict` means a shape
-    we do not understand, not a shape we can render.
-
-    **`resolve_factors` is called here, and it was not called at all before the
-    matchup redesign.** It existed, the validator's comment said "resolve_factors
-    already dropped it on the way in", and no production path called it — so the
-    model path's factors reached the panel with whatever keys the model wrote, and
-    an unknown key was caught only because `validate` rejects the whole body and
-    the reader got the template instead. Two things follow, and both are why this
-    call is here rather than left to a later reader:
-
-    * the model path needs `slot`, and `resolve_factors` is what stamps it (the
-      template stamps its own, from the same `slot_for`). A model row with no
-      slot would render in the `context` group whatever its direction said.
-    * the comment in `validate.py` about keys having been dropped on the way in
-      is now true, which it was not. Without the drop, `matchup:<id>` rows would
-      reach the panel from the model path with no check that the facts carry that
-      duel at all.
-
-    The facts go in as a dict so the resolver's `as_dict` normalises the shape.
+    The cache key covers `prompt_version`, so an older row cannot reach here.
+    A body without a string `verdict` and `read` is a shape we do not
+    understand, not one we can render. `factors` stays in the response as an
+    empty list so an older panel renders the verdict and nothing else.
     """
-    if not isinstance(body.get("verdict"), str) or not isinstance(body.get("factors"), list):
-        raise ValueError(f"cached body is not a v2 verdict: {sorted(body)}")
-    cleaned = clean_verdict(body)
-    facts_d = as_dict(facts)
-    factors = resolve_factors(cleaned, facts_d)
-    if not any(str(f.get("key", "")).startswith("matchup:") for f in factors):
-        # The prompt lets the model skip a duel whose toward_pick is null, so the rank
-        # rows would vanish on exactly the games the code could not direct. They are
-        # facts, not prose: backfill the template's rows, trimming non-matchup context
-        # rows (last first) to stay inside the cap.
-        extra = resolve_factors({"factors": _matchup_factors(facts_d)}, facts_d)
-        factors = factors + extra
-        for i in range(len(factors) - 1, -1, -1):
-            if len(factors) <= MAX_FACTORS:
-                break
-            if factors[i].get("slot") == "context" and not str(factors[i].get("key", "")).startswith("matchup:"):
-                del factors[i]
-    return {**cleaned, "factors": factors}
-
+    if not isinstance(body.get("verdict"), str) or not isinstance(body.get("read"), str):
+        raise ValueError(f"model body is not a v9 verdict: {sorted(body)}")
+    return {"verdict": body["verdict"].strip(), "read": body["read"].strip(), "factors": []}
 
 
 class Explainer:
@@ -128,6 +95,7 @@ class Explainer:
         # failure of each kind would have thrown, degraded the whole response,
         # and left no counter at all. A Counter reads a missing key as zero.
         self.failures: Counter[str] = Counter()
+        self._context_cache: dict[tuple[str, str], tuple[float, dict]] = {}
 
     async def _facts(self, sport: str, id: str) -> Facts:
         base = self.settings.sport_api.get(sport)
@@ -190,6 +158,25 @@ class Explainer:
             return True
         age = (datetime.now(timezone.utc) - datetime.fromisoformat(row["created_at"])).total_seconds()
         return age < TEMPLATE_RETRY_SECONDS
+
+    async def context(self, sport: str, id: str) -> dict:
+        """The matchup context of one fixture, for the always-visible Matchup section.
+
+        No model call, no ledger spend, no news fetch: the facts are fetched the
+        same way `explain` does (so the same NotFound/Upstream sanitisation) and
+        only the three tactical lists are returned, absent keys omitted. Cached
+        briefly in memory so a page of fixtures does not hammer the sport API.
+        """
+        if sport not in SERVED_SPORTS:
+            raise NotFound(f"{sport} is not served")
+        key = (sport, id)
+        hit = self._context_cache.get(key)
+        if hit and time.monotonic() - hit[0] < CONTEXT_TTL_SECONDS:
+            return hit[1]
+        ctx = (await self._facts(sport, id)).context or {}
+        out = {k: ctx[k] for k in ("matchups", "form_rows", "player_context") if ctx.get(k)}
+        self._context_cache[key] = (time.monotonic(), out)
+        return out
 
     async def explain(self, sport: str, id: str) -> dict:
         if sport not in SERVED_SPORTS:
@@ -271,7 +258,7 @@ class Explainer:
                 reason = ""  # the model answered but not honestly enough: don't pay again
                 logger.info("model %s output rejected: %s", model, "; ".join(problems)[:300])
         try:
-            body = explain_from_template(facts.model_dump())
+            body = {**explain_from_template(facts.model_dump()), "factors": []}
         except Exception:
             logger.exception("template failed")
             body = minimal(facts.model_dump())

@@ -137,25 +137,25 @@ def test_the_prompt_does_not_permit_what_the_validator_discards():
     that sets the model up to fail is a bug in the prompt even when the
     validator is right.
     """
-    rule8 = [r for r in SYSTEM.split("\n") if r.strip().startswith("8.")]
-    assert rule8, "rule 8 is missing from the frame"
+    rule8 = [r for r in SYSTEM.split("\n") if r.strip().startswith("7.")]
+    assert rule8, "the market rule is missing from the frame"
     text = rule8[0].lower()
     assert "quoted line" in text, (
-        "rule 8 does not mention a quoted line, so it still reads as 'present in "
+        "the market rule does not mention a quoted line, so it still reads as 'present in "
         "FACTS is enough' — which the validator disagrees with"
     )
     # And the frame must not tell the model a present-but-unquoted market is fine.
     assert "unless that market is in facts" not in text, (
-        "rule 8 still invites naming any market present in FACTS"
+        "the market rule still invites naming any market present in FACTS"
     )
 
 
 def test_the_prompt_states_the_consequence_of_getting_it_wrong():
     """Not a style point. A model told a rule with no consequence cannot
     calibrate against it, and the observable result is discarded answers."""
-    rule8 = [r for r in SYSTEM.split("\n") if r.strip().startswith("8.")]
+    rule8 = [r for r in SYSTEM.split("\n") if r.strip().startswith("7.")]
     assert "discarded" in rule8[0].lower(), (
-        "rule 8 does not say the answer is discarded, so the model has no way to "
+        "the market rule does not say the answer is discarded, so the model has no way to "
         "tell which phrasings survive"
     )
 

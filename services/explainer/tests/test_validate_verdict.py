@@ -29,7 +29,7 @@ the shape puts it, or it silently stops running.
 """
 import json
 
-from explainer.validate import validate
+from conftest import rule_validate as validate
 
 FACTS = {
     "sport": "nfl", "id": "g1", "title": "Chiefs at Ravens",

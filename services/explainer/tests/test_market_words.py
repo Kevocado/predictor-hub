@@ -36,8 +36,9 @@ import pytest
 
 from explainer.contract import market_keys
 from explainer.validate import (
-    MARKET_WORDS, _ATTRIBUTION_RE, _market_problems, _named_markets, validate,
+    MARKET_WORDS, _ATTRIBUTION_RE, _market_problems, _named_markets,
 )
+from conftest import rule_validate as validate
 
 # --- the facts, as the deployed service received them -----------------------------
 # NBA 401909903. `line` is the model's own wording; there is no `market_line`,
@@ -113,7 +114,7 @@ def test_validate_itself_rejects_the_live_body_end_to_end():
         "band": "moderate",
         "factors": [
             {"key": "moneyline", "direction": "up", "headline": "Home edge",
-             "text": "Model gives BOS a 65% chance to win."},
+             "text": "Model gives BOS the better chance to win."},
             {"key": "context", "direction": "neutral", "headline": "Record",
              "text": "The market line of BOS by 1.9 sits very close to the model's "
                      "calculated margin of about 1.9 points."},
@@ -150,9 +151,9 @@ def test_validate_still_accepts_an_honest_body_through_the_same_path():
         "band": "moderate",
         "factors": [
             {"key": "moneyline", "direction": "up", "headline": "Home edge",
-             "text": "Model gives BOS a 65% chance to win."},
+             "text": "Model gives BOS the better chance to win."},
             {"key": "spread", "direction": "neutral", "headline": "Line",
-             "text": "The market line of BOS by 2.0 is near the model's margin."},
+             "text": "The market line is near the model's margin."},
         ],
         "source": "llm", "model": "m", "generated_at": "2026-09-29T18:19:23Z",
         "sport": "nba", "pick_timing": "pre_kickoff",
@@ -240,17 +241,6 @@ def test_record_and_context_are_not_quoted_markets():
     exclusion, "the record" reads as the total and honest prose is rejected."""
     text = "The record argues against a bet on this one."
     assert _market_problems(PL_FACTS, text) == []
-
-
-def test_a_market_named_in_a_factor_key_is_not_prose_and_is_not_checked():
-    """The key is the contract's business, not this guard's.
-
-    A body whose factor `key` is a market PL does not carry is caught by
-    `validate`'s key rule. Re-reporting it here would double-count one fault.
-    """
-    out = body("Arsenal are the pick.", "The total goals figure is tight.")
-    out["factors"][0]["key"] = "spread"
-    assert "market" not in validate(out, json.dumps(PL_FACTS), "[]")[0]
 
 
 # --- the word mapping itself ------------------------------------------------------

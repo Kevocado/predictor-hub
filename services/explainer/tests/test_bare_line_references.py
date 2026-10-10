@@ -58,7 +58,7 @@ def test_the_live_sentence_is_caught_through_validate():
     """
     import json
 
-    from explainer.validate import validate
+    from conftest import rule_validate as validate
 
     out = {
         "verdict": "Boston are favoured here.",

@@ -1,7 +1,7 @@
 import json
 
 from explainer.template import explain_from_template
-from explainer.validate import validate
+from conftest import rule_validate as validate
 
 FACTS = {"title": "Chiefs at Ravens", "pick": {"label": "BAL", "prob": 0.62}, "pick_timing": "pre_kickoff",
          "markets": [{"market": "moneyline", "model": {"BAL": 0.62, "KC": 0.38}},

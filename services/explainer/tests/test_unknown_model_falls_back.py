@@ -65,7 +65,7 @@ async def test_both_models_gone_is_a_rendered_panel_not_an_error(tmp_path, no_ne
     assert llm.call_count == 2, "the fallback was skipped"
     assert out["source"] == "template"
     assert out["verdict"], "a template panel with no verdict renders as an empty box"
-    assert out["factors"], "a template panel with no factors renders as an empty box"
+    assert out["factors"] == [] and isinstance(out["read"], str), "the v9 panel is verdict + read, no factor list"
     assert out["band"] in ("leaning", "moderate", "strong"), "a panel with no band cannot show a confidence"
     # _answer() blanks the model for a template row, so the panel's footer
     # cannot read "AI summary by <withdrawn model>".

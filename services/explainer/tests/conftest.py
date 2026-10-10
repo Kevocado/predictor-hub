@@ -27,20 +27,26 @@ FACTS = {"sport": "nfl", "id": "g1", "title": "Chiefs at Ravens", "starts_at": "
 # The numbers are 62%, 3.4 and -2.5 from `pick.prob`, `markets[0].model_margin`
 # and `markets[0].line`, and 41/66 from the record. Nothing here is invented,
 # which is the property `test_validate.py` leans on.
-_VERDICT = "Baltimore is the pick at 62%, though the line asks more than the model does."
+_VERDICT = "Baltimore is the pick."
 
-_SPREAD = ("It rates Baltimore 3.4 points better than Kansas City, a little more than the -2.5 line "
-           "the market is offering. That is a small disagreement.")
-_RECORD = ("Its picks made before kickoff are 41/66 this season, so read the number as a lean rather "
-           "than a call that cannot miss.")
-_CONTEXT = ("Kansas City is good enough to win this one, so the gap is a judgement rather than a "
-            "certainty.")
+_READ = ("Kansas City's pass rush is the unit to watch against Baltimore's offensive line. "
+         "The matchup is close enough that either side could set the tone.")
 
-GOOD = {"verdict": _VERDICT, "factors": [
-    {"key": "spread", "direction": "up", "headline": "The model likes Baltimore", "text": _SPREAD},
-    {"key": "record", "direction": "up", "headline": "Its record so far", "text": _RECORD},
-    {"key": "context", "direction": "down", "headline": "And the other way", "text": _CONTEXT},
-]}
+GOOD = {"verdict": _VERDICT, "read": _READ, "factors": []}
+
+
+def rule_validate(output, facts_json, news_json):
+    """`validate` for tests of the NUMBER / MARKET / VERDICT rules, which still
+    run over prose. Those tests build v2-shaped bodies (verdict + factors); the
+    factor text is folded into one read and the read-length rules are dropped,
+    since `test_validate.py` owns the shape. A body that is already `{verdict,
+    read}` passes straight through.
+    """
+    from explainer.validate import validate
+    if isinstance(output, dict) and "read" not in output and isinstance(output.get("factors"), list):
+        texts = [f"{f.get('headline', '')} {f.get('text', '')}" for f in output["factors"] if isinstance(f, dict)]
+        output = {"verdict": output.get("verdict"), "read": " ".join(texts)}
+    return [p for p in validate(output, facts_json, news_json) if not p.startswith("read ")]
 
 
 def facts(**over):

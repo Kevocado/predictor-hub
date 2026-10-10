@@ -76,7 +76,7 @@ def _directions(v) -> dict[str, str]:
 @pytest.mark.parametrize("facts", ALL, ids=str)
 def test_the_template_emits_the_v2_shape(facts):
     out = explain_from_template(facts)
-    assert set(out) == {"verdict", "band", "factors"}, f"wrong shape: {sorted(out)}"
+    assert set(out) == {"verdict", "band", "read", "factors"}, f"wrong shape: {sorted(out)}"
     assert out["band"] in ("leaning", "moderate", "strong")
     # `MAX_FACTORS` rather than a literal, because this file's job is to check the
     # SHAPE of every row and the cap moved from 4 to 5 with the matchup redesign.
@@ -319,17 +319,6 @@ def test_a_label_without_a_probability_gives_neutral_where_it_names_a_side():
     assert _directions(out)["The line"] == NEUTRAL, _directions(out)
 
 
-def test_minimal_claims_nothing_about_a_pick():
-    """The last resort has no pick either, and never did.
-
-    "Not ready" used to be "down" and "Try again" "up", so a reader whose
-    explanation failed outright was told the service had a case against the pick
-    and a case for it.
-    """
-    out = minimal({"title": "Chiefs at Ravens"})
-    assert set(_directions(out).values()) == {NEUTRAL}, _directions(out)
-
-
 def test_no_derived_percentage_is_stated():
     """record is hits/settled; the proportion is the bar's width, not a figure.
 
@@ -353,16 +342,7 @@ def test_the_template_never_raises_on_a_bare_bundle():
         assert 2 <= len(out["factors"]) <= 4, f"{facts} gave {len(out['factors'])} factors"
 
 
-def test_minimal_is_also_v2():
+def test_minimal_is_also_v9():
     out = minimal({"title": "Chiefs at Ravens"})
-    assert set(out) == {"verdict", "band", "factors"}
-    assert 2 <= len(out["factors"]) <= 4
-    # Every factor must SURVIVE resolution against a bundle with no markets —
-    # not the other way round. `resolve_factors` keeps the pseudo-markets, so the
-    # check is that the count is unchanged. (The first draft of this assertion
-    # was `== []`, which asks for the factors to be *dropped*; it failed for the
-    # right reason and the assertion was backwards.)
-    assert len(resolve_factors(out, {"markets": []})) == len(out["factors"]), (
-        "the absolute fallback names a market, so the panel would render a row with "
-        "nothing in it — this runs precisely when things are broken"
-    )
+    assert set(out) == {"verdict", "band", "read", "factors"}
+    assert out["read"] and out["factors"] == []

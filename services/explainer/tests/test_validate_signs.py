@@ -30,7 +30,7 @@ import json
 
 import pytest
 
-from explainer.validate import validate
+from conftest import rule_validate as validate
 
 # The shape §5c gives NFL: a margin and a line, which is exactly the pair where
 # the two sign rules differ.

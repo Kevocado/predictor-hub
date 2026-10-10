@@ -10,7 +10,7 @@ from explainer import news
 from explainer.contract import SLOTS
 from explainer.llm import OPENROUTER_URL
 from explainer.template import explain_from_template
-from explainer.validate import validate
+from conftest import rule_validate as validate
 from conftest import make, reply
 
 FACTS_URL = "http://nfl.test/api/facts/g1"
@@ -34,7 +34,7 @@ async def test_a_template_crash_still_answers_and_frees_the_lock(tmp_path, no_ne
     monkeypatch.setattr("explainer.service.explain_from_template", lambda f: 1 / 0)
     ex = make(tmp_path)
     out = await ex.explain("nfl", "g1")
-    assert out["source"] == "template" and out["factors"]
+    assert out["source"] == "template" and out["read"] and out["factors"] == []
     assert ex._locks == {}
 
 
@@ -138,32 +138,20 @@ def test_integer_cannot_round_a_half_point_line_or_a_probability():
     assert validate(good(verdict="Total near 48 at 62%"), fj, "[]") == []
 
 
-async def test_answer_coerces_junk_factor_fields_and_drops_the_rest(tmp_path, no_news):
-    """v2 has no `numbers_used` and no section `title`, so the coercion that
-    remains is on the factor fields — and a body carrying extra keys must not
-    have them echoed into the response, because the panel renders what it is
-    given."""
+async def test_a_model_body_with_extra_keys_is_reduced_to_verdict_and_read(tmp_path, no_news):
+    """The panel renders what it is given, so a model that invents a field (a
+    `factors` list, a `band`, `numbers_used`) must not have it echoed."""
     no_news.get(FACTS_URL).mock(return_value=httpx.Response(200, json=facts()))
     g = good()
-    # No digits in the junk: `validate()` runs BEFORE `clean_verdict()`, so a
-    # junk value that reads as a number is rejected as an invented figure and
-    # never reaches the coercion. The first version of this test used {"nope": 1}
-    # and passed for the wrong reason — it was testing the number rule.
-    g["factors"][0]["headline"] = ["Pick"]
-    g["factors"][0]["text"] = {"nope": "x"}
-    g["factors"][0]["numbers_used"] = ["62%"]
+    g["numbers_used"] = ["62%"]
+    g["factors"] = [{"key": "spread", "direction": "up", "headline": "x", "text": "y"}]
+    g["band"] = "leaning"
     no_news.post(OPENROUTER_URL).mock(return_value=reply(g))
     out = await make(tmp_path).explain("nfl", "g1")
     assert out["source"] == "llm"
-    for f in out["factors"]:
-        # `slot` is the one key the service ADDS rather than drops: it is derived
-        # from the facts by `resolve_factors`, and the panel groups rows by it.
-        # Everything else in the model body is still stripped, which is what this
-        # test is about -- a model that invents a field must not have it echoed.
-        assert set(f) == {"key", "direction", "headline", "text", "slot"}, \
-            f"leaked keys: {sorted(f)}"
-        assert isinstance(f["headline"], str) and isinstance(f["text"], str)
-        assert f["slot"] in SLOTS
+    assert out["factors"] == [] and "numbers_used" not in out
+    assert out["read"] == g["read"]
+    assert out["band"] == "strong"  # computed from the 62% pick, not the model's "leaning"
 
 
 async def test_id_is_quoted_into_the_sport_api_url(tmp_path, no_news):

@@ -28,7 +28,7 @@ async def test_happy_path_is_llm_then_a_cache_hit(tmp_path, no_news):
     first = await ex.explain("nfl", "g1")
     second = await ex.explain("nfl", "g1")
     assert first["source"] == "llm" and first["model"] == "m1"
-    assert first["verdict"] and [f["key"] for f in first["factors"]]
+    assert first["verdict"] and first["read"] and first["factors"] == []
     assert second == first and llm.call_count == 1
     assert set(first) >= {"sport", "id", "verdict", "factors", "band", "source", "model",
                           "generated_at", "prompt_version", "pick_timing"}
@@ -69,7 +69,7 @@ async def test_both_invalid_or_erroring_means_template(tmp_path, no_news):
     llm = no_news.post(OPENROUTER_URL).mock(side_effect=[reply("not json"), httpx.Response(404, json={"error": "no such model"})])
     out = await make(tmp_path).explain("nfl", "g1")
     assert out["source"] == "template" and llm.call_count == 2
-    assert out["verdict"] and out["factors"] and out["band"]
+    assert out["verdict"] and out["factors"] == [] and "read" in out and out["band"]
 
 
 async def test_ledger_at_cap_means_template_and_no_calls(tmp_path, no_news):
@@ -107,9 +107,8 @@ async def test_new_facts_regenerate(tmp_path, no_news):
     ex = make(tmp_path)
     await ex.explain("nfl", "g1")
     second = await ex.explain("nfl", "g1")
-    assert llm.call_count == 3  # 62% text is invalid against 64% facts: retry, then template
-    assert second["source"] == "template" and "64%" in " ".join(
-        [second["verdict"]] + [f["text"] for f in second["factors"]])
+    assert llm.call_count == 2  # changed facts are a new cache key: a second generation
+    assert second["source"] == "llm"
     assert second["band"] == "strong", f"band={second['band']!r}"
 
 
@@ -128,8 +127,8 @@ async def test_rebuilt_pick_without_disclosure_is_rejected(tmp_path, no_news):
     no_news.post(OPENROUTER_URL).mock(return_value=reply(good()))
     out = await make(tmp_path).explain("nfl", "g1")
     assert out["source"] == "template"
-    assert "rebuilt after kickoff" in " ".join(
-        [out["verdict"]] + [f["text"] for f in out["factors"]])
+    # The disclosure is the panel's own badge, driven by this field.
+    assert out["pick_timing"] == "rebuilt"
 
 
 async def test_response_carries_the_pick_timing_so_the_panel_can_say_so(tmp_path, no_news):
@@ -264,11 +263,7 @@ async def test_a_confident_model_cannot_promote_a_52_percent_pick(tmp_path, no_n
     facts_52 = facts(pick={"label": "BAL", "prob": 0.52})
     no_news.get(FACTS_URL).mock(return_value=httpx.Response(200, json=facts_52))
     g = {"verdict": "Baltimore is the pick, though the line asks for more.",
-         "factors": [
-             {"key": "spread", "direction": "up", "headline": "The model likes Baltimore",
-              "text": "It rates Baltimore ahead, though the market is nearly level."},
-             {"key": "record", "direction": "up", "headline": "Its record so far",
-              "text": "Counted from picks made before the start."}],
+         "read": "Baltimore's pass rush is the unit to watch. Kansas City's line is the one it has to beat.",
          "band": "strong"}
     no_news.post(OPENROUTER_URL).mock(return_value=reply(g))
 

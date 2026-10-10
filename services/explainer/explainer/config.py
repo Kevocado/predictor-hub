@@ -139,7 +139,10 @@ class Settings(BaseSettings):
     #: `matchup:<id>` factor key and the two-to-five factor cap. A cached `v7` row
     #: carries no `slot` on any factor, so serving it after this change would put
     #: every row in the `context` group whatever its direction said.
-    prompt_version: str = "v8"
+    #: Bumped to `v9` for the matchup summary: the model now returns `{verdict,
+    #: read}` (no factors), so a cached `v8` row would serve the Edge/Risk/Price
+    #: shape under a frame that no longer asks for it.
+    prompt_version: str = "v9"
     sport_api_pl: str | None = None
     sport_api_f1: str | None = None
     sport_api_nfl: str | None = None
