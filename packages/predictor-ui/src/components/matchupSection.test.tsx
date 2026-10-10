@@ -12,33 +12,41 @@ const duel: MatchupRow = {
 const form = { id: "quali", subject: "Verstappen", label: "qualifying pace", value: "+0.12s", rank: 2, n: 20 };
 
 describe("MatchupBrief (the Matchup section)", () => {
-  it("draws a RankDuel per duel and plain rows for form, neutrally", () => {
-    render(<MatchupBrief matchups={[duel]} formRows={[form, { ...form, id: "t", label: "track history", rank: null, n: null }]} />);
+  it("draws a RankDuel per duel, neutrally", () => {
+    render(<MatchupBrief matchups={[duel]} />);
     expect(screen.getByRole("heading", { name: "Matchup" })).toBeTruthy();
     expect(screen.getAllByTestId("rank-duel")).toHaveLength(1);
-    expect(screen.getByTestId("form-quali").textContent).toContain("#2 of 20");
-    expect(screen.getByTestId("form-t").textContent).not.toContain("#");
     expect(document.body.textContent).not.toMatch(/advantage|favou?rs|edge|risk/i);
+  });
+
+  it("draws no form row, even when the payload carries F1's form rows", () => {
+    // F1's rows (driver form, qualifying pace, track history) are INPUT to the AI read,
+    // not panel content: eighteen of them buried the fixture the section exists to frame.
+    const rows = [form, { ...form, id: "t", label: "track history", rank: null, n: null }];
+    // A caller still passing the removed prop gets the duels and nothing else.
+    const stray = render(<MatchupBrief {...({ matchups: [duel], formRows: rows } as any)} />);
+    expect(stray.getAllByTestId("rank-duel")).toHaveLength(1);
+    expect(stray.container.textContent).not.toContain("Verstappen");
+    expect(stray.queryByText(/qualifying pace|track history/)).toBeNull();
   });
 
   it("renders nothing, no heading and no placeholder, when there is nothing to draw", () => {
     const { container } = render(<MatchupBrief />);
     expect(container.innerHTML).toBe("");
-    const bad = render(<MatchupBrief matchups={[{ ...duel, defender_rank: 40 }]} formRows={[{ ...form, value: "" }]} />);
+    const bad = render(<MatchupBrief matchups={[{ ...duel, defender_rank: 40 }]} />);
     expect(bad.container.innerHTML).toBe("");
-    const junk = render(<MatchupBrief matchups={"x" as any} formRows={{} as any} />);
+    const junk = render(<MatchupBrief matchups={"x" as any} />);
     expect(junk.container.innerHTML).toBe("");
   });
 
-  it("drops a row whose text fields are not strings instead of throwing when React renders them", () => {
+  it("drops a duel whose text fields are not strings instead of throwing when React renders them", () => {
     // A truthy object passes a bare `!!x` check and then crashes the whole fixture view on render.
-    const badForm = [{ ...form, value: {} }, { ...form, id: "x", subject: [] }, { ...form, id: 7 }] as any;
     const badDuel = [{ ...duel, attacker: {} }, { ...duel, id: "y", stat: 3 }, { ...duel, id: "" }] as any;
-    const { container } = render(<MatchupBrief matchups={badDuel} formRows={badForm} />);
+    const { container } = render(<MatchupBrief matchups={badDuel} />);
     expect(container.innerHTML).toBe("");
     // and one bad row does not take the good one down with it
-    const mixed = render(<MatchupBrief matchups={[...badDuel, duel]} formRows={[...badForm, form]} />);
-    expect(mixed.getAllByRole("listitem")).toHaveLength(2);
+    const mixed = render(<MatchupBrief matchups={[...badDuel, duel]} />);
+    expect(mixed.getAllByRole("listitem")).toHaveLength(1);
   });
 });
 
@@ -71,6 +79,17 @@ describe("FixtureExplainer", () => {
   it("shows the Matchup section before the AI is asked for", () => {
     render(<FixtureExplainer {...props} bundle={bundle} />);
     expect(screen.getByTestId("matchup-section")).toBeTruthy();
+  });
+
+  it("draws the bundle's duels but none of its form rows", () => {
+    // F1's bundle carries only form rows; nothing is drawn, and the section is absent.
+    render(<FixtureExplainer {...props} bundle={{ ...bundle, context: { form_rows: [form] } }} />);
+    expect(screen.queryByTestId("matchup-section")).toBeNull();
+    expect(document.body.textContent).not.toContain("Verstappen");
+    // a bundle with both draws the duel alone
+    render(<FixtureExplainer {...props} bundle={bundle} />);
+    expect(screen.getAllByTestId("rank-duel")).toHaveLength(1);
+    expect(document.body.textContent).not.toContain("Verstappen");
   });
 
   it("shows no Matchup section for a bundle without context", () => {
@@ -135,13 +154,13 @@ describe("FixtureExplainer: switching fixtures never shows the previous fixture'
   const props = { sport: "nfl", state: { kind: "idle" } as any, request: async () => ({}) };
   const A = { id: "A", home_team: "BUF" };
 
-  it("B's bundle has matchups but no form_rows: A's loaded form_rows must not appear", async () => {
-    const load = vi.fn(async () => ({ form_rows: [form] }));
+  it("B's bundle has its own matchups: A's loaded context must not appear", async () => {
+    const load = vi.fn(async () => ({ matchups: [{ ...duel, id: "a-duel" }] }));
     const { rerender } = render(<FixtureExplainer {...props} bundle={A} loadContext={load} />);
-    expect(await screen.findByTestId("form-quali")).toBeTruthy();
+    expect(await screen.findByTestId("matchup-a-duel")).toBeTruthy();
     rerender(<FixtureExplainer {...props} bundle={{ id: "B", context: { matchups: [duel] } }} loadContext={load} />);
-    expect(screen.getByTestId("matchup-section")).toBeTruthy();
-    expect(screen.queryByTestId("form-quali")).toBeNull();
+    expect(screen.getByTestId(`matchup-${duel.id}`)).toBeTruthy();
+    expect(screen.queryByTestId("matchup-a-duel")).toBeNull();
   });
 
   it("a late response for A after switching to B is ignored", async () => {
@@ -150,7 +169,7 @@ describe("FixtureExplainer: switching fixtures never shows the previous fixture'
     const { rerender } = render(<FixtureExplainer {...props} bundle={A} loadContext={load} />);
     rerender(<FixtureExplainer {...props} bundle={{ id: "B" }} loadContext={load} />);
     await waitFor(() => expect(load).toHaveBeenCalledWith("B"));
-    resolveA({ matchups: [duel], form_rows: [form] });
+    resolveA({ matchups: [{ ...duel, id: "a-duel" }] });
     await new Promise((r) => setTimeout(r, 20));
     expect(screen.queryByTestId("matchup-section")).toBeNull();
   });
