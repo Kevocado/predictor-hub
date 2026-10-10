@@ -166,9 +166,9 @@ describe("BoxScore — table semantics", () => {
     expect(describe).toHaveBeenCalled();
   });
 
-  it("uses a colgroup header for each position", () => {
+  it("labels each position with a rowgroup header (pinned left, so it cannot span the stat columns)", () => {
     render(<BoxScore columns={columns} groups={[{ position: "QB", rows: [row()] }]} />);
-    expect(screen.getByRole("columnheader", { name: "QB" }).getAttribute("scope")).toBe("colgroup");
+    expect(screen.getByText("QB").closest("th")!.getAttribute("scope")).toBe("rowgroup");
   });
 });
 
