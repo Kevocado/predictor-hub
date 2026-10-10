@@ -12,12 +12,15 @@ const duel: MatchupRow = {
 const form = { id: "quali", subject: "Verstappen", label: "qualifying pace", value: "+0.12s", rank: 2, n: 20 };
 
 describe("MatchupBrief (the Matchup section)", () => {
-  it("draws a RankDuel per duel and plain rows for form, neutrally", () => {
+  it("draws a MatchupTable per duel and coloured rank boxes for form, neutrally", () => {
     render(<MatchupBrief matchups={[duel]} formRows={[form, { ...form, id: "t", label: "track history", rank: null, n: null }]} />);
     expect(screen.getByRole("heading", { name: "Matchup" })).toBeTruthy();
-    expect(screen.getAllByTestId("rank-duel")).toHaveLength(1);
-    expect(screen.getByTestId("form-quali").textContent).toContain("#2 of 20");
-    expect(screen.getByTestId("form-t").textContent).not.toContain("#");
+    // MatchupTable renders rank boxes with data-testid="rank-box"
+    expect(screen.getAllByTestId("rank-box")).toHaveLength(2); // home + away rank boxes
+    // Form row with rank shows coloured box with the rank number
+    expect(screen.getByTestId("form-quali").querySelector(".pr-rank-box")).toHaveTextContent("2");
+    // Form row without rank shows no rank box
+    expect(screen.getByTestId("form-t").querySelector(".pr-rank-box")).toBeNull();
     expect(document.body.textContent).not.toMatch(/advantage|favou?rs|edge|risk/i);
   });
 
@@ -38,7 +41,9 @@ describe("MatchupBrief (the Matchup section)", () => {
     expect(container.innerHTML).toBe("");
     // and one bad row does not take the good one down with it
     const mixed = render(<MatchupBrief matchups={[...badDuel, duel]} formRows={[...badForm, form]} />);
-    expect(mixed.getAllByRole("listitem")).toHaveLength(2);
+    // Table + 1 form row = 2 data rows in form list + table is not a listitem
+    expect(mixed.getAllByTestId("rank-box")).toHaveLength(2);
+    expect(mixed.getAllByRole("listitem")).toHaveLength(1); // only the good form row
   });
 });
 

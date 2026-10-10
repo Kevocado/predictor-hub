@@ -76,6 +76,35 @@ const MATCHUP_LONG_MATCHUPS: MatchupRow[] = [
   { id: "b", attacker: "San Francisco 49ers", defender: "Dallas Cowboys", stat: "passing offence", foil: "pass defence", attacker_rank: 2, defender_rank: 31, n_teams: 32, toward_pick: null },
   { id: "c", attacker: "Dallas Cowboys", defender: "San Francisco 49ers", stat: "rushing offence", foil: "run defence", attacker_rank: 5, defender_rank: 18, n_teams: 32, toward_pick: null },
 ];
+
+// PL live rows (5 rows matching the pivot test data)
+const PL_LIVE_MATCHUPS: MatchupRow[] = [
+  { id: "goals_scored_per_match:home", attacker: "Arsenal", defender: "Chelsea", stat: "goals scored per match", foil: "goals conceded per match", attacker_rank: 3, defender_rank: 12, n_teams: 20, toward_pick: true },
+  { id: "goals_conceded_per_match:away", attacker: "Chelsea", defender: "Arsenal", stat: "goals conceded per match", foil: "goals scored per match", attacker_rank: 5, defender_rank: 2, n_teams: 20, toward_pick: false },
+  { id: "shots_on_target_per_match:home", attacker: "Arsenal", defender: "Chelsea", stat: "shots on target per match", foil: "shots on target faced per match", attacker_rank: 4, defender_rank: 15, n_teams: 20, toward_pick: null },
+  { id: "shots_on_target_faced_per_match:away", attacker: "Chelsea", defender: "Arsenal", stat: "shots on target faced per match", foil: "shots on target per match", attacker_rank: 8, defender_rank: 6, n_teams: 20, toward_pick: null },
+  { id: "possession_pct:home", attacker: "Arsenal", defender: "Chelsea", stat: "possession %", foil: "possession %", attacker_rank: 2, defender_rank: 10, n_teams: 20, toward_pick: true },
+];
+
+// NFL rows (3 rows)
+const NFL_MATCHUPS: MatchupRow[] = [
+  { id: "pass_off_vs_pass_def:home", attacker: "Bills", defender: "Jets", stat: "passing offence", foil: "pass defence", attacker_rank: 3, defender_rank: 28, n_teams: 32, toward_pick: true },
+  { id: "rush_off_vs_rush_def:away", attacker: "Jets", defender: "Bills", stat: "rushing offence", foil: "run defence", attacker_rank: 4, defender_rank: 19, n_teams: 32, toward_pick: false },
+  { id: "turnover_diff:home", attacker: "Bills", defender: "Jets", stat: "turnover diff", foil: "turnover diff", attacker_rank: 5, defender_rank: 20, n_teams: 32, toward_pick: null },
+];
+
+// One-sided: only :home rows
+const ONE_SIDED_MATCHUPS: MatchupRow[] = [
+  { id: "goals_scored_per_match:home", attacker: "Arsenal", defender: "Chelsea", stat: "goals scored per match", foil: "goals conceded per match", attacker_rank: 3, defender_rank: 12, n_teams: 20, toward_pick: true },
+];
+
+// Malformed rows mixed with valid
+const MALFORMED_MATCHUPS: MatchupRow[] = [
+  { id: "valid:home", attacker: "Arsenal", defender: "Chelsea", stat: "goals scored per match", foil: "goals conceded per match", attacker_rank: 3, defender_rank: 12, n_teams: 20, toward_pick: true },
+  { id: "", attacker: "Arsenal", defender: "Chelsea", stat: "goals scored per match", foil: "goals conceded per match", attacker_rank: 3, defender_rank: 12, n_teams: 20, toward_pick: true },
+  { id: "bad_rank", attacker: "Arsenal", defender: "Chelsea", stat: "goals scored per match", foil: "goals conceded per match", attacker_rank: 25, defender_rank: 12, n_teams: 20, toward_pick: true },
+];
+
 const F1_FORM_ROWS: FormRow[] = [
   { id: "quali", subject: "Norris", label: "qualifying pace", value: "+0.08s to pole", rank: 2, n: 20 },
   { id: "track", subject: "Norris", label: "track history", value: "2 podiums in 4", rank: null, n: null },
@@ -809,6 +838,31 @@ function App() {
       <Case id="matchup-long-names" title="16 · Matchup section — long team names"
         note="Words truncate, bars don't shift.">
         <MatchupBrief matchups={MATCHUP_LONG_MATCHUPS} />
+      </Case>
+
+      {/* --- NEW: MatchupTable harness cases ------------------------------------------ */}
+      <Case id="matchup-pl-live" title="17 · MatchupTable — PL live rows (5 rows)"
+        note="Five live PL rows: goals scored/conceded, shots on target (for/against), possession. Home left, away right, three discrete colour tiers.">
+        <div data-sport="pl">
+          <MatchupBrief matchups={PL_LIVE_MATCHUPS} />
+        </div>
+      </Case>
+
+      <Case id="matchup-nfl" title="18 · MatchupTable — NFL (3 rows)"
+        note="Three NFL rows: pass offence vs pass defence, rush offence vs run defence, turnover diff.">
+        <div data-sport="nfl">
+          <MatchupBrief matchups={NFL_MATCHUPS} />
+        </div>
+      </Case>
+
+      <Case id="matchup-one-sided" title="19 · MatchupTable — one-sided (only :home)"
+        note="Only home-side rows present; missing away ranks show em dash.">
+        <MatchupBrief matchups={ONE_SIDED_MATCHUPS} />
+      </Case>
+
+      <Case id="matchup-malformed" title="20 · MatchupTable — malformed rows dropped"
+        note="Empty id, rank out of range, and valid row mixed. Only valid row renders.">
+        <MatchupBrief matchups={MALFORMED_MATCHUPS} />
       </Case>
 
       {/* --- NEW: WeatherChip ------------------------------------------------------- */}
