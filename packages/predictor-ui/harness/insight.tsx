@@ -816,6 +816,23 @@ function App() {
         <MatchupBrief factors={MATCHUP_NO_MATCHUPS_FACTORS} matchups={[]} onSelect={() => {}} />
       </Case>
 
+      <Case id="matchup-neutral" title="17 · MatchupBrief — undirected duels (what production shows today)"
+        note="The lift gate has not proven any duel type yet, so both duels arrive neutral: a plain Matchup heading, the rank bars, and no Edge/Risk claim.">
+        <MatchupBrief
+          factors={[
+            { key: "matchup:pass_off_vs_pass_def:home", direction: "neutral", slot: "context",
+              headline: "Bills' #3 passing offence and Jets' #28 pass defence", text: "Bills rank 3 of 32 in passing offence; Jets rank 28 of 32 in pass defence." },
+            { key: "matchup:rush_off_vs_rush_def:away", direction: "neutral", slot: "context",
+              headline: "Jets' #19 rushing offence and Bills' #6 run defence", text: "Jets rank 19 of 32 in rushing offence; Bills rank 6 of 32 in run defence." },
+          ]}
+          matchups={[
+            { id: "pass_off_vs_pass_def:home", attacker: "Bills", defender: "Jets", stat: "passing offence", foil: "pass defence", attacker_rank: 3, defender_rank: 28, n_teams: 32, toward_pick: null },
+            { id: "rush_off_vs_rush_def:away", attacker: "Jets", defender: "Bills", stat: "rushing offence", foil: "run defence", attacker_rank: 19, defender_rank: 6, n_teams: 32, toward_pick: null },
+          ]}
+          onSelect={() => {}}
+        />
+      </Case>
+
       <Case id="matchup-long-names" title="16 · MatchupBrief — long team names"
         note="Team and stat names that stress the layout. Words truncate, bars don't shift.">
         <MatchupBrief factors={MATCHUP_LONG_FACTORS} matchups={MATCHUP_LONG_MATCHUPS} onSelect={() => {}} />

@@ -115,3 +115,31 @@ describe("MatchupBrief", () => {
       .toThrow(/matchup:b/);
   });
 });
+
+describe("MatchupBrief: undirected duels", () => {
+  const neutral = { ...duel, toward_pick: null };
+  const neutralFactor = {
+    key: "matchup:pass_off_vs_pass_def:home", direction: "neutral" as const, slot: "context" as const,
+    headline: "Bills' #3 passing offence and Jets' #28 pass defence", text: "t",
+  };
+
+  it("draws a duel the code did not direct under a plain Matchup heading, with the rank bars and no Edge/Risk", () => {
+    render(<MatchupBrief factors={[neutralFactor]} matchups={[{ ...neutral, id: "pass_off_vs_pass_def:home" }]} />);
+    expect(screen.getByRole("heading", { name: "Matchup" })).toBeInTheDocument();
+    expect(screen.getByTestId("rank-duel")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Edge" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Risk" })).toBeNull();
+  });
+
+  it("a context row that is not a known duel stays in the ordinary context list", () => {
+    render(<MatchupBrief factors={[{ key: "record", direction: "neutral", slot: "context", headline: "Record", text: "t" }]} matchups={[]} />);
+    expect(screen.queryByRole("heading", { name: "Matchup" })).toBeNull();
+    expect(screen.queryByTestId("rank-duel")).toBeNull();
+  });
+
+  it("still refuses a neutral duel whose headline does not state the ranks it draws", () => {
+    const bad = { ...neutralFactor, headline: "Bills have an edge in the air" };
+    expect(() => render(<MatchupBrief factors={[bad]} matchups={[{ ...neutral, id: "pass_off_vs_pass_def:home" }]} />)).toThrow(/headline/i);
+  });
+});
+
