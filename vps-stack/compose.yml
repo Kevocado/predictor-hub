@@ -56,6 +56,10 @@ services:
       # this feed; `vps-stack/tests/odds-env.test.mjs` now holds it.
       ODDS_API_KEY: ${ODDS_API_KEY:-}
       SPORTSBOOK_API_KEY: ${SPORTSBOOK_API_KEY:-}
+    volumes:
+      # Persist the sportsbook odds cache: without this every restart/redeploy
+      # cold-boots with an empty cache and burns a full RapidAPI re-pull.
+      - ./volumes/pl-cache:/app/data/cache
 
   f1:
     <<: *app
@@ -73,6 +77,9 @@ services:
     volumes:
       # Was the nba-tracking Azure Files share (see bin/pull-azure-volumes.sh).
       - ./volumes/nba-tracking:/app/data/tracking
+      # Persist the sportsbook odds cache: without this every restart/redeploy
+      # cold-boots with an empty cache and burns a full RapidAPI re-pull.
+      - ./volumes/nba-cache:/app/data/cache
 
   nfl:
     <<: *app
