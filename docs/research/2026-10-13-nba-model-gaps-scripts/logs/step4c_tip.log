@@ -1,0 +1,17 @@
+tip_off known for 1365 of 1365 frame games
+
+### I tip-off: rest in hours tip-to-tip (cap 4d) + afternoon start (replaces day-count rest cols)  (n=765)
+  win log_loss    0.6612   0.6634  +0.0022  [-0.0022,+0.0065]  n.s.
+  win brier       0.2342   0.2354  +0.0012  [-0.0010,+0.0032]  n.s.
+  win auc         0.6322   0.6232  -0.0090  [-0.0222,+0.0054]  n.s.
+  margin mae     13.2197  13.2168  -0.0028  [-0.0565,+0.0478]  n.s.
+  total mae      16.5488  16.6906  +0.1417  [+0.0405,+0.2416]  WORSE
+  cal gap 0.0578 -> 0.0789; auc_ok=False missing=['win log_loss', 'win brier', 'margin mae', 'total mae'] gap_ok=False => does NOT ship
+
+### I2 tip-off hours ADDED to the existing rest cols  (n=765)
+  win log_loss    0.6612   0.6647  +0.0035  [-0.0004,+0.0073]  n.s.
+  win brier       0.2342   0.2359  +0.0017  [-0.0002,+0.0036]  n.s.
+  win auc         0.6322   0.6205  -0.0117  [-0.0234,+0.0007]  n.s.
+  margin mae     13.2197  13.2242  +0.0045  [-0.0292,+0.0368]  n.s.
+  total mae      16.5488  16.7174  +0.1686  [+0.0754,+0.2656]  WORSE
+  cal gap 0.0578 -> 0.0398; auc_ok=False missing=['win log_loss', 'win brier', 'margin mae', 'total mae'] gap_ok=True => does NOT ship

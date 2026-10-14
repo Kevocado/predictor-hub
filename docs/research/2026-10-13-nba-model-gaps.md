@@ -1,6 +1,27 @@
 # NBA model gaps: which models are weakest, and what the data on disk could add
 
-Date 2026-10-13. Research only: nothing here merges or deploys. DRAFT, written section by section; sections marked PENDING are not done yet.
+Date 2026-10-13. Research only: nothing here merges or deploys. 
+
+## One-screen summary
+
+**Question:** which NBA models are worst, and can the data we already have improve them?
+
+**Worst first (all re-run 2026-10-13 on a cache rebuilt from the ESPN files, n = 765 out-of-fold games, one season):**
+
+1. **Total (O/U) model**: MAE 16.55, worse than a constant (training mean 16.37; fixed 230.2 gives 16.22, skill -2.0% [-3.5, -0.6]; season-to-date team totals 16.06, skill -3.1% [-5.0, -1.2]).
+2. **Player props, all four markets**: the XGBoost projection is worse than the player's own trailing-10 mean it is built from: threes -1.8% [-2.2, -1.3], points -0.8% [-1.1, -0.4], rebounds -0.6% [-1.0, -0.3], assists -0.3% [-0.7, +0.1] (not distinguishable). It does beat the league mean by 21 to 32%, so it is not broken, just no better than "what he averaged lately".
+3. **Win model**: beats the home-win-rate baseline (+3.8% log-loss skill [+1.8, +5.7]) but a plain Elo rating beats it by 0.063 log-loss [0.036, 0.089]. Cause: 5 of its 22 columns, including all three power-rating columns, are constant zero, so the model has no idea how good a team is.
+4. **Margin/spread**: the only clearly healthy model (+5.7% MAE skill [+3.8, +7.5] over the training mean).
+
+**Can they improve with data on disk? Yes, a lot, with the box scores we already have:**
+
+* Team model: adding causal Elo + opponent-adjusted ratings + rolling pace/efficiency + a lagged-availability proxy (arm HF) improves all five repo metrics with intervals excluding zero: win log-loss 0.6612 -> 0.5782, AUC 0.632 -> 0.754, margin MAE 13.22 -> 11.79, total MAE 16.55 -> 15.29. It passes `ship_decision` as written (gap 0.0578 -> 0.0550). **Caveat that matters:** I designed that combination after looking at ~15 arms on these same games, and the calibration clause is noise-dominated at n = 765, so this says "worth a confirmed ship PR", not "ship". Beats the baseline in every one of four test slices.
+* Props: a ridge on game context + matchup features beats the trailing mean for points (-1.4% [-1.7, -1.1]), rebounds (-0.8%), assists (-1.2%) and beats the incumbent XGBoost by 1.3 to 2.1%. For threes the best option needs no model: trailing 3PM-per-minute x minutes is 1.1% better than the trailing mean [0.7, 1.6].
+* **Does not help**: rest-by-team, cleaned rest/schedule density, travel/fatigue (measurably harmful after the two bug fixes: AUC -0.0303 [-0.0547, -0.0053]), tip-off-hour rest (hurts the total). No ship.
+
+**Not measurable here:** anything versus the market (no odds on disk), multi-season behaviour (one season only), injury-feed-based availability (single snapshot). The live pre-tip record (5/10, 5/10, 6/10) is n = 10 per market, Wilson 95% intervals about [0.24, 0.76]; it says nothing about skill either way.
+
+Nothing is merged or deployed by this PR; it adds this document and the scripts and logs that produced every number.
 
 Scope: Kevocado/NBA_Predictor at main `9e97c43`. All numbers below were produced by a rebuild of the (gitignored) training cache from the ESPN caches, see "How the cache was rebuilt".
 
@@ -21,7 +42,7 @@ Row counts are what I counted on 2026-10-13 from the cache copies in `/Users/sig
 
 ### Findings from the inventory (observed, not inferred)
 
-1. **Five of the 22 default `FEATURE_COLUMNS` have zero variance in the rebuilt training frame**: `home_power_rating`, `away_power_rating`, `power_rating_diff`, `home_missing_value`, `away_missing_value` (std 0.000; they are zero-filled by `_OPTIONAL_COLUMNS_DEFAULT_ZERO` because the ingest never supplies them). The served models carry 5 dead columns, and `docs/nba-parity-evaluation` item "Elo beats every ML candidate" is explained in part by this: the win model has no strength rating at all, only 10-game four-factor means, rest, streak.
+1. **Five of the 22 default `FEATURE_COLUMNS` have zero variance in the rebuilt training frame**: `home_power_rating`, `away_power_rating`, `power_rating_diff`, `home_missing_value`, `away_missing_value` (std 0.000; they are zero-filled by `_OPTIONAL_COLUMNS_DEFAULT_ZERO` because the ingest never supplies them). The served models carry 5 dead columns, and the parity doc's "Elo beats every ML candidate" is plausibly explained by this (my inference, supported by section 4): the win model has no strength rating at all, only 10-game four-factor means, rest, streak.
 2. **The team model's whole view of team quality is the four factors over the last 10 games.** Points scored/allowed, margin, pace, opponent strength and schedule strength are not in it.
 3. `home_rest_days` has std 9.9: first-in-role games read 99 (and the offseason/preseason gap is unclipped), so the linear models (ridge/logistic) get a few 99-valued rows that dominate the coefficient. Rest is a calendar-day count from the same-role last game by default.
 4. Local data = one season (2025-26 incl. preseason). The multi-season frame (4,149 games) used by `tools/compare_margin_average.py` is NOT on this machine; the box scores for earlier seasons would need the free ESPN pull (`pipeline/backfill.py`), which I did not run.
@@ -83,5 +104,121 @@ Common rules for every feature below: value for game G is computed from games st
 
 What cannot be derived from data on disk, and why: (i) true availability-weighted strength from the injury feed: `injuries_current.json` is a single snapshot (65 rows), so who was out on a past night is unknowable; T4 is the box-score-only substitute. (ii) starter flags, plus-minus, steals/blocks/fouls: not captured by the parser (nine team fields, nine player fields). (iii) spread-based blowout risk and prop-line-based minutes expectations: no lines on disk.
 
-## 4. Tests with the harness (PENDING, step 4)
-## 5. Report, recommendations, what could not be measured, commands (PENDING, step 5)
+## 4. Tests with the harness
+
+Method, identical for every team-level arm: the repo's `build_training_frame` columns as the baseline (22 default columns, the race winners logistic/ridge/ridge), candidate = baseline columns + the new ones (or replacing, where stated), same 765 out-of-fold games, `paired_bootstrap` (2,000 resamples, seed 20261009) for log-loss, Brier, AUC, margin MAE, total MAE, `calibration_gap` (5 buckets) before and after, and the repo's `ship_decision` verbatim (AUC lower bound >= 0; the other four each improved with an interval excluding zero; gap <= 0.0591 and not wider than the baseline's 0.0578). Baseline: log-loss 0.6612, Brier 0.2342, AUC 0.6322, margin MAE 13.2197, total MAE 16.5488, gap 0.0578. Differences are candidate minus baseline; for AUC positive is better, for the rest negative is better. New columns are scaled to roughly unit size because the repo's ridge/logistic are unscaled.
+
+### 4.1 Team-model blocks (win / margin / total)
+
+| arm | win log-loss | win Brier | win AUC | margin MAE | total MAE | gap | `ship_decision` |
+|---|---|---|---|---|---|---|---|
+| **A** Elo (win/loss, K=20, base-10), 1 column | -0.0731 [-0.0951, -0.0506] | -0.0330 [-0.0425, -0.0231] | +0.1136 [+0.0771, +0.1506] | -1.282 [-1.659, -0.911] | -0.024 [-0.128, +0.081] n.s. | 0.0886 | **does not ship**: total not improved, gap wider |
+| **B** MOV Elo variant | -0.0750 [-0.0969, -0.0526] | -0.0337 [-0.0434, -0.0239] | +0.1159 [+0.0793, +0.1536] | -1.270 [-1.639, -0.914] | -0.043 [-0.151, +0.069] n.s. | 0.0755 | **does not ship**: total not improved, gap wider |
+| **C** pace + ortg + drtg rolling-10 (6 cols) | -0.0516 [-0.0707, -0.0310] | -0.0230 [-0.0318, -0.0135] | +0.0846 [+0.0470, +0.1214] | -0.889 [-1.191, -0.582] | **-1.215 [-1.628, -0.809]** | 0.1161 | **does not ship**: gap 0.1161 only |
+| **D** opponent-adjusted off/def (5 cols) | -0.0500 [-0.0674, -0.0315] | -0.0227 [-0.0308, -0.0142] | +0.0868 [+0.0507, +0.1227] | -0.838 [-1.119, -0.563] | -0.418 [-0.597, -0.229] | 0.0772 | **does not ship**: gap only |
+| **E** pace x efficiency expected total (2 cols) | +0.0003 n.s. | +0.0002 n.s. | -0.0020 [-0.0091, +0.0045] | +0.013 n.s. | **-1.121 [-1.483, -0.760]** | 0.0763 | **does not ship**: only total moves, AUC bound below 0, gap wider |
+| **F** availability proxy, lagged (4 cols) | -0.0263 [-0.0382, -0.0150] | -0.0120 [-0.0174, -0.0068] | +0.0515 [+0.0271, +0.0777] | -0.603 [-0.860, -0.358] | +0.001 n.s. | 0.0648 | **does not ship**: total not improved, gap above the bar |
+| **G** rest cleaned: team-based rest capped at 7 + games in last 7 days, replacing the repo rest/back-to-back columns | +0.0048 n.s. | +0.0024 n.s. | **-0.0228 [-0.0436, -0.0023]** worse | +0.021 n.s. | **+0.142 [+0.013, +0.272]** worse | 0.1005 | **does not ship** |
+| **H** A + D + pace (7 cols) | -0.0760 [-0.0993, -0.0527] | -0.0336 [-0.0440, -0.0233] | +0.1162 [+0.0784, +0.1540] | -1.322 [-1.720, -0.942] | -1.176 [-1.570, -0.787] | 0.0931 | **does not ship**: all five improve; gap 0.0931 is above the bar and wider than 0.0578 |
+| **X** drop the 5 constant-zero columns + cap rest_days at 7 (no new information) | +0.0022 n.s. | +0.0011 n.s. | -0.0087 [-0.0195, +0.0019] | +0.021 n.s. | -0.006 n.s. | 0.0516 | does not ship (nothing improves; harmless clean-up, but not a ship under this rule) |
+| **XH** X + H | -0.0745 [-0.0974, -0.0508] | -0.0330 [-0.0431, -0.0223] | +0.1154 [+0.0773, +0.1538] | -1.310 [-1.709, -0.923] | -1.156 [-1.557, -0.755] | 0.0698 | **does not ship**: gap only |
+| **HF** H + availability proxy F (11 cols) vs baseline | **-0.0830 [-0.1072, -0.0572]** | **-0.0356 [-0.0462, -0.0242]** | **+0.1214 [+0.0837, +0.1601]** | **-1.434 [-1.884, -0.985]** | **-1.259 [-1.697, -0.825]** | **0.0550** | **SHIPS under the rule as written** (see caveats below) |
+| HF vs H (is F worth adding on top?) | -0.0070 [-0.0147, -0.0001] | -0.0020 n.s. | +0.0052 n.s. | -0.112 n.s. | -0.083 n.s. | 0.0931 -> 0.0550 | does not ship vs H: the availability proxy is mostly absorbed by the rating block |
+| **I** tip-off: rest in hours tip-to-tip (cap 4 days) + afternoon-start flag, replacing day-count rest | +0.0022 n.s. | +0.0012 n.s. | -0.0090 [-0.0222, +0.0054] | -0.003 n.s. | **+0.142 [+0.041, +0.242]** worse | 0.0789 | **does not ship** |
+| **I2** same, added to the existing rest columns | +0.0035 n.s. | +0.0017 n.s. | -0.0117 [-0.0234, +0.0007] | +0.005 n.s. | **+0.169 [+0.075, +0.266]** worse | 0.0398 | **does not ship** |
+| **R** `rest_by_team=True` (repo flag; tool `compare_rest_by_team.py`) | +0.0027 [-0.0013, +0.0067] n.s. | +0.0014 n.s. | -0.0145 [-0.0288, +0.0001] | +0.045 n.s. | **+0.191 [+0.072, +0.315]** worse | 0.0356 | **does not ship** |
+| **T** travel/fatigue, `include_travel_fatigue=True` (repo tool, after the two bug fixes) | **+0.0111 [+0.0020, +0.0201]** worse | **+0.0053 [+0.0010, +0.0095]** worse | **-0.0303 [-0.0547, -0.0053]** worse | +0.058 n.s. | **+0.224 [+0.063, +0.391]** worse | 0.0606 | **does not ship** |
+
+All rows re-run by me on 2026-10-13 (n = 765 each). Read straight from the logs in `2026-10-13-nba-model-gaps-scripts/logs/`.
+
+**The HF row needs a careful reading.**
+
+* It is the only arm that satisfies `ship_decision` exactly as `ship_rule.py` states it: AUC lower bound +0.0837 (>= 0), all four other metrics improved with intervals excluding zero, gap 0.0550 <= 0.0591 and < 0.0578.
+* **It was found after looking at about 15 arms on these same 765 games**, and HF in particular was assembled after seeing that H failed only on the gap clause and that F helped. Treat "passes" as "passes on the data used to design it". It is a hypothesis, not a clearance. Nothing was tuned within an arm (all hyperparameters are the repo's), but the choice of arm was.
+* **The gap clause is mostly sampling noise at this n.** If I draw outcomes from each model's own probabilities (a perfectly calibrated model of the same spread), the 5-bucket max gap has median 0.056 (95% range 0.025 to 0.108) for HF and 0.060 (0.021 to 0.110) for the baseline: the 0.0591 bar sits at the median of what a perfect model produces on 765 games. H's gap of 0.0931 and HF's 0.0550 are both inside that noise. The bootstrap interval of the observed gap is wide too (baseline [0.041, 0.148], H [0.057, 0.167]). So the arms that "failed on gap only" (C, D, H, XH) do not demonstrably have worse calibration, and HF does not demonstrably have better. An out-of-fold Platt calibrator (the repo's own, `calibrator="platt"`, applicable only to the last 261 games) leaves log-loss unchanged (baseline 0.6416 -> 0.6443, H 0.5522 -> 0.5515) and gaps 0.1430 -> 0.1428 baseline, 0.1147 -> 0.0991 H on those 261 games, which again says that bucket gaps at n of a few hundred are not informative.
+* **It is consistent across the test period**, which is some protection against one lucky window. Log-loss baseline / H / HF by test slice: 0.6956 / 0.6585 / 0.6550 (246 games), 0.6482 / 0.5486 / 0.5335 (258), 0.6374 / 0.5265 / 0.5248 (206), 0.6611 / 0.6482 / 0.6448 (53); margin MAE 12.75 / 12.08 / 11.97, 12.76 / 11.16 / 10.96, 14.22 / 12.20 / 12.21, 14.21 / 13.81 / 13.68; total MAE 17.26 / 15.84 / 15.80, 15.57 / 14.92 / 14.93, 16.66 / 15.60 / 15.30, 17.02 / 14.42 / 14.51. H and HF beat the baseline in every slice for every target. (The 2-game last slice is omitted.)
+* **It is not independent of the reference Elo finding**: the repo's own frozen-rating Elo scored log-loss 0.5984 / AUC 0.7418 on the same games with different code, so the size of the Elo effect is not an artifact of my implementation.
+* Served probability (Phi(margin / sigma)): baseline log-loss 0.6566, gap 0.0645, sigma_margin 16.57, sigma_total 20.74; HF log-loss 0.5757, gap 0.0494, sigma_margin 14.77, sigma_total 19.16. A smaller sigma matters for the cover/over probabilities the site shows: they are currently too wide.
+* Single season, single machine, no market comparison. 765 games, one NBA season including preseason. The sensible confirmation is the multi-season backfill (n around 2,400) or the 2026-27 season as it is played, with the feature spec frozen first.
+
+### 4.2 Player-prop features
+
+`ship_decision` needs a win AUC, so it cannot be applied to a prop model. I applied its logic to MAE: a candidate counts only if the paired interval of (candidate - comparator) MAE excludes zero on the improving side, against BOTH the current model and the trailing-10 mean. Resampling is by game (rows in a game share a game script), 2,000 resamples. Walk-forward windows as in section 2. 29,781 player-game rows with the game-context features (the section 2 table used 29,965: the extra rows lack a team pace history). Because the current XGBoost 5-feature model is the incumbent and the trailing mean is the honest naive, both comparisons are shown. "vs trailing" and "vs current" are differences in MAE (candidate minus comparator, negative = candidate better).
+
+| market | current XGB (5 rolls) MAE | trailing-10 mean MAE | best candidate | candidate MAE | vs trailing-10 mean | vs current model |
+|---|---|---|---|---|---|---|
+| points | 4.6795 | 4.6453 | ridge on P4 (all features) | 4.5809 | **-0.0644 [-0.0791, -0.0498]** (-1.4%) | **-0.0986 [-0.1149, -0.0826]** (-2.1%) |
+| rebounds | 1.9380 | 1.9268 | ridge on P5 (matchup + game context, no shot profile) | 1.9121 | **-0.0147 [-0.0211, -0.0085]** (-0.8%) | ridge P4: **-0.0250 [-0.0310, -0.0188]** (-1.3%) |
+| assists | 1.3763 | 1.3730 | ridge on P5 | 1.3562 | **-0.0167 [-0.0212, -0.0125]** (-1.2%) | ridge P4: **-0.0194 [-0.0243, -0.0147]** (-1.4%) |
+| threes | 0.9126 | 0.8963 | **no model**: trailing 20-game 3PM per minute x trailing-10 minutes | 0.8865 | **-0.0098 [-0.0140, -0.0060]** (-1.1%) | -0.026 (point estimate only, CI not computed) |
+
+Feature-set results, in detail (all in `logs/step4_props.log` and `logs/step4b_props.log`), MAE difference vs the trailing-10 mean:
+
+| set | points | rebounds | assists | threes |
+|---|---|---|---|---|
+| XGB P0 current | +0.0342 [+0.0186, +0.0507] worse | +0.0112 [+0.0037, +0.0183] worse | +0.0033 n.s. | +0.0163 [+0.0119, +0.0204] worse |
+| XGB + P1 repo matchup block | +0.0003 n.s. | +0.0004 n.s. | -0.0032 n.s. | +0.0128 [+0.0085, +0.0168] worse |
+| XGB + P2 game context | -0.0041 n.s. | +0.0007 n.s. | -0.0051 n.s. | +0.0134 worse |
+| XGB + P3 shot profile | +0.0134 n.s. | +0.0125 worse | +0.0057 worse | +0.0047 [+0.0001, +0.0091] worse |
+| XGB + P4 all | **-0.0361 [-0.0563, -0.0159]** | -0.0086 [-0.0168, +0.0001] n.s. | -0.0069 [-0.0128, -0.0010] | +0.0031 n.s. |
+| XGB damped (120 trees, depth 3, lambda 10) P0 | +0.0496 worse | +0.0130 worse | +0.0040 n.s. | +0.0214 worse |
+| ridge P0 (same 5 features, linear) | +0.0088 n.s. | +0.0035 n.s. | -0.0005 n.s. | +0.0246 worse |
+| ridge + P1 | -0.0328 [-0.0461, -0.0200] | -0.0057 n.s. | -0.0066 [-0.0105, -0.0027] | +0.0152 worse |
+| ridge + P2 | -0.0289 [-0.0414, -0.0162] | -0.0085 [-0.0144, -0.0028] | -0.0137 [-0.0180, -0.0097] | +0.0179 worse |
+| ridge + P3 | -0.0274 [-0.0403, -0.0147] | +0.0045 n.s. | -0.0014 n.s. | +0.0020 n.s. |
+| ridge + P4 | **-0.0644 [-0.0791, -0.0498]** | -0.0138 [-0.0206, -0.0077] | -0.0161 [-0.0207, -0.0119] | -0.0018 [-0.0057, +0.0019] n.s. |
+| blend 0.5 damped-XGB(P4) + 0.5 trailing mean | -0.0297 [-0.0382, -0.0215] | -0.0081 [-0.0124, -0.0040] | -0.0076 [-0.0104, -0.0049] | -0.0021 [-0.0043, +0.0001] n.s. |
+| direct: exp_threes = fg3a_roll10 x shrunk 3P% (20 games, 40-attempt prior at 0.355) | | | | -0.0062 [-0.0094, -0.0032] |
+| direct: 3PM per minute (20 games) x minutes_roll10 | | | | **-0.0098 [-0.0140, -0.0060]** |
+
+What the prop results say, in order of confidence:
+
+1. **The incumbent XGBoost is the problem, not a missing feature.** The same five features through a linear model are statistically no worse than the trailing mean for points, rebounds and assists (threes is still worse), and every context feature that helps does so most cleanly through a ridge. A 200-tree depth-4 booster on 13k to 29k training rows fits noise in the 5 rolling means; damping the booster (120 trees, depth 3, lambda 10) did not fix it.
+2. **Points, rebounds and assists have signal in data already on disk**: game context (home/away, pace, opponent defensive rating, blowout risk from the Elo gap) and the repo's matchup block carry most of it; shot-profile features add almost nothing for them (P5 without shot profile is as good as P4). Gains are small in relative terms (0.8 to 1.4% over the trailing mean, 1.3 to 2.1% over the incumbent) but the intervals exclude zero.
+3. **Threes: the best model is no model.** 3PM-per-minute over 20 games times expected minutes beats the trailing-10 3PM mean by 1.1% [0.7, 1.6] and beats the incumbent by about 2.9%, with nothing to fit. Using more attempts-history and a shrunk rate is what helps (more attempts per estimate). No fitted model, XGB or ridge, cleared the trailing mean for threes.
+4. **Caveats**: 9 model/feature-set combinations per market on the same rows, intervals not multiplicity-adjusted; 4 test windows of one season; MAE only, no calibration or hit-rate (no prop lines on disk); the context features need the serving path to supply opponent and home/away at prediction time (`to_player_training_frame` has them, `score_upcoming_player_props` is untested for it here). Ridge alpha 50 was set once, not tuned.
+
+## 5. Recommendations, limits, and how to reproduce
+
+### 5.1 Prioritised recommendations (nothing here is shipped by this PR)
+
+1. **Give the team model a strength rating and a scoring model (HF block: causal Elo, opponent-adjusted offence/defence, rolling pace, lagged availability).** Largest effect found: win log-loss 0.6612 -> 0.5782, AUC 0.632 -> 0.754, margin MAE 13.22 -> 11.79, total MAE 16.55 -> 15.29 (the total finally beats a constant, by 6.6% against the training-mean baseline), and the served sigmas shrink (margin 16.57 -> 14.77, total 20.74 -> 19.16), which tightens every cover/over probability. It satisfies `ship_decision`, but see 4.1: designed on the evaluation games, single season. Before flipping `DEFAULT_BLOCKS`, (a) freeze the spec, (b) run the free multi-season backfill so the same rule is evaluated at n around 2,400 where the calibration clause can actually resolve, (c) re-run `compare_*` on that. This is the plan's `power` + `form` + `adjusted` + `availability` blocks; the framework (`DEFAULT_BLOCKS`) is described in the plan docs but is not in NBA main at `9e97c43`, so these arms were built in a harness instead.
+2. **Stop serving the XGBoost prop projections as they are.** They lose to the player's trailing-10 mean on points, rebounds and threes (CI excludes zero). Cheapest honest move needing no new data: serve the trailing mean (or a ridge on the existing 5 features, which ties it). Better, from data already on disk: ridge on game context + matchup features for points/rebounds/assists, and the 3PM-per-minute x minutes formula for threes.
+3. **Remove or replace the dead columns.** `home_power_rating`, `away_power_rating`, `power_rating_diff`, `home_missing_value`, `away_missing_value` are constant 0.0 in training; cap `home_rest_days`/`away_rest_days` at 7 (99 for a team's first game). Alone this changes nothing measurable (arm X: all n.s.), so it is hygiene, not a ship, but recommendation 1 fills the power columns for real.
+4. **Do not spend more time on rest/travel/tip-hour features at this sample size.** Rest-by-team, cleaned rest, travel/fatigue and tip-to-tip rest hours are all non-improving; travel/fatigue is measurably harmful after the two bug fixes (AUC -0.0303 [-0.0547, -0.0053], total MAE +0.224 [+0.063, +0.391]); the earlier conclusion survives the fixes. Revisit on the multi-season frame, not before.
+5. **Spec question for Kevin: the calibration clause.** At 5 buckets and n=765 a perfectly calibrated model has a median max-gap of about 0.056, the bar is 0.0591. The clause rejects good models about half the time and passes bad ones about half the time at this n. Options: evaluate it only at n >= 2,000, use bucket CIs instead of a point gap, or compare calibrated log-loss. This is a decision for Kevin, not something I changed.
+6. **Spec question for Kevin: per-target ship rule.** The rule requires win, margin and total to all improve. Block C (and E) is a clear win for the total (-1.2 MAE) and does nothing bad elsewhere, but under the rule it can only ship together with a win/margin improvement. If total were scoped separately, `exp_total` (arm E, 2 columns) would have cleared it for the total alone.
+7. **Capture more of what ESPN already sends.** Starter flag, plus-minus, steals, blocks, fouls are in the ESPN payload class but not parsed; `ftm`, `fg3a`, `fta` are parsed and dropped for players; `tip_off` exists in the snapshot but not in `schedule/games.json` or the training file. None of these was needed for the gains above, none was tested.
+8. **Start recording odds now.** No market baseline exists on disk (odds/sportsbook caches empty, market tables in tracking.db have 0 rows), so "does the model beat the closing line" is unanswerable, and without it the record of 5/10, 5/10, 6/10 cannot be interpreted. The `odds_timing_snapshots` and `value_closing_lines` tables exist and are empty.
+
+### 5.2 What could not be measured
+
+* **Anything against the market**: no odds, lines, or closing lines on disk; spread-cover and over/under hit rates and edge cannot be scored; prop lines are absent, so prop MAE is the only prop metric.
+* **Multi-season behaviour**: one season (2025-26 incl. preseason) on disk, `history_df` empty everywhere. The 4,149-game frame of `compare_margin_average.py` was not rebuilt (about 6,000 free keyless ESPN requests; not run).
+* **Injuries**: the feed has one snapshot (65 rows), so availability-weighted strength from the injury report could not be tested; only the box-score proxy (F) was. The proxy is lagged and cannot see a late scratch.
+* **Starters/minutes projections**, plus-minus, steals/blocks/fouls: not in the cache.
+* **Live record**: the 5/10, 5/10, 6/10 pre-tip counts are quoted from the task, not recomputed by me; the local tracking.db has only in-sample bulk backfill rows.
+* **Calibration at serving**: the OOF Platt check covers 261 games; the repo's isotonic variant and the served-probability ceiling were not explored.
+* **`tools/compare_phase_a.py`** crashes on an empty history frame on this machine (pandas "Grouper for 'team' not 1-dimensional"), so the Phase A number reproduction in that tool was not run; I used the other compare tools and my own harness.
+* **Statistical caveats**: team-level arms were chosen after viewing results on the same 765 games (about 15 arms, see 4.1); prop arms: 9 combinations per market; no multiplicity correction anywhere; AUC naive baseline is the constant 0.5 (the pooled naive predictions are window-specific constants, which is why a naive pooled AUC can print as 0.469).
+
+### 5.3 Commands (run from the NBA clone `Kevocado/NBA_Predictor@9e97c43`, with the ESPN caches copied to `data/cache/espn`; scripts are in `docs/research/2026-10-13-nba-model-gaps-scripts/`, they expect to sit one directory above the clone as `../script.py` and write pickles/logs to `../`)
+
+| what | command | logs |
+|---|---|---|
+| rebuild training cache (offline) | `uv run --python 3.13 python ../build_cache.py` | n/a |
+| rebuild player frame | `uv run --python 3.13 python ../build_players.py` | n/a |
+| section 2, team models vs naive, Elo, served win, calibration | `uv run --python 3.13 python ../step2_teams.py` | `logs/step2_teams.log` |
+| section 2, props vs trailing mean | `uv run --python 3.13 python ../step2_props.py` | `logs/step2_props.log` |
+| arms R and T (repo tools, unmodified) | `uv run --python 3.13 python tools/compare_rest_by_team.py` and `.../compare_travel_fatigue.py` | `logs/rest_by_team.log`, `logs/travel_fatigue.log` |
+| arms A to H (also writes `../F_team.pkl`, needed by later scripts) | `uv run --python 3.13 python ../step4_team.py` | `logs/step4_team.log` |
+| arms X, XH, gap noise simulation, served-probability gaps | `uv run --python 3.13 python ../step4b_team.py` (its Platt tail crashes on a variable bug; the X/XH/noise/served parts printed first and are what is quoted) | `logs/step4b_team.log` |
+| out-of-fold Platt check | `uv run --python 3.13 python ../step4d_platt.py` | `logs/step4d_platt.log` |
+| arms I, I2 (tip-off) | `uv run --python 3.13 python ../step4c_tip.py` | `logs/step4c_tip.log` |
+| arm HF vs H and vs baseline | `uv run --python 3.13 python ../step4e_hf.py` | `logs/step4e_hf.log` |
+| per-slice consistency, HF served gap, HF noise gap | `uv run --python 3.13 python ../step4f_consistency.py` | `logs/step4f_consistency.log` |
+| prop feature sets, XGB/ridge/blend | `uv run --python 3.13 python ../step4_props.py` | `logs/step4_props.log` |
+| prop ridge ablation | `uv run --python 3.13 python ../step4b_props.py` (its `DIRECT exp_threes` line printed NaN because of unfilled first-game rows; the corrected number comes from the next row) | `logs/step4b_props.log` |
+| direct threes formulas | `uv run --python 3.13 python ../step4d_threes.py` | `logs/step4d_threes.log` |
+
+Feature code: `feats.py` (Elo, pace/efficiency, adjusted ratings, availability proxy, rest cleaned). Shared harness: `h.py` (the repo's `walk_forward_*`, `default_candidates`, `paired_bootstrap`, `calibration_gap`, `ship_decision`). Dates of runs: all 2026-10-13.

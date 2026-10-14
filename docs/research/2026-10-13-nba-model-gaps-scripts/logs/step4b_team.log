@@ -1,0 +1,31 @@
+
+### X: drop 5 dead columns + cap rest_days at 7 (no new information)  (n=765)
+  win log_loss    0.6612   0.6633  +0.0022  [-0.0009,+0.0053]  n.s.
+  win brier       0.2342   0.2353  +0.0011  [-0.0003,+0.0026]  n.s.
+  win auc         0.6322   0.6235  -0.0087  [-0.0195,+0.0019]  n.s.
+  margin mae     13.2197  13.2407  +0.0211  [-0.0125,+0.0555]  n.s.
+  total mae      16.5488  16.5429  -0.0059  [-0.0746,+0.0636]  n.s.
+  cal gap 0.0578 -> 0.0516; auc_ok=False missing=['win log_loss', 'win brier', 'margin mae', 'total mae'] gap_ok=True => does NOT ship
+
+### XH: X + H(elo + adjusted ratings + pace)  (n=765)
+  win log_loss    0.6612   0.5867  -0.0745  [-0.0974,-0.0508]  IMPROVED
+  win brier       0.2342   0.2012  -0.0330  [-0.0431,-0.0223]  IMPROVED
+  win auc         0.6322   0.7476  +0.1154  [+0.0773,+0.1538]  IMPROVED
+  margin mae     13.2197  11.9100  -1.3096  [-1.7086,-0.9230]  IMPROVED
+  total mae      16.5488  15.3929  -1.1559  [-1.5573,-0.7545]  IMPROVED
+  cal gap 0.0578 -> 0.0698; auc_ok=True missing=[] gap_ok=False => does NOT ship
+baseline  gap 0.0578  bootstrap CI(2.5,50,97.5) [0.0405 0.0861 0.1476]  | gap if the model were PERFECTLY calibrated (outcomes drawn from its own p): [0.0209 0.0598 0.1101]
+H         gap 0.0931  bootstrap CI(2.5,50,97.5) [0.0571 0.1063 0.1667]  | gap if the model were PERFECTLY calibrated (outcomes drawn from its own p): [0.0265 0.0549 0.1067]
+C         gap 0.1161  bootstrap CI(2.5,50,97.5) [0.0682 0.1243 0.1912]  | gap if the model were PERFECTLY calibrated (outcomes drawn from its own p): [0.0214 0.0578 0.1052]
+XH        gap 0.0698  bootstrap CI(2.5,50,97.5) [0.0469 0.092  0.1532]  | gap if the model were PERFECTLY calibrated (outcomes drawn from its own p): [0.0216 0.0543 0.1038]
+baseline  served Phi(margin/sigma=16.57): gap 0.0645, logloss 0.6566, sigma_margin 16.57, sigma_total 20.74
+H         served Phi(margin/sigma=14.91): gap 0.0967, logloss 0.5852, sigma_margin 14.91, sigma_total 19.27
+C         served Phi(margin/sigma=15.45): gap 0.0878, logloss 0.6101, sigma_margin 15.45, sigma_total 19.22
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/ng/nba/../step4b_team.py", line 47, in <module>
+    m = np.zeros(len(p), bool); n_unc = sum(len(w) for w in [0])
+                                        ~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/ng/nba/../step4b_team.py", line 47, in <genexpr>
+    m = np.zeros(len(p), bool); n_unc = sum(len(w) for w in [0])
+                                            ~~~^^^
+TypeError: object of type 'int' has no len()

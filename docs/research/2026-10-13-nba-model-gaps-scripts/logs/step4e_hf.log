@@ -1,0 +1,16 @@
+
+### HF vs H: availability proxy ON TOP of the combined power+adjusted+pace block (baseline arm here = H)  (n=765)
+  win log_loss    0.5852   0.5782  -0.0070  [-0.0147,-0.0001]  IMPROVED
+  win brier       0.2006   0.1985  -0.0020  [-0.0054,+0.0010]  n.s.
+  win auc         0.7484   0.7537  +0.0052  [-0.0037,+0.0146]  n.s.
+  margin mae     11.8974  11.7857  -0.1117  [-0.2952,+0.0719]  n.s.
+  total mae      15.3730  15.2903  -0.0826  [-0.2546,+0.0738]  n.s.
+  cal gap 0.0931 -> 0.0550; auc_ok=False missing=['win brier', 'margin mae', 'total mae'] gap_ok=True => does NOT ship
+
+### HF vs repo baseline  (n=765)
+  win log_loss    0.6612   0.5782  -0.0830  [-0.1072,-0.0572]  IMPROVED
+  win brier       0.2342   0.1985  -0.0356  [-0.0462,-0.0242]  IMPROVED
+  win auc         0.6322   0.7537  +0.1214  [+0.0837,+0.1601]  IMPROVED
+  margin mae     13.2197  11.7857  -1.4340  [-1.8836,-0.9850]  IMPROVED
+  total mae      16.5488  15.2903  -1.2585  [-1.6973,-0.8253]  IMPROVED
+  cal gap 0.0578 -> 0.0550; auc_ok=True missing=[] gap_ok=True => SHIPS
