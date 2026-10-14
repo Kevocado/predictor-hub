@@ -28,9 +28,38 @@ Row counts are what I counted on 2026-10-13 from the cache copies in `/Users/sig
 
 ## How the cache was rebuilt
 
-PENDING (step 1 follow-up in the final version).
+`data/cache/training/games.json` is gitignored. I rebuilt it offline (no network) from the copied ESPN caches: read every `scoreboard_<date>.json`, joined each completed game to its cached `boxscore_<id>.json` through the repo's own `ingest.enrich_with_boxscores` + `ingest.to_training_frame` (network call patched to raise), and wrote the result. Result: 1,387 games, 2025-10-02 to 2026-06-13, one season including preseason. Player frame: `ingest.to_player_training_frame` over the cached `player_boxscore_*.json` (30,613 player-games; I added `fg3a`, `ftm`, `fta` by re-parsing the same strings). No free one-off pull was made. The earlier seasons (the 4,149-game multi-season frame) are NOT on disk, so `history_df` is empty in every run below; a multi-season rerun needs the free keyless ESPN backfill (`python -m nba_predictor.pipeline.backfill`), roughly 6,000 box-score requests, not done here.
 
-## 2. Models ranked by weakness (PENDING, step 2)
+After `build_training_frame` drops rows with NaN rolling features the frame has 1,365 games. Walk-forward = the repo's `expanding_windows(dates, 4)`: first 40% of dates train only, then 4 date-aligned test windows, pooled out-of-fold **n = 765 games** (2025-12-04 onward in date order; the exact first test date is in the logs). Phase A reported n=758 on a 1,390-game cache; ours is 1,387/1,365 games, so numbers differ in the third decimal (baseline win log-loss 0.6612 here, 0.6636 there).
+
+## 2. Models ranked by weakness
+
+All numbers in this section were **re-run by me on 2026-10-13** on the rebuilt cache, scripts in the appendix (`step2_teams.py`, `step2_props.py`). Paired bootstrap, 2,000 resamples, seed 20261009 (the seed of the repo's compare tools); props resample whole games (rows in a game share a game script), the team metrics resample games as the repo does. "Skill" = (naive - model) / naive, positive = model better; the bracket is the 95% interval of that skill, derived from the paired bootstrap of the metric difference. The naive for each model is leak-free: computed from each window's TRAINING slice (or from games strictly before the game, for the trailing-form baselines).
+
+| rank (worst first) | model | metric | model | best naive baseline | skill vs that baseline [95% CI] | verdict |
+|---|---|---|---|---|---|---|
+| 1 | **total** (ridge) | MAE | 16.549 | season-to-date team totals avg 16.055 (also: training mean 16.369, fixed 230.174 -> 16.224) | **-3.07% [-4.95, -1.16]** (vs training mean -1.10% [-2.35, +0.20]) | loses to every naive; CI excludes zero against 3 of 4 |
+| 2 | **threes prop** (xgb) | MAE | 0.9129 | player trailing-10 mean 0.8969 | **-1.78% [-2.24, -1.33]** | loses to its own input feature |
+| 3 | **points prop** | MAE | 4.6743 | player trailing-10 mean 4.6386 | **-0.77% [-1.11, -0.43]** | loses |
+| 4 | **rebounds prop** | MAE | 1.9419 | player trailing-10 mean 1.9303 | **-0.60% [-0.96, -0.26]** | loses |
+| 5 | **assists prop** | MAE | 1.3782 | player trailing-10 mean 1.3737 | -0.33% [-0.72, +0.07] | not distinguishable from the trailing mean |
+| 6 | **win** (logistic, race winner) | log-loss | 0.6612 | home win rate 0.6872 | +3.79% [+1.84, +5.72] | beats naive, **but loses to Elo (0.5984): logistic - Elo = +0.0628 [+0.0363, +0.0891]** |
+| 6b | win as served (Phi(ridge margin / sigma 16.57)) | log-loss | 0.6566 | home win rate 0.6872 | +4.46% [+2.64, +6.26] | beats naive; max calibration gap 0.0645, **above the 0.0591 bar** |
+| 7 | **margin / spread** (ridge) | MAE | 13.220 | training mean 14.011 | +5.65% [+3.83, +7.54] | beats naive; beats trailing-10 net margins (15.368) and season-to-date net margins (14.398) too |
+
+Other numbers behind that table (all re-run, same command):
+
+* Win AUC: logistic 0.6322 [0.594, 0.670]; served Phi(margin) 0.6464 [0.607, 0.687]; Elo reference 0.7418 [0.705, 0.776]; constant naive = 0.5 by definition. Calibration (5 buckets, max gap): logistic 0.0578, served 0.0645, Elo 0.1154, home-rate naive 0.0673.
+* Margin MAE vs the old fixed +3.0: 13.220 vs 13.928, skill +5.09% [+3.20, +6.98].
+* Total MAE vs training mean 16.369 diff +0.180 [-0.033, +0.384].
+* Props, "played only (minutes>0)" variant (n=16,801 rows): same sign everywhere (points -0.69% [-1.03, -0.35], rebounds -0.51% [-0.86, -0.17], assists -0.28% [-0.67, +0.11], threes -1.72% [-2.17, -1.27]). Against the league mean every prop model wins by 21 to 32%, so the models are not broken, they just add nothing over the trailing mean they are built on. The "trailing per-minute rate x trailing minutes" baseline gives the same picture (points 4.6413, threes 0.8972).
+* Prop sample: 29,965 feature rows after the first-game NaN drop, 628 players, 1,379 games; test windows 5,525 / 5,643 / 4,536 / 1,193 rows (the last window is the playoffs tail).
+* **Spread cover, total over and moneyline-vs-market cannot be scored here**: there are no betting lines or odds history on disk (odds/ and sportsbook/ caches empty, tracking.db market tables 0 rows). No market-implied baseline exists, so "does the model beat the market" is unanswered. The cover and over probabilities are Phi((pred - line)/sigma) of the same margin/total models, so they inherit the margin skill (+5.65%) and the total's lack of any.
+* Read, not re-run: the live manifest in `data/public_snapshot.json` (generated 2026-10-13T22:11Z, model v20261012203810, trained on 1,139 games, holdout 284): win log-loss 0.6824 / Brier 0.2444 / AUC 0.5809 (n=702), margin walk-forward MAE 12.74, total walk-forward MAE 16.56, residual sigma 15.97 and 20.76. Those use a different frame and window than my re-run; they point the same direction (win barely better than a coin flip at 0.6824 vs 0.6931, total at 16.56 is no better than a constant).
+* Read, not re-run, and not verified by me (given in the task): the live counted pre-tip record as of 2026-10-12 was moneyline 5/10, spread 5/10, total 6/10. At n=10 the Wilson 95% intervals are [0.24, 0.76] for 5/10 and [0.31, 0.83] for 6/10, so this is consistent with any skill from none to large; it is not evidence for or against these models. The ~1,400 "winner pick" rows are mostly rebuilt after tip-off and are not evidence of skill; the local tracking.db backfill (predictions of 2026-09-18 12:02, scored after the games on the training rows) is the same kind of row.
+
+**Ranking logic.** Worst = the one whose point estimate is furthest below the naive it should beat, with the interval excluding zero: total, then the four prop markets (threes worst), then the win model (positive over naive but dominated by a plain Elo), with margin the only clearly healthy model. "Can they improve with the data we have now" is the section 3/4 question: the total and the props lose to trivial baselines, so the first thing to try is not a new feature but shrinking the models toward the baseline (see section 3).
+
 ## 3. Feature proposals for the 3 weakest (PENDING, step 3)
 ## 4. Tests with the harness (PENDING, step 4)
 ## 5. Report, recommendations, what could not be measured, commands (PENDING, step 5)
