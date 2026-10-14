@@ -680,3 +680,249 @@ describe("the category card paints a token that exists", () => {
     expect(source).not.toContain("pr-surface");
   });
 });
+
+/** NFL over/under direction helper for tests. */
+const nflProb = (over: Partial<PickRow> & Pick<PickRow, "key" | "name" | "value">): PickRow => ({
+  detail: "Anytime TD",
+  kind: "probability",
+  sport: "NFL",
+  provenance: "model 41% · bucket hits 44% · n=112",
+  ...over,
+});
+
+describe("NFL over/under direction badge", () => {
+  it("renders direction badge for NFL probability rows with direction and line", () => {
+    render(
+      <PicksList
+        categories={[
+          {
+            category: "Anytime TD",
+            rows: [
+              nflProb({
+                key: "a",
+                name: "J. Allen",
+                value: 0.61,
+                direction: "over",
+                line: 2.5,
+              }),
+            ],
+          },
+        ]}
+      />,
+    );
+    const row = screen.getByTestId("picks-row");
+    const direction = screen.getByTestId("picks-direction");
+    expect(direction.textContent).toContain("Over");
+    expect(direction.textContent).toContain("2.5");
+    expect(direction.textContent).toContain("61%");
+    // Badge uses win tone for "over"
+    expect(within(direction).getByText("Over").closest("span")).toHaveClass("bg-pr-win");
+  });
+
+  it("renders under badge with loss tone for probability ≤ 0.45", () => {
+    render(
+      <PicksList
+        categories={[
+          {
+            category: "Anytime TD",
+            rows: [
+              nflProb({
+                key: "a",
+                name: "J. Allen",
+                value: 0.4,
+                direction: "under",
+                line: 2.5,
+              }),
+            ],
+          },
+        ]}
+      />,
+    );
+    const row = screen.getByTestId("picks-row");
+    const direction = screen.getByTestId("picks-direction");
+    expect(direction.textContent).toContain("Under");
+    expect(within(direction).getByText("Under").closest("span")).toHaveClass("bg-pr-loss");
+  });
+
+  it("renders toss badge with neutral tone for probability between 0.45 and 0.55", () => {
+    render(
+      <PicksList
+        categories={[
+          {
+            category: "Anytime TD",
+            rows: [
+              nflProb({
+                key: "a",
+                name: "J. Allen",
+                value: 0.5,
+                direction: "toss",
+                line: 2.5,
+              }),
+            ],
+          },
+        ]}
+      />,
+    );
+    const direction = screen.getByTestId("picks-direction");
+    expect(direction.textContent).toContain("Toss");
+    expect(within(direction).getByText("Toss").closest("span")).toHaveClass("border-pr-rule");
+  });
+
+  it("does NOT render direction badge for non-NFL sports", () => {
+    render(
+      <PicksList
+        categories={[
+          {
+            category: "Anytime TD",
+            rows: [
+              nflProb({
+                key: "a",
+                name: "Player",
+                value: 0.61,
+                direction: "over",
+                line: 2.5,
+                sport: "NBA",
+              }),
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByTestId("picks-direction")).not.toBeInTheDocument();
+  });
+
+  it("does NOT render direction badge for projection rows", () => {
+    render(
+      <PicksList
+        categories={[
+          {
+            category: "Pass yds",
+            rows: [
+              proj({
+                key: "a",
+                name: "J. Allen",
+                value: 284,
+                detail: "Over 2.5",
+                sport: "NFL",
+                direction: "over",
+                line: 2.5,
+              }),
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByTestId("picks-direction")).not.toBeInTheDocument();
+  });
+
+  it("does NOT render direction badge when direction or line is missing", () => {
+    render(
+      <PicksList
+        categories={[
+          {
+            category: "Anytime TD",
+            rows: [
+              nflProb({
+                key: "a",
+                name: "J. Allen",
+                value: 0.61,
+                direction: "over",
+                // no line
+              }),
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByTestId("picks-direction")).not.toBeInTheDocument();
+
+    render(
+      <PicksList
+        categories={[
+          {
+            category: "Anytime TD",
+            rows: [
+              nflProb({
+                key: "b",
+                name: "J. Allen",
+                value: 0.61,
+                // no direction
+                line: 2.5,
+              }),
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByTestId("picks-direction")).not.toBeInTheDocument();
+  });
+
+  it("does NOT render direction badge for high-mu receptions rows", () => {
+    render(
+      <PicksList
+        categories={[
+          {
+            category: "Receptions",
+            rows: [
+              nflProb({
+                key: "a",
+                name: "C. Godwin",
+                value: 0.65,
+                direction: "over",
+                line: 5.5,
+                receptions_mu_flag: "high_mu",
+              }),
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByTestId("picks-direction")).not.toBeInTheDocument();
+  });
+
+  it("renders line with one decimal place (e.g. 64.5)", () => {
+    render(
+      <PicksList
+        categories={[
+          {
+            category: "Anytime TD",
+            rows: [
+              nflProb({
+                key: "a",
+                name: "J. Allen",
+                value: 0.61,
+                direction: "over",
+                line: 64.5,
+              }),
+            ],
+          },
+        ]}
+      />,
+    );
+    const direction = screen.getByTestId("picks-direction");
+    expect(direction.textContent).toContain("64.5");
+  });
+
+  it("renders integer line with .0 (e.g. 2.0)", () => {
+    render(
+      <PicksList
+        categories={[
+          {
+            category: "Anytime TD",
+            rows: [
+              nflProb({
+                key: "a",
+                name: "J. Allen",
+                value: 0.61,
+                direction: "over",
+                line: 2,
+              }),
+            ],
+          },
+        ]}
+      />,
+    );
+    const direction = screen.getByTestId("picks-direction");
+    expect(direction.textContent).toContain("2.0");
+  });
+});

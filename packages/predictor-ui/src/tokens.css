@@ -31,7 +31,9 @@
 
   /* Status, always paired with words (Called it / Missed / Leans). */
   --color-pr-win: #3ddc84;
+  --color-pr-win-ink: #0b0d10;
   --color-pr-loss: #ff6b6b;
+  --color-pr-loss-ink: #0b0d10;
   --color-pr-lean: #ffc53d;
 
   /* Default accent (the Hub); each sport overrides below. */
