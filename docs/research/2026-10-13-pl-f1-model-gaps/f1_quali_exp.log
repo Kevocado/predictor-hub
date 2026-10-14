@@ -1,0 +1,11 @@
+base done
+qform done
+teammate done
+pace done
+qform+teammate done
+          variant  base_mae  cand_mae  improvement      lo      hi  pole_ll_improvement  pole_lo  pole_hi  ece_pole_base  ece_pole_cand  ece_widened        verdict
+0           qform    3.6607    3.5292       0.1315  0.0436  0.2256               0.0040   0.0002   0.0078         0.0075         0.0048        False  SHIP-ELIGIBLE
+1        teammate    3.6607    3.5909       0.0698 -0.0082  0.1474               0.0008  -0.0027   0.0042         0.0075         0.0074        False  does not ship
+2            pace    3.6607    3.6375       0.0232 -0.0586  0.1099               0.0035  -0.0000   0.0068         0.0075         0.0082         True  does not ship
+3  qform+teammate    3.6607    3.4668       0.1939  0.1092  0.2815               0.0023  -0.0020   0.0066         0.0075         0.0073        False  SHIP-ELIGIBLE
+base MAE 3.660676116800072

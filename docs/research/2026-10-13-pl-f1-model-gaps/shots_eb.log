@@ -1,0 +1,61 @@
+2020-21 matched share 0.959
+2021-22 matched share 0.967
+2022-23 matched share 0.955
+2023-24 matched share 0.959
+2024-25 matched share 0.952
+2025-26 matched share 0.96
+2023-24 fitted k (shots, SoT): {'shots': 8, 'shots_on_target': 12}
+2024-25 fitted k (shots, SoT): {'shots': 5, 'shots_on_target': 12}
+2025-26 fitted k (shots, SoT): {'shots': 5, 'shots_on_target': 12}
+rows 34460 missing eb 0.0
+
+=== shots ===  EB mean pred 0.704  actual 0.819  exact-zero share EB 0.050  corr 0.500
+EB                   MAE 0.7125 RMSE 1.0634 NLL 0.8424 mean pred 0.704 zero-share 0.050
+position_avg         MAE 0.7742 RMSE 1.1387 NLL 0.9260 mean pred 0.681 zero-share 0.000
+own_trailing_per90   MAE 0.7417 RMSE 1.2252 NLL 1.5429 mean pred 0.727 zero-share 0.234
+production_model     MAE 0.8384 RMSE 1.4993 NLL 1.6214 mean pred 0.893 zero-share 0.234
+
+=== SoT ===  EB mean pred 0.245  actual 0.277  exact-zero share EB 0.083  corr 0.405
+EB                   MAE 0.3403 RMSE 0.5575 NLL 0.5686 mean pred 0.245 zero-share 0.083
+position_avg         MAE 0.3628 RMSE 0.5794 NLL 0.5907 mean pred 0.233 zero-share 0.000
+own_trailing_per90   MAE 0.3414 RMSE 0.6143 NLL 1.0347 mean pred 0.245 zero-share 0.404
+production_model     MAE 0.3759 RMSE 0.7569 NLL 1.0659 mean pred 0.308 zero-share 0.404
+P(SoT>=1) EB                   Brier 0.1442 logloss 0.4710 mean p 0.193
+P(SoT>=1) position_avg         Brier 0.1527 logloss 0.4841 mean p 0.194
+P(SoT>=1) own_trailing_per90   Brier 0.1561 logloss 0.8685 mean p 0.177
+P(SoT>=1) production_model     Brier 0.1618 logloss 0.8892 mean p 0.191
+       target            baseline   metric  eb_minus_base      lo      hi    verdict
+0       shots        position_avg  abs err        -0.0617 -0.0659 -0.0576  EB better
+1       shots        position_avg   sq err        -0.1659 -0.1806 -0.1516  EB better
+2       shots        position_avg      NLL        -0.0837 -0.0908 -0.0771  EB better
+3       shots  own_trailing_per90  abs err        -0.0292 -0.0366 -0.0223  EB better
+4       shots  own_trailing_per90   sq err        -0.3704 -0.5858 -0.1998  EB better
+5       shots  own_trailing_per90      NLL        -0.7005 -0.7802 -0.6269  EB better
+6       shots    production_model  abs err        -0.1259 -0.1421 -0.1092  EB better
+7       shots    production_model   sq err        -1.1172 -1.5087 -0.8084  EB better
+8       shots    production_model      NLL        -0.7790 -0.8578 -0.7039  EB better
+9         SoT        position_avg  abs err        -0.0225 -0.0241 -0.0208  EB better
+10        SoT        position_avg   sq err        -0.0248 -0.0281 -0.0216  EB better
+11        SoT        position_avg      NLL        -0.0221 -0.0274 -0.0166  EB better
+12        SoT  own_trailing_per90  abs err        -0.0011 -0.0040  0.0018        tie
+13        SoT  own_trailing_per90   sq err        -0.0665 -0.0900 -0.0484  EB better
+14        SoT  own_trailing_per90      NLL        -0.4662 -0.4989 -0.4325  EB better
+15        SoT    production_model  abs err        -0.0355 -0.0429 -0.0283  EB better
+16        SoT    production_model   sq err        -0.2621 -0.4191 -0.1646  EB better
+17        SoT    production_model      NLL        -0.4974 -0.5313 -0.4637  EB better
+18  P(SoT>=1)        position_avg    Brier        -0.0085 -0.0093 -0.0076  EB better
+19  P(SoT>=1)        position_avg  logloss        -0.0131 -0.0177 -0.0083  EB better
+20  P(SoT>=1)  own_trailing_per90    Brier        -0.0119 -0.0131 -0.0106  EB better
+21  P(SoT>=1)  own_trailing_per90  logloss        -0.3976 -0.4239 -0.3703  EB better
+22  P(SoT>=1)    production_model    Brier        -0.0176 -0.0194 -0.0159  EB better
+23  P(SoT>=1)    production_model  logloss        -0.4182 -0.4448 -0.3913  EB better
+dec            0         1         2         3         4         5         6         7         8         9
+pred       0.002     0.066     0.205     0.334     0.461     0.604     0.788     1.038     1.391     2.146
+actual     0.077     0.380     0.382     0.464     0.570     0.673     0.865     1.093     1.472     2.217
+n       3446.000  3446.000  3446.000  3446.000  3446.000  3446.000  3446.000  3446.000  3446.000  3446.000
+           n  eb_mae  posavg_mae  own_mae  eb_pred  actual
+exp                                                       
+0     1672.0   0.609       0.611    0.611    0.029   0.611
+1-4   5971.0   0.636       0.677    0.765    0.617   0.658
+5-9   6656.0   0.688       0.739    0.703    0.681   0.755
+10+  20161.0   0.752       0.828    0.758    0.793   0.906

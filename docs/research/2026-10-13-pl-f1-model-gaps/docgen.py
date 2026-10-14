@@ -1,0 +1,22 @@
+"""Fill {{TABLE}} placeholders in template.md from the result CSVs -> the research doc."""
+import pandas as pd, sys, re
+def ci(r,lo='lo',hi='hi',f='{:+.4f}'): return '['+f.format(r[lo])+', '+f.format(r[hi])+']'
+def table(head, rows): return '\n'.join(['| '+' | '.join(head)+' |','|'+'---|'*len(head)]+['| '+' | '.join(map(str,r))+' |' for r in rows])
+T={}
+d=pd.read_csv('pl_rank.csv'); T['PL_TEAM']=table(['market','baseline','n','model','baseline value','baseline minus model','95% CI','skill %','verdict'],[[r.market,r.baseline,r.n,f'{r.model:.4f}',f'{r.base:.4f}',f'{r["diff"]:+.4f}',ci(r),f'{r.skill_pct:+.1f}',r.sig] for _,r in d.iterrows()])
+d=pd.read_csv('pl_player_rank.csv'); T['PL_PLAYER']=table(['target','model','metric','model','prevalence','prevalence minus model','95% CI','skill %'],[[r.target,r.model,r.metric,f'{r.model_val:.4f}',f'{r.prev_val:.4f}',f'{r.diff_prev_minus_model:+.4f}',ci(r),f'{r.skill_pct:+.1f}'] for _,r in d.iterrows()])
+d=pd.read_csv('pl_player_rank2.csv'); T['PL_PLAYER2']=table(['target','metric','direct','own-rate Poisson union (Platt)','union minus direct','95% CI','skill %'],[[r.target,r.metric,f'{r.direct:.4f}',f'{r.union:.4f}',f'{r.improvement:+.4f}',ci(r),f'{r.skill_pct:+.1f}'] for _,r in d.iterrows()])
+d=pd.read_csv('shots_eb_results.csv'); T['SHOTS_EB']=table(['target','baseline','metric (EB minus baseline, negative = EB better)','difference','95% CI','verdict'],[[r.target,r.baseline,r.metric,f'{r.eb_minus_base:+.4f}',ci(r),r.verdict] for _,r in d.iterrows()])
+d=pd.read_csv('shots_eb_oracle_results.csv'); T['SHOTS_ORACLE']=table(['comparison','metric','EB minus baseline','95% CI','verdict'],[[r.comparison,r.metric,f'{r.eb_minus_base:+.4f}',ci(r),r.verdict] for _,r in d.iterrows()])
+d=pd.read_csv('f1_rank.csv'); T['F1_RANK']=table(['market','model arm','baseline','baseline value','baseline minus model','95% CI','skill %','verdict'],[[r.market,r.model,r.baseline,f'{r.base_val:.4f}',f'{r["diff"]:+.4f}',ci(r),f'{r.skill_pct:+.1f}',r.sig] for _,r in d.iterrows()])
+d=pd.read_csv('f1_quali_rank.csv'); T['F1_QUALI']=table(['metric','model','baseline','model value','baseline value','improvement','95% CI','verdict'],[[r.metric,r.model,r.baseline,f'{r.model_val:.4f}',f'{r.base_val:.4f}',f'{r.improvement:+.4f}',ci(r),r.sig] for _,r in d.iterrows()])
+d=pd.read_csv('pl_exp_results.csv'); NM={'ou':'O/U 2.5 Brier','btts':'BTTS Brier','rps':'1X2 RPS','corners':'corners MAE','cards':'cards MAE'}
+T['PL_EXP']=table(['variant','metric','primary?','base','candidate','improvement','95% CI','calibration gap base -> cand','verdict'],[[r.variant,NM[r.metric],'**yes**' if r.primary else '',f'{r.base:.4f}',f'{r.cand:.4f}',f'{r.improvement:+.5f}',ci(r,f='{:+.5f}'),f'{r.ece_base:.4f} -> {r.ece_cand:.4f}'+(' (widened)' if r.ece_widened else ''),r.verdict] for _,r in d.iterrows() if r.primary or (r.variant=='market_open' and r.metric=='rps')])
+d=pd.read_csv('f1_exp_results.csv'); T['F1_EXP']=table(['variant','metric','primary?','base','candidate','improvement (positive = better)','95% CI','calibration gap (ECE) base -> cand','verdict'],[[r.variant,r.metric,'**yes**' if r.primary else '',f'{r.base:.4f}',f'{r.cand:.4f}',f'{r.improvement:+.5f}',ci(r,f='{:+.5f}'),f'{r.ece_base:.4f} -> {r.ece_cand:.4f}'+(' (widened)' if r.ece_widened else ''),r.verdict] for _,r in d.iterrows() if r.metric in ('win logloss','DNF logloss','podium logloss') and (r.primary or r.metric!='DNF logloss' or r.variant in ('reliability','sc_proxy'))])
+d=pd.read_csv('f1_quali_exp_results.csv'); T['F1_QEXP']=table(['variant','base MAE','candidate MAE','improvement','95% CI','pole-prob log-loss improvement [95% CI]','pole ECE base -> cand','verdict'],[[r.variant,f'{r.base_mae:.4f}',f'{r.cand_mae:.4f}',f'{r.improvement:+.4f}',ci(r),f'{r.pole_ll_improvement:+.4f} ['+f'{r.pole_lo:+.4f}, {r.pole_hi:+.4f}]',f'{r.ece_pole_base:.4f} -> {r.ece_pole_cand:.4f}',r.verdict] for _,r in d.iterrows()])
+for tag,fn in [('F1_CALIB','f1_calib_results.csv'),('F1_CALIBQ','f1_calibqform_results.csv')]:
+    d=pd.read_csv(fn); T[tag]=table(['calibration layer','metric','compared with','reference','candidate','improvement','95% CI','ECE ref -> cand','verdict'],[[r.candidate,r.metric,r.vs,f'{r.base:.4f}',f'{r.cand:.4f}',f'{r.improvement:+.4f}',ci(r),f'{r.ece_base:.4f} -> {r.ece_cand:.4f}',r.verdict] for _,r in d.iterrows()])
+s=open('template.md').read()
+for k,v in T.items(): s=s.replace('{{'+k+'}}',v)
+assert '{{' not in s, re.findall(r'\{\{\w+\}\}',s)
+open(sys.argv[1],'w').write(s)
