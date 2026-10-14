@@ -1,0 +1,31 @@
+qform done
+teammate done
+reliability done
+wet_x done
+pace done
+sc_proxy done
+        variant          metric  primary     base     cand  improvement       lo       hi  ece_base  ece_cand  ece_widened        verdict
+0         qform     win logloss     True  0.13498  0.12746      0.00752  0.00251  0.01264   0.00962   0.01573         True  does not ship
+1         qform  podium logloss    False  0.28234  0.27040      0.01194  0.00350  0.02092   0.04605   0.03966        False               
+2         qform   top10 logloss    False  0.55862  0.54398      0.01464 -0.00121  0.03277   0.03950   0.03846        False               
+3         qform     DNF logloss    False  0.41271  0.41287     -0.00016 -0.00046  0.00011   0.00662   0.00551        False               
+4      teammate     win logloss     True  0.13498  0.13475      0.00023 -0.00451  0.00501   0.00962   0.00597        False  does not ship
+5      teammate  podium logloss    False  0.28234  0.28281     -0.00047 -0.00797  0.00739   0.04605   0.04275        False               
+6      teammate   top10 logloss    False  0.55862  0.54948      0.00914 -0.00320  0.02138   0.03950   0.04456         True               
+7      teammate     DNF logloss    False  0.41271  0.41305     -0.00034 -0.00098  0.00029   0.00662   0.00456        False               
+8   reliability     win logloss    False  0.13498  0.13346      0.00152 -0.00233  0.00523   0.00962   0.01251         True               
+9   reliability  podium logloss    False  0.28234  0.27920      0.00314 -0.00258  0.00879   0.04605   0.04236        False               
+10  reliability   top10 logloss    False  0.55862  0.54717      0.01144  0.00034  0.02328   0.03950   0.04356         True               
+11  reliability     DNF logloss    False  0.41271  0.41282     -0.00012 -0.00070  0.00042   0.00662   0.00646        False               
+12        wet_x     win logloss     True  0.13498  0.13239      0.00259 -0.00107  0.00651   0.00962   0.01304         True  does not ship
+13        wet_x  podium logloss    False  0.28234  0.28267     -0.00033 -0.00728  0.00635   0.04605   0.03679        False               
+14        wet_x   top10 logloss    False  0.55862  0.54471      0.01391  0.00270  0.02623   0.03950   0.04789         True               
+15        wet_x     DNF logloss    False  0.41271  0.41284     -0.00014 -0.00060  0.00038   0.00662   0.00352        False               
+16         pace     win logloss     True  0.13498  0.13204      0.00294 -0.00146  0.00748   0.00962   0.01540         True  does not ship
+17         pace  podium logloss    False  0.28234  0.27665      0.00569 -0.00105  0.01260   0.04605   0.03809        False               
+18         pace   top10 logloss    False  0.55862  0.54618      0.01243  0.00064  0.02440   0.03950   0.03989         True               
+19         pace     DNF logloss    False  0.41271  0.41284     -0.00014 -0.00038  0.00010   0.00662   0.00597        False               
+20     sc_proxy     win logloss    False  0.13498  0.13308      0.00191 -0.00185  0.00574   0.00962   0.01108         True               
+21     sc_proxy  podium logloss    False  0.28234  0.27910      0.00324 -0.00354  0.00959   0.04605   0.03667        False               
+22     sc_proxy   top10 logloss    False  0.55862  0.54854      0.01008  0.00094  0.01967   0.03950   0.04804         True               
+23     sc_proxy     DNF logloss    False  0.41271  0.41287     -0.00016 -0.00065  0.00028   0.00662   0.00554        False               

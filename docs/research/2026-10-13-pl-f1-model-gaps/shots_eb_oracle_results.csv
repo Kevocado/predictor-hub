@@ -1,0 +1,9 @@
+comparison,metric,eb_minus_base,lo,hi,verdict
+oracle minutes: shots vs position_avg,abs err,-0.08274964870252555,-0.08798281059368789,-0.07783364177756415,EB better
+oracle minutes: shots vs position_avg,sq err,-0.1953049173890125,-0.2130766821163487,-0.17846743319810307,EB better
+oracle minutes: shots vs own_trailing,abs err,-0.0346376992063474,-0.04201714658491876,-0.027833561145134637,EB better
+oracle minutes: shots vs own_trailing,sq err,-0.36344681155554326,-0.4972893423595879,-0.26108940312329576,EB better
+oracle minutes: SoT vs position_avg,abs err,-0.024742902643473594,-0.026660949578743067,-0.02277833385121238,EB better
+oracle minutes: SoT vs position_avg,sq err,-0.02597175600271022,-0.02988357900791887,-0.02213054842823938,EB better
+oracle minutes: SoT vs own_trailing,abs err,-0.0010201995120361783,-0.004718238570324218,0.0025311815082678267,tie
+oracle minutes: SoT vs own_trailing,sq err,-0.10859683172428349,-0.18979316403613405,-0.06150186232902151,EB better

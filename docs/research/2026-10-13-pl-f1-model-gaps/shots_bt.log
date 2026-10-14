@@ -1,0 +1,133 @@
+understat shooter-rows: 62527
+share of Understat shooter-rows matched to an FPL appearance: {'2020-21': 0.959, '2021-22': 0.967, '2022-23': 0.955, '2023-24': 0.959, '2024-25': 0.952, '2025-26': 0.96}
+2023-24: 11384 appearances
+2024-25: 11566 appearances
+2025-26: 11498 appearances
+
+N appearances = 34448  mean shots = 0.819  mean SoT = 0.277  zero-shot share = 0.556
+
+=== SHOTS: MAE / RMSE / Poisson-NLL / bias(mean pred - mean actual) ===
+model                MAE 0.8387  RMSE 1.4996  NLL 1.6219  bias +0.0736
+no_shots_scale       MAE 0.7899  RMSE 1.3424  NLL 1.5760  bias +0.0170
+no_strength          MAE 0.7527  RMSE 1.2568  NLL 1.5547  bias -0.0702
+own_trailing_per90   MAE 0.7419  RMSE 1.2254  NLL 1.5434  bias -0.0922
+position_avg         MAE 0.7742  RMSE 1.1388  NLL 0.9261  bias -0.1390
+constant             MAE 0.8639  RMSE 1.2315  NLL 1.0775  bias -0.1626
+-- paired cluster bootstrap, model minus X (negative = model better), 95% CI
+  vs no_shots_scale     dabs err  +0.0488 [+0.0401, +0.0578]
+  vs no_shots_scale     dsq err   +0.4467 [+0.2976, +0.6131]
+  vs no_shots_scale     dNLL      +0.0459 [+0.0396, +0.0525]
+  vs no_strength        dabs err  +0.0860 [+0.0737, +0.0977]
+  vs no_strength        dsq err   +0.6691 [+0.5065, +0.8611]
+  vs no_strength        dNLL      +0.0673 [+0.0584, +0.0766]
+  vs own_trailing_per90 dabs err  +0.0967 [+0.0825, +0.1110]
+  vs own_trailing_per90 dsq err   +0.7471 [+0.5322, +0.9951]
+  vs own_trailing_per90 dNLL      +0.0785 [+0.0676, +0.0896]
+  vs position_avg       dabs err  +0.0645 [+0.0467, +0.0813]
+  vs position_avg       dsq err   +0.9519 [+0.6445, +1.3462]
+  vs position_avg       dNLL      +0.6958 [+0.6189, +0.7746]
+  vs constant           dabs err  -0.0252 [-0.0425, -0.0076]
+  vs constant           dsq err   +0.7322 [+0.4268, +1.1305]
+  vs constant           dNLL      +0.5444 [+0.4678, +0.6235]
+-- ORACLE minutes (actual minutes plugged in): shot-rate skill only
+model                MAE 0.8339  RMSE 1.5320  NLL 1.5608
+own_trailing_per90   MAE 0.6966  RMSE 1.1409  NLL 1.4573
+position_avg         MAE 0.7445  RMSE 1.0644  NLL 0.7633
+  vs own_trailing_per90 dsq err   +1.0455 [+0.8124, +1.3081]
+  vs position_avg       dsq err   +1.2142 [+0.9718, +1.5113]
+-- calibration by prediction decile (mean pred vs mean actual)
+       pred  actual     n
+_dec                     
+0     0.000   0.235  3445
+1     0.000   0.276  3445
+2     0.047   0.306  3445
+3     0.194   0.507  3444
+4     0.353   0.615  3445
+5     0.539   0.749  3445
+6     0.783   0.915  3444
+7     1.155   1.131  3445
+8     1.798   1.466  3445
+9     4.062   1.996  3445
+   corr(pred, actual) model 0.380  own_trailing 0.376  position_avg 0.377
+
+=== SHOTS ON TARGET: MAE / RMSE / Poisson-NLL / bias(mean pred - mean actual) ===
+model                MAE 0.3760  RMSE 0.7571  NLL 1.0663  bias +0.0310
+no_shots_scale       MAE 0.3606  RMSE 0.6841  NLL 1.0503  bias +0.0102
+no_strength          MAE 0.3445  RMSE 0.6298  NLL 1.0387  bias -0.0228
+own_trailing_per90   MAE 0.3415  RMSE 0.6144  NLL 1.0351  bias -0.0313
+position_avg         MAE 0.3629  RMSE 0.5794  NLL 0.5908  bias -0.0433
+constant             MAE 0.3994  RMSE 0.6104  NLL 0.6596  bias -0.0524
+-- paired cluster bootstrap, model minus X (negative = model better), 95% CI
+  vs no_shots_scale     dabs err  +0.0154 [+0.0122, +0.0189]
+  vs no_shots_scale     dsq err   +0.1051 [+0.0624, +0.1644]
+  vs no_shots_scale     dNLL      +0.0160 [+0.0134, +0.0188]
+  vs no_strength        dabs err  +0.0315 [+0.0266, +0.0367]
+  vs no_strength        dsq err   +0.1765 [+0.1041, +0.2992]
+  vs no_strength        dNLL      +0.0276 [+0.0234, +0.0320]
+  vs own_trailing_per90 dabs err  +0.0345 [+0.0285, +0.0405]
+  vs own_trailing_per90 dsq err   +0.1957 [+0.1131, +0.3303]
+  vs own_trailing_per90 dNLL      +0.0312 [+0.0260, +0.0365]
+  vs position_avg       dabs err  +0.0131 [+0.0054, +0.0209]
+  vs position_avg       dsq err   +0.2374 [+0.1398, +0.3962]
+  vs position_avg       dNLL      +0.4755 [+0.4399, +0.5110]
+  vs constant           dabs err  -0.0234 [-0.0311, -0.0153]
+  vs constant           dsq err   +0.2005 [+0.1031, +0.3597]
+  vs constant           dNLL      +0.4067 [+0.3701, +0.4425]
+-- ORACLE minutes (actual minutes plugged in): shot-rate skill only
+model                MAE 0.3848  RMSE 0.7765  NLL 1.0567
+own_trailing_per90   MAE 0.3363  RMSE 0.6305  NLL 1.0160
+position_avg         MAE 0.3600  RMSE 0.5610  NLL 0.5404
+  vs own_trailing_per90 dsq err   +0.2054 [+0.1349, +0.2676]
+  vs position_avg       dsq err   +0.2881 [+0.2337, +0.3532]
+-- calibration by prediction decile (mean pred vs mean actual)
+       pred  actual     n
+_dec                     
+0     0.000   0.116  3445
+1     0.000   0.091  3445
+2     0.000   0.113  3445
+3     0.000   0.108  3444
+4     0.056   0.165  3445
+5     0.133   0.226  3445
+6     0.229   0.301  3444
+7     0.374   0.371  3445
+8     0.638   0.530  3445
+9     1.647   0.747  3445
+   corr(pred, actual) model 0.283  own_trailing 0.302  position_avg 0.313
+
+=== P(SoT >= 1): Brier / log loss ===
+base rate actual 0.212
+model                Brier 0.1618  logloss 0.8895  mean p 0.191
+no_shots_scale       Brier 0.1592  logloss 0.8793  mean p 0.189
+no_strength          Brier 0.1569  logloss 0.8715  mean p 0.178
+own_trailing_per90   Brier 0.1561  logloss 0.8688  mean p 0.177
+position_avg         Brier 0.1527  logloss 0.4841  mean p 0.194
+constant             Brier 0.1683  logloss 0.5355  mean p 0.197
+  model - no_shots_scale     dBrier    +0.0026 [+0.0021, +0.0031]
+  model - no_shots_scale     dlogloss  +0.0102 [+0.0084, +0.0120]
+  model - no_strength        dBrier    +0.0049 [+0.0040, +0.0059]
+  model - no_strength        dlogloss  +0.0180 [+0.0151, +0.0210]
+  model - own_trailing_per90 dBrier    +0.0057 [+0.0046, +0.0069]
+  model - own_trailing_per90 dlogloss  +0.0206 [+0.0173, +0.0243]
+  model - position_avg       dBrier    +0.0091 [+0.0070, +0.0113]
+  model - position_avg       dlogloss  +0.4053 [+0.3777, +0.4337]
+  model - constant           dBrier    -0.0065 [-0.0088, -0.0040]
+  model - constant           dlogloss  +0.3540 [+0.3261, +0.3825]
+-- reliability (model):
+             mean_p  actual      n
+b                                 
+[0.0, 0.05)   0.003   0.095  15158
+[0.05, 0.1)   0.076   0.159   2648
+[0.1, 0.2)    0.148   0.208   4459
+[0.2, 0.3)    0.247   0.275   3323
+[0.3, 0.4)    0.348   0.310   2407
+[0.4, 0.5)    0.448   0.379   1911
+[0.5, 0.6)    0.549   0.406   1454
+[0.6, 1.01)   0.763   0.494   3088
+
+=== by prior current-season appearances (shots): model MAE vs position_avg MAE vs own MAE, mean pred, mean actual ===
+                     n  model_mae  posavg_mae  mean_pred  mean_actual
+exp                                                                  
+0 prior games   1670.0      0.611       0.612      0.000        0.611
+1-4             5967.0      0.864       0.676      0.822        0.659
+5-9             6652.0      0.788       0.739      0.837        0.755
+10+            20159.0      0.867       0.828      1.007        0.906
