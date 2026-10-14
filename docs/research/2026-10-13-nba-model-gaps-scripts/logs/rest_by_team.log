@@ -1,0 +1,22 @@
+
+frame: holdout 1387 games, pooled out-of-fold n=765
+candidate: rest_by_team=True (no columns added, the two rest columns and back-to-back flags change)
+
+=== paired bootstrap: + travel/fatigue vs baseline, 2000 resamples, seed 20261009
+  metric          baseline   +travel      diff          95% interval   verdict
+  win log_loss      0.6612    0.6638   +0.0027    [-0.0013, +0.0067]   NOT distinguishable
+  win brier         0.2342    0.2355   +0.0014    [-0.0006, +0.0033]   NOT distinguishable
+  win auc           0.6321    0.6176   -0.0145    [-0.0288, +0.0001]   NOT distinguishable
+  margin mae       13.2197   13.2644   +0.0448    [-0.0174, +0.1077]   NOT distinguishable
+  total mae        16.5488   16.7402   +0.1914    [+0.0723, +0.3146]   WORSE (interval excludes zero)
+  0/5 improved, 1/5 measurably worse
+
+  baseline: max |gap| = 0.0514
+
+  + travel/fatigue: max |gap| = 0.0356
+
+=== SHIP RULE: AUC interval excludes a decline; the other four metrics each improve; max gap <= 0.0591 and not wider than the baseline's 0.0514
+  does NOT ship
+      - AUC non-decline: NO (interval includes a decline)
+      - not improved: win log_loss, win brier, margin mae, total mae
+      - 1/5 metrics are measurably WORSE, not noise

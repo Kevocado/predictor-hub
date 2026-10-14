@@ -1,0 +1,2 @@
+baseline  platt OOF: calibrated from window 2; games calibrated 261; gap on those games: platt 0.1428 vs uncalibrated 0.1430; logloss on those games platt 0.6443 vs uncal 0.6416; logloss(all) 0.6621
+H         platt OOF: calibrated from window 2; games calibrated 261; gap on those games: platt 0.0991 vs uncalibrated 0.1147; logloss on those games platt 0.5515 vs uncal 0.5522; logloss(all) 0.5850

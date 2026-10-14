@@ -1,0 +1,33 @@
+frame 1365 cols 22
+pooled n 765 dates 2025-10-04 2026-06-13
+== WIN (logistic, race winner) vs naive home rate (train-window)
+  win log_loss                                model   0.6612  naive   0.6872  diff(model-naive) -0.0260 [-0.0393,-0.0126]  skill +3.79% [+1.84%,+5.72%] 
+  win brier                                   model   0.2342  naive   0.2470  diff(model-naive) -0.0128 [-0.0191,-0.0068]  skill +5.20% [+2.74%,+7.73%] 
+  win auc (naive 0.5)                         model   0.6322  naive   0.4688  diff(model-naive) +0.1634 [+0.1101,+0.2164]  skill -34.87% [-46.16%,-23.48%] 
+  max cal gap model 0.05781222221526372  naive 0.067277635691958
+== WIN as SERVED: Phi(ridge margin / sigma=16.57) vs naive home rate
+  served win log_loss                         model   0.6566  naive   0.6872  diff(model-naive) -0.0306 [-0.0431,-0.0181]  skill +4.46% [+2.64%,+6.26%] 
+  served win brier                            model   0.2321  naive   0.2470  diff(model-naive) -0.0149 [-0.0209,-0.0089]  skill +6.04% [+3.62%,+8.46%] 
+  served win auc                              model   0.6464  naive   0.4688  diff(model-naive) +0.1776 [+0.1251,+0.2302]  skill -37.89% [-49.10%,-26.68%] 
+  max cal gap 0.06446626036070102
+== WIN: Elo reference (not served) vs naive home rate
+  elo log_loss                                model   0.5984  naive   0.6872  diff(model-naive) -0.0888 [-0.1183,-0.0606]  skill +12.93% [+8.82%,+17.22%] 
+  elo brier                                   model   0.2059  naive   0.2470  diff(model-naive) -0.0412 [-0.0537,-0.0287]  skill +16.67% [+11.61%,+21.73%] 
+  elo auc                                     model   0.7418  naive   0.4688  diff(model-naive) +0.2730 [+0.2231,+0.3238]  skill -58.24% [-69.06%,-47.58%] 
+  max cal gap 0.11539449784300648
+== logistic vs Elo (paired)
+  logistic-vs-elo log_loss (naive column = elo)model   0.6612  naive   0.5984  diff(model-naive) +0.0628 [+0.0363,+0.0891]  skill -10.50% [-14.88%,-6.07%] 
+  logistic-vs-elo auc (naive column = elo)    model   0.6322  naive   0.7418  diff(model-naive) -0.1095 [-0.1498,-0.0694]  skill +14.77% [+9.36%,+20.20%] 
+== MARGIN (ridge) MAE
+  vs training-mean margin                     model  13.2197  naive  14.0114  diff(model-naive) -0.7918 [-1.0564,-0.5367]  skill +5.65% [+3.83%,+7.54%] 
+  vs fixed -3 (repo's old naive; sign convention home-margin +)model  13.2197  naive  13.9281  diff(model-naive) -0.7085 [-0.9720,-0.4457]  skill +5.09% [+3.20%,+6.98%] 
+  vs trailing-10 team net margins             model  13.2197  naive  15.3678  diff(model-naive) -2.1481 [-2.8384,-1.4851]  skill +13.98% [+9.66%,+18.47%] 
+  vs season-to-date team net margins          model  13.2197  naive  14.3983  diff(model-naive) -1.1786 [-1.6915,-0.6910]  skill +8.19% [+4.80%,+11.75%] 
+== TOTAL (ridge) MAE
+  vs training-mean total                      model  16.5488  naive  16.3685  diff(model-naive) +0.1803 [-0.0325,+0.3844]  skill -1.10% [-2.35%,+0.20%] 
+  vs fixed league avg 230.174                 model  16.5488  naive  16.2240  diff(model-naive) +0.3248 [+0.0996,+0.5599]  skill -2.00% [-3.45%,-0.61%] 
+  vs trailing-10 team totals avg              model  16.5488  naive  16.0835  diff(model-naive) +0.4654 [-0.0456,+0.9756]  skill -2.89% [-6.07%,+0.28%] 
+  vs season-to-date team totals avg           model  16.5488  naive  16.0554  diff(model-naive) +0.4935 [+0.1868,+0.7940]  skill -3.07% [-4.95%,-1.16%] 
+margin sigma 16.568376611787034 total sigma 20.74088988170403
+margin mae 13.219651896112167 total mae 16.54883581392402
+sd margin 17.372498069632226 sd total 20.125047329380997

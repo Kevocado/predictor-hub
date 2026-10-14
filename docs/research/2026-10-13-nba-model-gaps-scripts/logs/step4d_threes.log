@@ -1,0 +1,4 @@
+rows 29781
+DIRECT exp_threes = fg3a_roll10 x shrunk3P%(20,k=40)        MAE 0.8901 vs trailing-10 mean -0.0062 [-0.0094,-0.0032] (trailing MAE 0.8963, n=16577)
+DIRECT 3PM per minute (20g) x minutes_roll10                MAE 0.8865 vs trailing-10 mean -0.0098 [-0.0140,-0.0060] (trailing MAE 0.8963, n=16577)
+DIRECT average of the two                                   MAE 0.8865 vs trailing-10 mean -0.0098 [-0.0133,-0.0067] (trailing MAE 0.8963, n=16577)

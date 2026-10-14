@@ -1,0 +1,8 @@
+slice(n)           LL base   LL H    LL HF | margin MAE base  H   HF | total MAE base  H   HF
+   0-246 (246)  0.6956  0.6585  0.6550 | 12.747 12.084 11.974 | 17.255 15.840 15.795
+ 246-504 (258)  0.6482  0.5486  0.5335 | 12.758 11.164 10.955 | 15.571 14.915 14.928
+ 504-710 (206)  0.6374  0.5265  0.5248 | 14.217 12.199 12.208 | 16.661 15.597 15.301
+ 710-763 ( 53)  0.6611  0.6482  0.6448 | 14.208 13.809 13.680 | 17.024 14.423 14.511
+baseline served gap 0.0645 LL 0.6566 sigma_margin 16.57 sigma_total 20.74
+HF served gap 0.0494 LL 0.5757 sigma_margin 14.77 sigma_total 19.16
+HF gap if perfectly calibrated (sim):  [0.0254 0.0559 0.1079] observed 0.055

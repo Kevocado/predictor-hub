@@ -1,0 +1,57 @@
+NaN in new cols: 0
+### A elo (W/L, 10-base) -> power_rating block  (n=765)
+  win log_loss    0.6612   0.5880  -0.0731  [-0.0951,-0.0506]  IMPROVED
+  win brier       0.2342   0.2012  -0.0330  [-0.0425,-0.0231]  IMPROVED
+  win auc         0.6322   0.7458  +0.1136  [+0.0771,+0.1506]  IMPROVED
+  margin mae     13.2197  11.9374  -1.2822  [-1.6593,-0.9109]  IMPROVED
+  total mae      16.5488  16.5248  -0.0241  [-0.1278,+0.0808]  n.s.
+  cal gap 0.0578 -> 0.0886; auc_ok=True missing=['total mae'] gap_ok=False => does NOT ship
+### B elo MOV variant  (n=765)
+  win log_loss    0.6612   0.5861  -0.0750  [-0.0969,-0.0526]  IMPROVED
+  win brier       0.2342   0.2005  -0.0337  [-0.0434,-0.0239]  IMPROVED
+  win auc         0.6322   0.7481  +0.1159  [+0.0793,+0.1536]  IMPROVED
+  margin mae     13.2197  11.9495  -1.2701  [-1.6390,-0.9141]  IMPROVED
+  total mae      16.5488  16.5054  -0.0434  [-0.1514,+0.0693]  n.s.
+  cal gap 0.0578 -> 0.0755; auc_ok=True missing=['total mae'] gap_ok=False => does NOT ship
+### C pace + efficiency rolling (ortg/drtg/pace)  (n=765)
+  win log_loss    0.6612   0.6096  -0.0516  [-0.0707,-0.0310]  IMPROVED
+  win brier       0.2342   0.2112  -0.0230  [-0.0318,-0.0135]  IMPROVED
+  win auc         0.6322   0.7168  +0.0846  [+0.0470,+0.1214]  IMPROVED
+  margin mae     13.2197  12.3312  -0.8885  [-1.1913,-0.5819]  IMPROVED
+  total mae      16.5488  15.3340  -1.2148  [-1.6284,-0.8094]  IMPROVED
+  cal gap 0.0578 -> 0.1161; auc_ok=True missing=[] gap_ok=False => does NOT ship
+### D opponent-adjusted off/def ratings  (n=765)
+  win log_loss    0.6612   0.6111  -0.0500  [-0.0674,-0.0315]  IMPROVED
+  win brier       0.2342   0.2115  -0.0227  [-0.0308,-0.0142]  IMPROVED
+  win auc         0.6322   0.7191  +0.0868  [+0.0507,+0.1227]  IMPROVED
+  margin mae     13.2197  12.3819  -0.8377  [-1.1188,-0.5628]  IMPROVED
+  total mae      16.5488  16.1308  -0.4181  [-0.5971,-0.2290]  IMPROVED
+  cal gap 0.0578 -> 0.0772; auc_ok=True missing=[] gap_ok=False => does NOT ship
+### E pace x efficiency expected total  (n=765)
+  win log_loss    0.6612   0.6615  +0.0003  [-0.0022,+0.0027]  n.s.
+  win brier       0.2342   0.2344  +0.0002  [-0.0010,+0.0013]  n.s.
+  win auc         0.6322   0.6302  -0.0020  [-0.0091,+0.0045]  n.s.
+  margin mae     13.2197  13.2327  +0.0131  [-0.0073,+0.0334]  n.s.
+  total mae      16.5488  15.4274  -1.1214  [-1.4829,-0.7603]  IMPROVED
+  cal gap 0.0578 -> 0.0763; auc_ok=False missing=['win log_loss', 'win brier', 'margin mae'] gap_ok=False => does NOT ship
+### F availability proxy (lagged absent rotation share)  (n=765)
+  win log_loss    0.6612   0.6349  -0.0263  [-0.0382,-0.0150]  IMPROVED
+  win brier       0.2342   0.2222  -0.0120  [-0.0174,-0.0068]  IMPROVED
+  win auc         0.6322   0.6838  +0.0515  [+0.0271,+0.0777]  IMPROVED
+  margin mae     13.2197  12.6165  -0.6032  [-0.8597,-0.3577]  IMPROVED
+  total mae      16.5488  16.5498  +0.0010  [-0.1302,+0.1307]  n.s.
+  cal gap 0.0578 -> 0.0648; auc_ok=True missing=['total mae'] gap_ok=False => does NOT ship
+### G rest cleaned: team-based rest capped at 7 + games in last 7d (replaces repo rest cols)  (n=765)
+  win log_loss    0.6612   0.6660  +0.0048  [-0.0013,+0.0110]  n.s.
+  win brier       0.2342   0.2366  +0.0024  [-0.0005,+0.0054]  n.s.
+  win auc         0.6322   0.6095  -0.0228  [-0.0436,-0.0023]  WORSE
+  margin mae     13.2197  13.2410  +0.0213  [-0.0652,+0.1087]  n.s.
+  total mae      16.5488  16.6907  +0.1419  [+0.0131,+0.2720]  WORSE
+  cal gap 0.0578 -> 0.1005; auc_ok=False missing=['win log_loss', 'win brier', 'margin mae', 'total mae'] gap_ok=False => does NOT ship
+### H elo + adjusted ratings + pace (combined 'power+adjusted+form')  (n=765)
+  win log_loss    0.6612   0.5852  -0.0760  [-0.0993,-0.0527]  IMPROVED
+  win brier       0.2342   0.2006  -0.0336  [-0.0440,-0.0233]  IMPROVED
+  win auc         0.6322   0.7484  +0.1162  [+0.0784,+0.1540]  IMPROVED
+  margin mae     13.2197  11.8974  -1.3223  [-1.7200,-0.9424]  IMPROVED
+  total mae      16.5488  15.3730  -1.1759  [-1.5695,-0.7869]  IMPROVED
+  cal gap 0.0578 -> 0.0931; auc_ok=True missing=[] gap_ok=False => does NOT ship
