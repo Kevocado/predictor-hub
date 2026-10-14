@@ -1,0 +1,10 @@
+[qb_rushing_yards] base scored n=4023 in 60s
+[qb_rushing_yards] BASE q50 MAE 11.308 naive 11.923 skill(naive-model) +0.588 CI[+0.376,+0.787]; gap_exo=0.081
+[qb_rushing_yards] pace_script_existing: dMAE +0.037 CI[-0.010,+0.083] gap 0.081->0.070 chg CI[-0.029,+0.029] clears=False
+[qb_rushing_yards] pressure_existing: dMAE +0.002 CI[-0.030,+0.033] gap 0.081->0.070 chg CI[-0.031,+0.014] clears=False
+[qb_rushing_yards] redzone_existing: dMAE -0.011 CI[-0.056,+0.028] gap 0.081->0.077 chg CI[-0.020,+0.014] clears=False
+[qb_rushing_yards] ngs_qb_existing: dMAE -0.028 CI[-0.088,+0.030] gap 0.081->0.075 chg CI[-0.033,+0.025] clears=False
+[qb_rushing_yards] opp_epa_new: dMAE -0.013 CI[-0.065,+0.037] gap 0.081->0.048 chg CI[-0.050,+0.013] clears=False
+[qb_rushing_yards] sack_rate_new: dMAE -0.041 CI[-0.098,+0.012] gap 0.081->0.062 chg CI[-0.037,+0.015] clears=False
+[qb_rushing_yards] neutral_script_new: dMAE -0.035 CI[-0.082,+0.007] gap 0.081->0.066 chg CI[-0.035,+0.018] clears=False
+[qb_rushing_yards] practice_status_new: dMAE +0.004 CI[-0.003,+0.011] gap 0.081->0.076 chg CI[-0.013,+0.012] clears=False

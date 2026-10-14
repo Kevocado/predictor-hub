@@ -1,0 +1,2 @@
+('WR', 'TE') N=9511 mu MAE 1.511 naive(roll5) 1.499 skill -0.012 CI[-0.023,-0.002] | MSE 4.000 naive 4.035 skill +0.036 CI[-0.012,+0.082]
+('RB',) N=3983 mu MAE 1.238 naive(roll5) 1.241 skill +0.004 CI[-0.012,+0.019] | MSE 2.587 naive 2.749 skill +0.162 CI[+0.104,+0.224]

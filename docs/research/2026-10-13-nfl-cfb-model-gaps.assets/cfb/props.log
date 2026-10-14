@@ -1,0 +1,38 @@
+Loading CFB data for seasons [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]...
+efficiency rows: 25754 covering seasons [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+rows 211345 matched to a game 0.715
+[passing_yards] BASE N=29865 MAE 50.830 naive(roll5) 50.005 skill -0.690 CI[-1.003,-0.354]
+   base median-coverage gap 0.396
+[passing_yards] opp_defense_epa: dMAE -0.111 CI[-0.168,-0.051] covgap 0.396->0.403 chg CI[-0.001,+0.015] seasons+ 2/5 | naive-vs-cand skill -0.809
+[passing_yards] own_offense_epa: dMAE +0.072 CI[+0.005,+0.140] covgap 0.396->0.378 chg CI[-0.027,-0.008] seasons+ 4/5 | naive-vs-cand skill -0.629
+[passing_yards] pace: dMAE +0.127 CI[+0.060,+0.193] covgap 0.396->0.330 chg CI[-0.074,-0.048] seasons+ 5/5 | naive-vs-cand skill -0.596
+[passing_yards] venue: dMAE +0.148 CI[+0.112,+0.181] covgap 0.396->0.381 chg CI[-0.021,-0.004] seasons+ 5/5 | naive-vs-cand skill -0.583
+[passing_yards] opp_defense_structure: dMAE -0.188 CI[-0.235,-0.141] covgap 0.396->0.426 chg CI[+0.022,+0.038] seasons+ 0/5 | naive-vs-cand skill -0.902
+[passing_yards] objective_absoluteerror_(no new data): dMAE +2.927 CI[+2.743,+3.112] covgap 0.396->0.396 chg CI[-0.010,+0.012] seasons+ 5/5 | naive-vs-cand skill +1.397
+[passing_yards] blend_50_50_with_roll5_(no new data): dMAE +1.207 CI[+1.056,+1.354] covgap 0.396->0.396 chg CI[+0.000,+0.001] seasons+ 5/5 | naive-vs-cand skill +0.626
+[passing_yards] abs_objective+venue+pace: dMAE +2.987 CI[+2.795,+3.176] covgap 0.396->0.397 chg CI[-0.010,+0.012] seasons+ 5/5 | naive-vs-cand skill +1.463
+[rushing_yards] BASE N=45586 MAE 26.316 naive(roll5) 26.951 skill -0.062 CI[-0.172,+0.050]
+   base median-coverage gap 0.203
+[rushing_yards] opp_defense_epa: dMAE -0.076 CI[-0.112,-0.041] covgap 0.203->0.208 chg CI[-0.002,+0.009] seasons+ 1/5 | naive-vs-cand skill -0.142
+[rushing_yards] own_offense_epa: dMAE -0.010 CI[-0.028,+0.007] covgap 0.203->0.207 chg CI[-0.000,+0.007] seasons+ 2/5 | naive-vs-cand skill -0.078
+[rushing_yards] pace: dMAE +0.134 CI[+0.104,+0.165] covgap 0.203->0.192 chg CI[-0.018,-0.006] seasons+ 4/5 | naive-vs-cand skill +0.067
+[rushing_yards] venue: dMAE +0.107 CI[+0.091,+0.124] covgap 0.203->0.194 chg CI[-0.016,-0.003] seasons+ 5/5 | naive-vs-cand skill +0.034
+[rushing_yards] opp_defense_structure: dMAE -0.113 CI[-0.146,-0.080] covgap 0.203->0.205 chg CI[-0.004,+0.007] seasons+ 1/5 | naive-vs-cand skill -0.191
+[rushing_yards] objective_absoluteerror_(no new data): dMAE +1.394 CI[+1.311,+1.483] covgap 0.203->0.025 chg CI[-0.189,-0.169] seasons+ 5/5 | naive-vs-cand skill +1.248
+[rushing_yards] blend_50_50_with_roll5_(no new data): dMAE +0.713 CI[+0.657,+0.771] covgap 0.203->0.113 chg CI[-0.103,-0.080] seasons+ 5/5 | naive-vs-cand skill +0.716
+[rushing_yards] abs_objective+venue+pace: dMAE +1.461 CI[+1.372,+1.552] covgap 0.203->0.026 chg CI[-0.188,-0.169] seasons+ 5/5 | naive-vs-cand skill +1.316
+[receiving_yards] BASE N=84400 MAE 22.079 naive(roll5) 22.959 skill +0.422 CI[+0.352,+0.487]
+   base median-coverage gap 0.175
+[receiving_yards] opp_defense_epa: dMAE -0.031 CI[-0.040,-0.022] covgap 0.175->0.179 chg CI[+0.000,+0.008] seasons+ 2/5 | naive-vs-cand skill +0.388
+[receiving_yards] own_offense_epa: dMAE -0.003 CI[-0.012,+0.008] covgap 0.175->0.180 chg CI[+0.003,+0.008] seasons+ 3/5 | naive-vs-cand skill +0.415
+[receiving_yards] pace: dMAE +0.068 CI[+0.061,+0.076] covgap 0.175->0.177 chg CI[-0.002,+0.004] seasons+ 5/5 | naive-vs-cand skill +0.479
+[receiving_yards] venue: dMAE +0.036 CI[+0.031,+0.041] covgap 0.175->0.174 chg CI[-0.003,+0.002] seasons+ 5/5 | naive-vs-cand skill +0.452
+[receiving_yards] opp_defense_structure: dMAE -0.060 CI[-0.068,-0.053] covgap 0.175->0.180 chg CI[+0.002,+0.007] seasons+ 0/5 | naive-vs-cand skill +0.356
+[receiving_yards] objective_absoluteerror_(no new data): dMAE +1.139 CI[+1.090,+1.191] covgap 0.175->0.026 chg CI[-0.155,-0.142] seasons+ 5/5 | naive-vs-cand skill +1.453
+[receiving_yards] blend_50_50_with_roll5_(no new data): dMAE +0.310 CI[+0.275,+0.343] covgap 0.175->0.113 chg CI[-0.071,-0.052] seasons+ 5/5 | naive-vs-cand skill +0.758
+[receiving_yards] abs_objective+venue+pace: dMAE +1.149 CI[+1.098,+1.203] covgap 0.175->0.020 chg CI[-0.162,-0.149] seasons+ 5/5 | naive-vs-cand skill +1.461
+[anytime_td] BASE N=159851 logloss 0.5074 naive(pos rate) 0.5380 skill +0.0305 CI[+0.0293,+0.0318]
+[anytime_td] opp_defense_epa: dLogloss +0.0017 CI[+0.0014,+0.0021]
+[anytime_td] own_offense_epa: dLogloss +0.0011 CI[+0.0008,+0.0013]
+[anytime_td] pace: dLogloss +0.0003 CI[+0.0000,+0.0005]
+[anytime_td] venue: dLogloss +0.0004 CI[+0.0002,+0.0006]

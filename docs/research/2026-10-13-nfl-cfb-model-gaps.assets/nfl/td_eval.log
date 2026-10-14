@@ -1,0 +1,6 @@
+== QB passing TDs, Poisson on 4 feats, walk-forward 2019-2025 N=3944
+ NLL model 1.3868 | naive(train mean) 1.4768 skill +0.0900 CI[+0.0773,+0.1029] | naive(own rolling mean) 1.4417 skill +0.0550 CI[+0.0392,+0.0705]
+ MAE(mean) model 0.8802 naive 0.9879 skill +0.1077 CI[+0.0954,+0.1211]
+ P(>=2 TD) 5-bucket max gap 0.048
+== anytime TD (rush+rec>0), XGB 14 feats, QB/RB/WR/TE, 2019-2025 N=32411 base rate 0.210
+ logloss model 0.4817 naive(position base rate) 0.5096 skill +0.0279 CI[+0.0256,+0.0304]; AUC 0.6775 (naive pos-rate AUC 0.5659); gap5 0.008

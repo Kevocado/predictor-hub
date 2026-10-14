@@ -1,0 +1,88 @@
+
+loading weekly labels...
+  2025: derived from pbp (nflverse player_stats stops at 2024)
+  2026: derived from pbp (nflverse player_stats stops at 2024)
+loading depth charts, injuries, NGS, schedules...
+building rolling usage features...
+building matchup + game-context features...
+weather: 1262 cached readings, not fetching (pass --fetch-weather to refresh)
+building availability features (this reads play-by-play)...
+  2026: no ['route'] in play-by-play; those columns are NaN
+building interaction features (products of independent signals)...
+feature frame: 50807 rows, 1891 players
+feature frame written to /private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/nfl/frame.parquet
+
+scored 36434 rows across ['passing_yards', 'rushing_yards', 'receiving_yards', 'qb_rushing_yards'] and seasons [2019, 2020, 2021, 2022, 2023, 2024, 2025]
+
+=== MAE ===
+          market  season    n   mae_q50  mae_naive  q50_beats_naive
+   passing_yards    2019  614 72.826324  72.020603            False
+   passing_yards    2020  651 71.583826  72.138959             True
+   passing_yards    2021  694 69.879235  71.408272             True
+   passing_yards    2022  677 65.669702  68.032159             True
+   passing_yards    2023  690 68.530562  70.271608             True
+   passing_yards    2024  697 67.929789  70.527454             True
+qb_rushing_yards    2019  614 10.611183  10.801647             True
+qb_rushing_yards    2020  651 11.363773  11.967111             True
+qb_rushing_yards    2021  694 10.502888  11.264703             True
+qb_rushing_yards    2022  677 12.159167  12.717291             True
+qb_rushing_yards    2023  690 11.126710  11.745821             True
+qb_rushing_yards    2024  697 12.022510  12.911297             True
+ receiving_yards    2019 3139 21.907732  23.492897             True
+ receiving_yards    2020 3246 21.975093  23.180928             True
+ receiving_yards    2021 3407 20.767404  22.413104             True
+ receiving_yards    2022 3370 20.609454  22.138343             True
+ receiving_yards    2023 3444 20.364647  21.964992             True
+ receiving_yards    2024 3375 20.206463  21.515046             True
+   rushing_yards    2019 1326 21.631630  22.744229             True
+   rushing_yards    2020 1400 21.688496  22.666728             True
+   rushing_yards    2021 1428 21.319235  22.823579             True
+   rushing_yards    2022 1442 21.485275  23.047634             True
+   rushing_yards    2023 1403 19.791587  21.352445             True
+   rushing_yards    2024 1408 21.562180  22.508321             True
+
+=== calibration at the exogenous (BINDING) line (n>=100) ===
+ok  0.0-0.1  predicted=0.088 empirical=0.083 gap=0.006 n=399
+ok  0.1-0.2  predicted=0.165 empirical=0.147 gap=0.018 n=4373
+ok  0.2-0.3  predicted=0.250 empirical=0.232 gap=0.018 n=5883
+ok  0.3-0.4  predicted=0.351 empirical=0.331 gap=0.020 n=4763
+ok  0.4-0.5  predicted=0.451 empirical=0.424 gap=0.027 n=4008
+ok  0.5-0.6  predicted=0.551 empirical=0.546 gap=0.006 n=4244
+ok  0.6-0.7  predicted=0.650 empirical=0.636 gap=0.014 n=4416
+ok  0.7-0.8  predicted=0.749 empirical=0.746 gap=0.003 n=4446
+ok  0.8-0.9  predicted=0.840 empirical=0.851 gap=0.011 n=3266
+ok  0.9-1.0  predicted=0.916 empirical=0.915 gap=0.001 n=636
+
+=== calibration at the own-median (diagnostic, non-binding) line (n>=100) ===
+MISS 0.0-0.1  predicted=0.077 empirical=0.131 gap=0.054 n=176
+ok  0.1-0.2  predicted=0.166 empirical=0.215 gap=0.049 n=1272
+MISS 0.2-0.3  predicted=0.260 empirical=0.321 gap=0.061 n=3162
+ok  0.3-0.4  predicted=0.357 empirical=0.386 gap=0.029 n=5836
+ok  0.4-0.5  predicted=0.452 empirical=0.452 gap=0.000 n=7503
+ok  0.5-0.6  predicted=0.549 empirical=0.513 gap=0.036 n=6948
+MISS 0.6-0.7  predicted=0.646 empirical=0.576 gap=0.070 n=4955
+MISS 0.7-0.8  predicted=0.739 empirical=0.631 gap=0.108 n=2800
+MISS 0.8-0.9  predicted=0.837 empirical=0.740 gap=0.097 n=854
+MISS 0.9-1.0  predicted=0.952 empirical=0.646 gap=0.306 n=703
+
+=== tail watch: calibration by |line - q50| ===
+ third     n  predicted  empirical       gap  overconfident
+ inner 12145   0.469236   0.455002 -0.014234          False
+middle 12144   0.404167   0.382411 -0.021756          False
+ outer 12145   0.573382   0.572417 -0.000965          False
+
+calibration gate (exogenous line): PASS
+
+receptions ZINB walk-forward on seasons [2022, 2023, 2024]...
+scored 9727 receptions rows
+
+=== calibration at the receptions ZINB (model line, BINDING) line (n>=100) ===
+ok  0.3-0.4  predicted=0.368 empirical=0.350 gap=0.018 n=2176
+ok  0.4-0.5  predicted=0.451 empirical=0.417 gap=0.034 n=5252
+ok  0.5-0.6  predicted=0.526 empirical=0.489 gap=0.037 n=2296
+
+receptions ZINB gate: PASS
+
+BOTH GATES: PASS (quantile=PASS, receptions=PASS)
+
+(dry run: pass --write-artifacts to fit and write)

@@ -1,0 +1,10 @@
+Loading NFL data for seasons [2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]...
+== NFL ridge default features (10): N=6499 seasons 2002-2025
+game_outcome Brier: model=0.2213 naive=0.2462 skill(naive-model)=+0.0249 CI[+0.0216,+0.0281] lower better
+game_outcome logloss: model=0.6325 naive=0.6856 skill(naive-model)=+0.0531 CI[+0.0460,+0.0602] lower better
+margin MAE: model=10.5961 naive=11.3127 skill(naive-model)=+0.7166 CI[+0.5900,+0.8466] pts
+total_points MAE: model=10.8736 naive=11.0983 skill(naive-model)=+0.2247 CI[+0.1605,+0.2885] pts
+model margin MAE minus Vegas-spread MAE (context only, N=6499): +0.3469 CI[+0.2724,+0.4231] (positive = model worse than the market)
+model total MAE minus Vegas-total MAE (N=6499): +0.3123 CI[+0.2316,+0.3947]
+  [2010-2025 N=4363] Brier skill +0.0258 [+0.0217,+0.0297]; tot skill +0.2575 [+0.1746,+0.3356]; marg skill +0.7520 [+0.6012,+0.9059]
+  [2019-2025 N=1960] Brier skill +0.0265 [+0.0203,+0.0323]; tot skill +0.2427 [+0.1190,+0.3687]; marg skill +0.8464 [+0.6223,+1.0463]

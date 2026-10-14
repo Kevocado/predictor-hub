@@ -1,0 +1,4 @@
+[qb_rushing_yards] base scored n=4687 in 52s
+[qb_rushing_yards] BASE q50 MAE 11.254 naive 11.877 skill(naive-model) +0.579 CI[+0.399,+0.753]; gap_exo=0.055
+[qb_rushing_yards] opp_epa_new: dMAE -0.017 CI[-0.062,+0.028] gap 0.055->0.039 chg CI[-0.036,+0.017] clears=False
+[qb_rushing_yards] neutral_script_new: dMAE -0.034 CI[-0.075,+0.004] gap 0.055->0.045 chg CI[-0.027,+0.016] clears=False
