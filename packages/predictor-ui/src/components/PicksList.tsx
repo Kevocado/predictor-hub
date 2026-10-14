@@ -63,9 +63,6 @@ export type OutPlayer = {
   dated: string;
 };
 
-/** Direction for NFL over/under picks. */
-export type Direction = "over" | "under" | "toss";
-
 export type PickRow = {
   /** Stable per player+category; the tile's identity and the React key. */
   key: string;
