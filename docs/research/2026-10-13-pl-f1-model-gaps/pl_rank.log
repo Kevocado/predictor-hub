@@ -1,0 +1,55 @@
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:38: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[c].notna().all(1)
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:38: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[c].notna().all(1)
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:43: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[[o,u]].notna().all(1); m = np.full(len(va), np.nan)
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:43: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[[o,u]].notna().all(1); m = np.full(len(va), np.nan)
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:43: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[[o,u]].notna().all(1); m = np.full(len(va), np.nan)
+2021-2022 done
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:38: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[c].notna().all(1)
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:38: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[c].notna().all(1)
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:43: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[[o,u]].notna().all(1); m = np.full(len(va), np.nan)
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:43: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[[o,u]].notna().all(1); m = np.full(len(va), np.nan)
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:43: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[[o,u]].notna().all(1); m = np.full(len(va), np.nan)
+2022-2023 done
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:38: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[c].notna().all(1)
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:38: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[c].notna().all(1)
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:43: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[[o,u]].notna().all(1); m = np.full(len(va), np.nan)
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:43: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[[o,u]].notna().all(1); m = np.full(len(va), np.nan)
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:43: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[[o,u]].notna().all(1); m = np.full(len(va), np.nan)
+2023-2024 done
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:38: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[c].notna().all(1)
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:38: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[c].notna().all(1)
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:43: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[[o,u]].notna().all(1); m = np.full(len(va), np.nan)
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:43: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[[o,u]].notna().all(1); m = np.full(len(va), np.nan)
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:43: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[[o,u]].notna().all(1); m = np.full(len(va), np.nan)
+2024-2025 done
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:38: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[c].notna().all(1)
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:38: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[c].notna().all(1)
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:43: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[[o,u]].notna().all(1); m = np.full(len(va), np.nan)
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:43: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[[o,u]].notna().all(1); m = np.full(len(va), np.nan)
+/private/tmp/claude-501/-Users-sigey-Documents-Projects-nosync/56aaa9a5-e5c4-4c7a-a233-23dbe6f9dce8/scratchpad/w/h/pl_rank.py:43: Pandas4Warning: Starting with pandas version 4.0 all arguments of all will be keyword-only.
+  ok = va[[o,u]].notna().all(1); m = np.full(len(va), np.nan)
+2025-2026 done

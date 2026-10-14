@@ -1,0 +1,16 @@
+['2022-23', '2023-24', '2024-25', '2025-26'] 113592
+2024-25 done
+2025-26 done
+               target        model metric  model_val  prev_val  diff_prev_minus_model      lo      hi  skill_pct  base_rate      n
+0                goal       direct  brier     0.0288    0.0321                 0.0032  0.0028  0.0037    10.1254     0.0332  57362
+1                goal       direct     ll     0.1084    0.1456                 0.0373  0.0351  0.0395    25.5999     0.0332  57362
+2                goal  union_platt  brier     0.0296    0.0321                 0.0025  0.0022  0.0028     7.8275     0.0332  57362
+3                goal  union_platt     ll     0.1218    0.1456                 0.0238  0.0218  0.0259    16.3495     0.0332  57362
+4              assist       direct  brier     0.0286    0.0303                 0.0017  0.0014  0.0021     5.6618     0.0313  57362
+5              assist       direct     ll     0.1122    0.1392                 0.0270  0.0252  0.0289    19.3865     0.0313  57362
+6              assist  union_platt  brier     0.0291    0.0303                 0.0012  0.0010  0.0014     4.0739     0.0313  57362
+7              assist  union_platt     ll     0.1252    0.1392                 0.0140  0.0123  0.0157    10.0496     0.0313  57362
+8   goal_contribution       direct  brier     0.0485    0.0565                 0.0080  0.0072  0.0089    14.2308     0.0601  57362
+9   goal_contribution       direct     ll     0.1675    0.2274                 0.0599  0.0566  0.0632    26.3542     0.0601  57362
+10  goal_contribution  union_platt  brier     0.0497    0.0565                 0.0068  0.0061  0.0074    11.9881     0.0601  57362
+11  goal_contribution  union_platt     ll     0.1834    0.2274                 0.0440  0.0408  0.0472    19.3327     0.0601  57362
