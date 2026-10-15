@@ -772,7 +772,7 @@ def _verdict_problems(facts: dict, body: str) -> list[str]:
 #: `home_rest_days`, `spread_line` and the like are all covered.
 _MARKET_CONTEXT = ("rest", "spread", "total", "line", "prob", "moneyline", "odds")
 #: Context keys that ARE the matchup read's input; their figures are allowed.
-_TACTICAL_CONTEXT = ("matchups", "player_context", "form_rows")
+_TACTICAL_CONTEXT = ("matchups", "player_context", "availability", "form_rows")
 
 
 def _restated_figures(facts: dict, read: str) -> list[str]:

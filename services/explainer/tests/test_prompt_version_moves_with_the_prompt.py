@@ -90,6 +90,9 @@ RECORDED_PROMPT_DIGEST = {
     # The matchup summary: the input is matchups / player_context / form_rows,
     # market numbers are background, the output is {verdict, read}.
     "v9": "fa26bcd79189f8e6b4681ca04a473e2e1cea89fb60ba995d71f3bdfb213ab5ae",
+    # Availability: the NFL starting quarterback and the official Out list join the tactical inputs, and rule 6
+    # lets the read name them (never anyone not listed). Recorded, not folded into v9.
+    "v10": "f85cab5319b33a0fcd15ace6e7eca8bc1aff429918e987467a026badd795dbdd",
 }
 
 _HEX64 = re.compile(r"[0-9a-f]{64}")
