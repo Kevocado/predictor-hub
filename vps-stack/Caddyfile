@@ -4,6 +4,14 @@
 # them all). No account email: Let's Encrypt stopped sending expiry mail in
 # 2025, and Caddy renews on its own.
 
+(retry) {
+	# A redeployed container is unreachable for a few seconds. Without this Caddy answers 502 the instant the
+	# connection is refused; with it, it keeps trying the upstream for up to 20s, so the first reader after a deploy
+	# waits briefly instead of seeing an error page.
+	lb_try_duration 20s
+	lb_try_interval 250ms
+}
+
 (common) {
 	encode zstd gzip
 	header -Server
@@ -19,19 +27,29 @@
 	# Same pattern as sports.{$DOMAIN} below, and same reason: handle_path
 	# strips the prefix and the upstream serves from its own root.
 	handle_path /pl/* {
-		reverse_proxy pl:8000
+		reverse_proxy pl:8000 {
+			import retry
+		}
 	}
 	handle_path /f1/* {
-		reverse_proxy f1:8000
+		reverse_proxy f1:8000 {
+			import retry
+		}
 	}
 	handle_path /nba/* {
-		reverse_proxy nba:8000
+		reverse_proxy nba:8000 {
+			import retry
+		}
 	}
 	handle_path /nfl/* {
-		reverse_proxy nfl:8001
+		reverse_proxy nfl:8001 {
+			import retry
+		}
 	}
 	handle_path /cfb/* {
-		reverse_proxy cfb:8003
+		reverse_proxy cfb:8003 {
+			import retry
+		}
 	}
 
 	handle {
@@ -42,17 +60,23 @@
 
 pl.{$DOMAIN} {
 	import common
-	reverse_proxy pl:8000
+	reverse_proxy pl:8000 {
+		import retry
+	}
 }
 
 f1.{$DOMAIN} {
 	import common
-	reverse_proxy f1:8000
+	reverse_proxy f1:8000 {
+		import retry
+	}
 }
 
 nba.{$DOMAIN} {
 	import common
-	reverse_proxy nba:8000
+	reverse_proxy nba:8000 {
+		import retry
+	}
 }
 
 # NFL + CFB share one frontend. The APIs are mounted under it so the browser
@@ -60,10 +84,14 @@ nba.{$DOMAIN} {
 sports.{$DOMAIN} {
 	import common
 	handle_path /nfl/* {
-		reverse_proxy nfl:8001
+		reverse_proxy nfl:8001 {
+			import retry
+		}
 	}
 	handle_path /cfb/* {
-		reverse_proxy cfb:8003
+		reverse_proxy cfb:8003 {
+			import retry
+		}
 	}
 	# The plain-English summary. The sports bundle calls
 	# /api/explain/{sport}/{id}; handle_path drops that prefix and the rewrite
@@ -86,6 +114,7 @@ sports.{$DOMAIN} {
 	handle_path /api/explain/* {
 		rewrite * /explain{uri}
 		reverse_proxy predictor-explainer:8090 {
+			import retry
 			@explainer_client_error status 4xx
 			handle_response @explainer_client_error {
 				respond "The summary service is not available." 502
@@ -97,7 +126,9 @@ sports.{$DOMAIN} {
 		}
 	}
 	handle {
-		reverse_proxy sports:80
+		reverse_proxy sports:80 {
+			import retry
+		}
 	}
 }
 
@@ -105,12 +136,16 @@ sports.{$DOMAIN} {
 # (rollout step 7), which used the *.azurecontainerapps.io API URLs before.
 nfl.{$DOMAIN} {
 	import common
-	reverse_proxy nfl:8001
+	reverse_proxy nfl:8001 {
+		import retry
+	}
 }
 
 cfb.{$DOMAIN} {
 	import common
-	reverse_proxy cfb:8003
+	reverse_proxy cfb:8003 {
+		import retry
+	}
 }
 
 # Uncomment once the tradehub service is running (see compose.yml). Leaving it
@@ -118,5 +153,7 @@ cfb.{$DOMAIN} {
 # Algo Trade Hub: API + War Room (algo. is the friendly name, trade. kept for existing links).
 algo.{$DOMAIN}, trade.{$DOMAIN} {
 	import common
-	reverse_proxy tradehub:8000
+	reverse_proxy tradehub:8000 {
+		import retry
+	}
 }
