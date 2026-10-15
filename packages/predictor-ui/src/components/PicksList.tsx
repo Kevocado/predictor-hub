@@ -135,6 +135,8 @@ export type PickRow = {
   recentAvg?: number;
   recentGames?: number;
   vsRecent?: Direction;
+  /** One plain sentence about how much weight the comparison above deserves (e.g. a back-test caution). */
+  recentNote?: string;
 };
 
 export interface PicksListProps {
@@ -389,6 +391,9 @@ export function PicksList({ title = "Model's top calls", categories, out }: Pick
                           {row.vsRecent === "toss" ? "In line with" : "vs"} his {row.recentGames ?? 5}-game avg {stat(row.recentAvg)}
                         </span>
                       </p>
+                    )}
+                    {row.kind === "projection" && row.recentAvg != null && row.recentNote && (
+                      <p data-testid="picks-recent-note" className="pl-6 text-xs leading-snug text-pr-text-faint">{row.recentNote}</p>
                     )}
                     {/* Rule 4 — `rowShowsDetail`, and nothing else. A projection row
                         never reaches this branch, so it can never be labelled a
