@@ -949,3 +949,15 @@ describe("projection vs the player's recent average", () => {
     expect(screen.queryByTestId("picks-vs-recent")).toBeNull();
   });
 });
+
+
+describe("recent-average note", () => {
+  it("renders a caution sentence under the comparison, only with an average", () => {
+    render(<PicksList categories={[{ category: "QB passing yards", rows: [proj({ key: "a", name: "A", value: 250, recentAvg: 200, recentGames: 5, vsRecent: "over", recentNote: "Projections this far above form have beaten their number about 45% of the time." })] }]} />);
+    expect(screen.getByTestId("picks-recent-note")).toHaveTextContent("about 45% of the time");
+  });
+  it("renders no note without an average", () => {
+    render(<PicksList categories={[{ category: "QB passing yards", rows: [proj({ key: "a", name: "A", value: 250, recentNote: "x" })] }]} />);
+    expect(screen.queryByTestId("picks-recent-note")).toBeNull();
+  });
+});
