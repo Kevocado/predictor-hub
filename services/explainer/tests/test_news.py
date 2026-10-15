@@ -59,3 +59,33 @@ async def test_unknown_sport_or_no_teams_is_empty():
     async with httpx.AsyncClient() as c:
         assert await news.headlines(c, "mlb", ["Cubs"]) == []
         assert await news.headlines(c, "nfl", []) == []
+
+
+def test_abbreviated_titles_match_the_nickname_as_a_whole_word_not_a_substring():
+    import asyncio
+    from explainer import news
+
+    arts = [
+        {"headline": "Seahawks rule out LB Thomas for Thursday night", "published": "2026-10-14T20:00:00Z"},
+        {"headline": "Early-season research on the incident at Bowden", "published": "2026-10-14T19:00:00Z"},
+        {"headline": "Broncos QB Bo Nix limited in practice", "published": "2026-10-14T18:00:00Z"},
+    ]
+
+    async def fake(client, sport):
+        return arts
+
+    orig = news._articles
+    news._articles = fake
+    try:
+        got = asyncio.run(news.headlines(None, "nfl", ["SEA", "DEN"]))
+    finally:
+        news._articles = orig
+    assert [g["headline"][:8] for g in got] == ["Seahawks", "Broncos "]   # "season"/"research"/"Bowden" no longer match
+
+
+def test_full_names_still_match_and_unknown_abbreviations_do_not_explode():
+    from explainer import news
+
+    assert news._patterns("nfl", ["Seattle Seahawks"])[0].search("Seattle Seahawks win")
+    assert news._patterns("pl", ["Arsenal"])[0].search("Arsenal sign")
+    assert news._patterns("nfl", ["XYZ"])
