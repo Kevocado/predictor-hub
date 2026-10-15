@@ -926,3 +926,26 @@ describe("NFL over/under direction badge", () => {
     expect(direction.textContent).toContain("2.0");
   });
 });
+describe("projection vs the player's recent average", () => {
+  const show = (r: Partial<PickRow>) =>
+    render(<PicksList categories={[{ category: "QB passing yards", rows: [proj({ key: "a", name: "Sam Darnold", value: 204.1, ...r })] }]} />);
+
+  it("says over/under in words against his N-game average, never as a price", () => {
+    show({ recentAvg: 187.4, recentGames: 5, vsRecent: "over" });
+    const el = screen.getByTestId("picks-vs-recent");
+    expect(el).toHaveTextContent(/OVER/i);
+    expect(el).toHaveTextContent("vs his 5-game avg 187.4");
+  });
+
+  it("an in-line projection says so and draws no over/under badge", () => {
+    show({ recentAvg: 203, recentGames: 5, vsRecent: "toss" });
+    const el = screen.getByTestId("picks-vs-recent");
+    expect(el).toHaveTextContent("In line with his 5-game avg 203");
+    expect(el).not.toHaveTextContent(/over|under/i);
+  });
+
+  it("renders nothing without an average, and never on a probability row", () => {
+    show({});
+    expect(screen.queryByTestId("picks-vs-recent")).toBeNull();
+  });
+});
