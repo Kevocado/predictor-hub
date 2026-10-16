@@ -780,9 +780,10 @@ async function paintTeasers() {
   globalThis.fetch = async (path) => {
     if (path.startsWith("/nba/games/week")) return ok(NBA_GAMES);
     if (path.startsWith("/nba/snapshot-meta")) return ok(META);
-    if (path.startsWith("/pl/api/fixtures/gameweek")) return ok({ current_gameweek: 9 });
+    // The REAL shapes: the gameweek route carries the fixtures with their predictions; /fixtures is a plain list (empty here)
+    if (path.startsWith("/pl/api/fixtures/gameweek")) return ok({ gameweek: 9, is_current: true, fixtures: PL_FIXTURES.fixtures_by_gameweek[9].fixtures });
     if (path.startsWith("/pl/api/snapshot-meta")) return ok(META);
-    if (path.startsWith("/pl/api/fixtures")) return ok(PL_FIXTURES);
+    if (path.startsWith("/pl/api/fixtures")) return ok([]);
     throw new Error(`no fixture for ${path}`);
   };
   try {
