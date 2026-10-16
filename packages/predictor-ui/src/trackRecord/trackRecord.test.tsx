@@ -1,0 +1,164 @@
+/**
+ * Every kit block, with an empty model, a partial one and a full one.
+ *
+ * The kit has to survive a sport whose feed has not filled every part yet:
+ * no graded week, no calibration buckets, no recent picks. Each of those is a
+ * state a real page lands in on the day after a launch, and each one says so in
+ * words rather than drawing a zero.
+ */
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { CalibrationChart } from "./CalibrationChart";
+import { HowCounted } from "./HowCounted";
+import { RecentPicks } from "./RecentPicks";
+import { RecordBlock } from "./RecordBlock";
+import { RecordHeadline } from "./RecordHeadline";
+import { WeekStrip } from "./WeekStrip";
+import type { RecordModel } from "./types";
+
+const FULL: RecordModel = {
+  lead: "game_outcome",
+  headline: "counted",
+  markets: [
+    { key: "game_outcome", label: "Winner pick", counted: { correct: 25, n: 52 }, preKickoff: { correct: 20, n: 40 } },
+    { key: "spread", label: "Spread", counted: { correct: 18, n: 40 }, preKickoff: { correct: 15, n: 33 } },
+  ],
+  weeks: [
+    { weekStart: "2026-09-01", n: 10, correct: 6, tracked: true },
+    { weekStart: "2026-09-08", n: 8, correct: 3, tracked: true },
+  ],
+  calibration: [
+    {
+      key: "game_outcome",
+      label: "Winner pick",
+      buckets: [
+        { bucket: "50-60%", n: 10, correct: 6 },
+        { bucket: "70%+", n: 6, correct: 5 },
+      ],
+    },
+  ],
+  recent: [
+    { id: "a", label: "Winner pick", pick: "Boston", actual: "Boston", hit: true, when: "Mon 5 Oct", madeBeforeKickoff: true },
+    { id: "b", label: "Spread", pick: "Lakers −3.5", actual: "Celtics", hit: false, when: "Sun 4 Oct", madeBeforeKickoff: true },
+  ],
+};
+
+describe("RecordHeadline", () => {
+  it("shows the range the headline sample allows, not a bare rate", () => {
+    render(<RecordHeadline markets={FULL.markets} mode="counted" lead="game_outcome" />);
+    // 25 of 52, Wilson 95%: about 35% to 61%.
+    expect(screen.getByText(/Could plausibly be 35%.61%/)).toBeInTheDocument();
+  });
+
+  it("counts every pick and puts the pre-kickoff figure beside it", () => {
+    render(<RecordHeadline markets={FULL.markets} mode="counted" lead="game_outcome" moment="tip-off" />);
+    expect(screen.getByText("20 of 40 made before tip-off")).toBeInTheDocument();
+  });
+
+  it("leads with the pre-kickoff subset when that is the mode", () => {
+    const { container } = render(<RecordHeadline markets={FULL.markets} mode="preKickoff" lead="game_outcome" />);
+    // 20 of 40 is the big number, and no "beside" line is drawn.
+    expect(container.textContent).toMatch(/20\s*of\s*40/);
+    expect(container.textContent).not.toMatch(/made before/);
+  });
+
+  it("renders nothing at all when no market has a tally", () => {
+    const { container } = render(<RecordHeadline markets={[]} mode="counted" lead="" />);
+    expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("WeekStrip", () => {
+  it("draws one cell per graded week with an accessible label", () => {
+    render(<WeekStrip weeks={FULL.weeks!} />);
+    expect(screen.getByRole("list", { name: "Hit rate by week" })).toBeInTheDocument();
+    expect(screen.getAllByTestId("week-cell")).toHaveLength(2);
+  });
+
+  it("says so when no week has been graded", () => {
+    render(<WeekStrip weeks={[]} />);
+    expect(screen.getByText("No graded week yet.")).toBeInTheDocument();
+  });
+});
+
+describe("CalibrationChart", () => {
+  it("draws the buckets as points on a labelled image", () => {
+    render(<CalibrationChart series={FULL.calibration!} />);
+    expect(screen.getByRole("img", { name: "Calibration for Winner pick" })).toBeInTheDocument();
+    expect(screen.getAllByTestId("calibration-point")).toHaveLength(2);
+  });
+
+  it("says so when nothing is graded", () => {
+    render(<CalibrationChart series={[]} />);
+    expect(screen.getByText("No confidence buckets graded yet.")).toBeInTheDocument();
+  });
+});
+
+describe("RecentPicks", () => {
+  it("reads each pick as Right or Wrong, in words", () => {
+    render(<RecentPicks picks={FULL.recent!} />);
+    expect(screen.getAllByTestId("recent-pick")).toHaveLength(2);
+    expect(screen.getByText("Right")).toBeInTheDocument();
+    expect(screen.getByText("Wrong")).toBeInTheDocument();
+  });
+
+  it("labels a rebuilt pick with when it was made", () => {
+    render(
+      <RecentPicks
+        picks={[{ id: "c", label: "Winner pick", pick: "Denver", actual: "Denver", hit: true, when: "Sat 3 Oct", madeBeforeKickoff: false }]}
+        moment="tip-off"
+      />,
+    );
+    expect(screen.getByText(/rebuilt after tip-off/)).toBeInTheDocument();
+  });
+
+  it("says so when nothing is graded", () => {
+    render(<RecentPicks picks={[]} />);
+    expect(screen.getByText("No counted pick has been graded yet.")).toBeInTheDocument();
+  });
+});
+
+describe("HowCounted", () => {
+  it("is collapsed, and states the rule once", () => {
+    render(<HowCounted moment="tip-off" headline="preKickoff" />);
+    const details = screen.getByText("How this is counted").closest("details");
+    expect(details).not.toBeNull();
+    expect(details).not.toHaveAttribute("open");
+    expect(details!.textContent).toMatch(/earliest recorded/);
+    expect(details!.textContent).toMatch(/before tip-off/);
+    // The superseded exclusion must not come back through this block.
+    expect(details!.textContent).not.toMatch(/not\s+counted/i);
+  });
+});
+
+describe("RecordBlock", () => {
+  it("labels its region from its own heading", () => {
+    render(
+      <RecordBlock id="tr-week" title="Week by week" caption="One cell per week.">
+        <p>body</p>
+      </RecordBlock>,
+    );
+    expect(screen.getByRole("region")).toHaveAccessibleName("Week by week");
+    expect(screen.getByText("One cell per week.")).toBeInTheDocument();
+  });
+});
+
+describe("the whole kit speaks one vocabulary", () => {
+  it("never renders Called it, Missed, ats, totals, hit or miss", () => {
+    const { container } = render(
+      <div>
+        <RecordHeadline markets={FULL.markets} mode="counted" lead="game_outcome" />
+        <WeekStrip weeks={FULL.weeks!} />
+        <CalibrationChart series={FULL.calibration!} />
+        <RecentPicks picks={FULL.recent!} />
+        <HowCounted moment="kickoff" headline="counted" />
+      </div>,
+    );
+    expect(container.textContent).not.toMatch(/called it/i);
+    expect(container.textContent).not.toMatch(/\bmissed\b/i);
+    expect(container.textContent).not.toMatch(/\bats\b/i);
+    expect(container.textContent).not.toMatch(/\btotals\b/i);
+    expect(container.textContent).not.toMatch(/\bhits?\b/i);
+    expect(container.textContent).not.toMatch(/\bmiss(es)?\b/i);
+  });
+});

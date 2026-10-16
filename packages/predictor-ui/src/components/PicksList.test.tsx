@@ -710,7 +710,6 @@ describe("NFL over/under direction badge", () => {
         ]}
       />,
     );
-    const row = screen.getByTestId("picks-row");
     const direction = screen.getByTestId("picks-direction");
     expect(direction.textContent).toContain("Over");
     expect(direction.textContent).toContain("2.5");
@@ -738,7 +737,6 @@ describe("NFL over/under direction badge", () => {
         ]}
       />,
     );
-    const row = screen.getByTestId("picks-row");
     const direction = screen.getByTestId("picks-direction");
     expect(direction.textContent).toContain("Under");
     expect(within(direction).getByText("Under").closest("span")).toHaveClass("bg-pr-loss");

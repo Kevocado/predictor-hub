@@ -16,7 +16,14 @@ export default defineConfig({
     // Both pages: the states, and the 390px frame that measures them at a width
     // headless Chrome will not open a window at.
     rollupOptions: {
-      input: { states: "index.html", narrow: "narrow.html", insight: "insight.html", "insight-narrow": "insight-narrow.html" },
+      input: {
+        states: "index.html",
+        narrow: "narrow.html",
+        insight: "insight.html",
+        "insight-narrow": "insight-narrow.html",
+        "track-record": "trackRecord.html",
+        "track-record-narrow": "trackRecord-narrow.html",
+      },
     },
   },
   preview: { port: 4180, host: true },
