@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Track Record kit — 375px</title>
+    <style>
+      body { margin: 0; background: #05070a; font: 13px ui-monospace, monospace; color: #909aa8; padding: 12px; }
+      /* Headless Chrome on macOS will not give a window narrower than 500px, so
+         375px is measured inside a same-origin iframe rather than by resizing —
+         which also means the Tailwind breakpoints see a 375px viewport, exactly
+         as a phone would. */
+      iframe { width: 375px; height: 2600px; border: 1px solid #2b333f; display: block; background: #0b0d10; }
+      p { margin: 0 0 10px; }
+    </style>
+  </head>
+  <body>
+    <p>375 x 2600 &mdash; the phone width, measured honestly</p>
+    <iframe src="./trackRecord.html" title="Track Record kit at 375px"></iframe>
+  </body>
+</html>
