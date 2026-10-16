@@ -504,10 +504,13 @@ async function metaSub(path) {
 }
 
 async function plTeaser() {
+  // `/pl/api/fixtures/gameweek` already answers with the current gameweek's fixtures and their predictions
+  // ({gameweek, fixtures: [{predicted_home_win, ...}]}). The old second call to `/pl/api/fixtures` expected the whole
+  // snapshot keyed by gameweek, but that route now returns a plain list ([] when empty), so the teaser read "No fixtures
+  // this gameweek" for a gameweek with ten of them.
   const week = await getJSON("/pl/api/fixtures/gameweek");
   const gw = week?.current_gameweek ?? week?.gameweek;
-  const full = await getJSON("/pl/api/fixtures");
-  const out = selectPL({ ...full, current_gameweek: gw });
+  const out = selectPL({ current_gameweek: gw, fixtures_by_gameweek: { [gw]: { fixtures: week?.fixtures || [] } } });
   return [out, await metaSub("/pl/api/snapshot-meta")];
 }
 
