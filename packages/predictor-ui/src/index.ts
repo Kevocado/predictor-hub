@@ -1,6 +1,8 @@
 export * from "./fmt";
 export { contrast, inkFor, luminance } from "./contrast";
 export { AppFrame, type SiteLink, type Sport, type Tab } from "./components/AppFrame";
+export { GlobalNav, type NavEntry } from "./components/GlobalNav";
+export { SportTabs, type SportTab } from "./components/SportTabs";
 export { MatchCard, type Side } from "./components/MatchCard";
 export { ProbabilityBar, type PickRef, type Segment } from "./components/ProbabilityBar";
 export { RoundNavigator } from "./components/RoundNavigator";
