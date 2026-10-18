@@ -40,22 +40,43 @@ def _won(row: dict) -> bool:
 
 def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
               force_no: str | None = None, is_current_model: bool = True) -> dict:
-    """Every number the report prints for one (segment, model_fingerprint)."""
-    settled = [r for r in rows if r.get("status") == STATUS_SETTLED]
-    outcomes = [1 if _won(r) else 0 for r in settled]
+    """Every number the report prints for one (segment, model_fingerprint).
 
-    pnls = [float(r.get("pnl_per_contract") or 0.0) for r in settled]
-    stakes = [float(r.get("stake") or 0.0) for r in settled]
+    Totals are reported per GAME, not per rung: a game with five correlated total
+    rungs is one exposure, not five bets, and counting the rungs would make the
+    sample look five times larger than it is. The per-rung numbers (hit rate,
+    mean price, pnl, ROI, CLV) are still per rung, because each rung is a real
+    bet with its own stake and its own outcome. The bootstrap resamples games:
+    each game contributes the sum of its rungs' pnl, so correlated rungs cannot
+    inflate the precision of the interval.
+    """
+    settled_rungs = [r for r in rows if r.get("status") == STATUS_SETTLED]
+    outcomes = [1 if _won(r) else 0 for r in settled_rungs]
+
+    # Distinct games: the honest sample size.
+    all_games = {r.get("game_id") for r in rows if r.get("game_id") is not None}
+    settled_games = {r.get("game_id") for r in settled_rungs if r.get("game_id") is not None}
+
+    pnls = [float(r.get("pnl_per_contract") or 0.0) for r in settled_rungs]
+    stakes = [float(r.get("stake") or 0.0) for r in settled_rungs]
     staked = sum(stakes)
 
-    realised_edge = None
-    if settled:
-        realised_edge = round((sum(outcomes) / len(outcomes)
-                               - stats.fmean(r["model_p"] for r in settled)) * 100.0, 4)
+    # Per-game pnl for the bootstrap: sum of the rungs' pnl for that game.
+    game_pnl: dict = {}
+    for r in settled_rungs:
+        gid = r.get("game_id")
+        game_pnl.setdefault(gid, 0.0)
+        game_pnl[gid] += float(r.get("pnl_per_contract") or 0.0)
+    game_pnls = list(game_pnl.values())
 
-    ci = stats.bootstrap_mean_ci(pnls)
-    trend = stats.calibration_trend(settled, min_n=gate_cfg["min_for_calibration_trend"])
-    clvs = [v for v in (stats.clv_points(r, closing) for r in settled) if v is not None]
+    realised_edge = None
+    if settled_rungs:
+        realised_edge = round((sum(outcomes) / len(outcomes)
+                               - stats.fmean(r["model_p"] for r in settled_rungs)) * 100.0, 4)
+
+    ci = stats.bootstrap_mean_ci(game_pnls)
+    trend = stats.calibration_trend(settled_rungs, min_n=gate_cfg["min_for_calibration_trend"])
+    clvs = [v for v in (stats.clv_points(r, closing) for r in settled_rungs) if v is not None]
 
     fingerprint = rows[0].get("model_fingerprint") if rows else None
 
@@ -64,18 +85,18 @@ def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
         reasons.append(force_no)
     if not is_current_model:
         reasons.append("superseded by a newer model; a fresh sample is required")
-    if len(settled) < gate_cfg["min_settled"]:
-        reasons.append(f"only {len(settled)} settled bets, need {gate_cfg['min_settled']}")
+    if len(settled_games) < gate_cfg["min_settled"]:
+        reasons.append(f"only {len(settled_games)} settled games, need {gate_cfg['min_settled']}")
     if gate_cfg["require_ci_excludes_zero"]:
         if ci is None:
-            reasons.append("no settled bets to put an interval on")
+            reasons.append("no settled games to put an interval on")
         elif not stats.is_profitable(ci):
             verdict = ("includes zero" if stats.excludes_zero(ci) is False
                        else "is entirely below zero")
             reasons.append(f"pnl interval [{ci[0]:.4f}, {ci[1]:.4f}] {verdict}")
     if gate_cfg["require_calibration_not_widening"]:
         if not trend["measurable"]:
-            reasons.append(f"calibration trend needs {trend['min_n']} settled bets, have {trend['n_settled']}")
+            reasons.append(f"calibration trend needs {trend['min_n']} settled games, have {trend['n_settled']}")
         elif trend["widening"]:
             reasons.append(f"calibration gap widening ({trend['gap_early']:.2f} -> {trend['gap_late']:.2f} pts)")
 
@@ -83,20 +104,26 @@ def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
         "segment": rows[0].get("segment") if rows else None,
         "model_fingerprint": fingerprint,
         "is_current_model": is_current_model,
-        "n_logged": len(rows),
-        "n_settled": len(settled),
-        "n_open": len(rows) - len(settled),
+        "n_games": len(all_games),
+        "n_games_settled": len(settled_games),
+        "n_rungs": len(rows),
+        "n_rungs_settled": len(settled_rungs),
+        # Backwards-compatible aliases: n_logged/n_settled now mean GAMES, so the
+        # gate and the headline both read in games. n_rungs keeps the raw count.
+        "n_logged": len(all_games),
+        "n_settled": len(settled_games),
+        "n_open": len(all_games) - len(settled_games),
         "n_void": sum(1 for r in rows if r.get("status") == "void"),
         "hit_rate": round(sum(outcomes) / len(outcomes), 4) if outcomes else None,
-        "mean_model_p": round(stats.fmean(r["model_p"] for r in settled), 4) if settled else None,
-        "mean_market_price": round(stats.fmean(r["market_price"] for r in settled), 4) if settled else None,
-        "mean_edge_points": round(stats.fmean(r["edge"] for r in settled), 4) if settled else None,
+        "mean_model_p": round(stats.fmean(r["model_p"] for r in settled_rungs), 4) if settled_rungs else None,
+        "mean_market_price": round(stats.fmean(r["market_price"] for r in settled_rungs), 4) if settled_rungs else None,
+        "mean_edge_points": round(stats.fmean(r["edge"] for r in settled_rungs), 4) if settled_rungs else None,
         "realised_edge_points": realised_edge,
         "mean_clv_cents": round(stats.fmean(clvs), 4) if clvs else None,
         "n_clv": len(clvs),
         "calibration_gap_points": (round(trend["gap_late"], 4) if trend["measurable"]
                                    else stats.calibration_gap(
-                                       [r["model_p"] for r in settled], outcomes)),
+                                       [r["model_p"] for r in settled_rungs], outcomes)),
         "calibration_trend": trend,
         "pnl": round(sum(pnls), 4),
         "staked": round(staked, 4),
