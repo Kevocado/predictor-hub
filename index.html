@@ -124,8 +124,15 @@
     letter-spacing: 0.2em;
     color: var(--color-pr-text-dim);
   }
-  nav { display: flex; gap: 0.25rem; overflow-x: auto; }
-  nav a {
+  /* The shared top bar: one scrolling row, same on every surface. */
+  .nav-scroller {
+    display: flex;
+    gap: 0.25rem;
+    overflow-x: auto;
+    /* No page-level horizontal scroll; the row contains its own overflow. */
+  }
+  .nav-scroller a {
+    white-space: nowrap;
     border-radius: var(--radius-pr);
     padding: 0.25rem 0.625rem;
     font-family: var(--font-pr-display);
@@ -136,14 +143,50 @@
     color: var(--color-pr-text-dim);
     text-decoration: none;
   }
-  nav a:hover { color: var(--color-pr-text); }
+  .nav-scroller a:hover { color: var(--color-pr-text); }
   /* The page you are on, marked the way the five sport sites mark it in
-     AppFrame: accent fill, stage-coloured ink. Without this the Home tab is
-     styled identically to the four links that leave the page, which is worse
-     than either showing it or omitting it. */
+     AppFrame: accent fill, stage-coloured ink. Without this the active entry
+     is styled identically to the links that leave the page. Kept on `nav a`
+     (the same selector the sport sites use) so the drift test can pin it once
+     for the whole family. */
   nav a[aria-current="page"] {
     background: var(--color-pr-accent);
     color: var(--color-pr-accent-ink);
+  }
+  /* Fade cue at the right edge, shown only when the row overflows. */
+  .nav-fade {
+    position: absolute;
+    inset-y: 0;
+    right: 0;
+    width: 6px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    background: linear-gradient(to left, var(--color-pr-stage), transparent);
+  }
+  .nav-fade.show { opacity: 1; }
+
+  .wordmark {
+    font-family: var(--font-pr-display);
+    font-size: 0.875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--color-pr-text-dim);
+    text-decoration: none;
+  }
+  .wordmark:hover { color: var(--color-pr-text); }
+  /* On the hub the wordmark is the home affordance and is the current page. */
+  .wordmark[aria-current="page"] {
+    background: var(--color-pr-accent);
+    color: var(--color-pr-accent-ink);
+    border-radius: var(--radius-pr);
+    padding: 0.125rem 0.5rem;
+  }
+
+  /* Hero strip: the wider banner across the top of the home page. */
+  .hero-strip {
+    padding: 1rem 0 1.25rem;
   }
 
   h1 {
@@ -358,26 +401,44 @@
 <body data-sport="hub">
   <header>
     <div class="wrap">
+      <!-- The shared top bar: one scrolling row, same on every surface. -->
       <div class="frame-top">
-        <span class="wordmark">Predictor</span>
+        <a href="/" class="wordmark" aria-current="page">Predictor</a>
         <nav aria-label="Sports">
-          <!-- Home first, matching the sport switchers on the five sites. On
-               the hub it is a self-link, which is the one thing it is not on
-               the others -- but Kevin wants the way back to the root to be in
-               the same place on every page of the family, and a consistent
-               control is worth more than a minimal one. -->
-          <a href="/" aria-current="page">Home</a>
-          <a href="https://pl.40-160-91-131.sslip.io">PL</a>
-          <a href="https://f1.40-160-91-131.sslip.io">F1</a>
-          <a href="https://sports.40-160-91-131.sslip.io/?sport=nfl">NFL</a>
-          <a href="https://sports.40-160-91-131.sslip.io/?sport=cfb">CFB</a>
-          <a href="https://nba.40-160-91-131.sslip.io">NBA</a>
+          <div class="nav-scroller">
+            <a href="https://pl.40-160-91-131.sslip.io">Premier League</a>
+            <a href="https://sports.40-160-91-131.sslip.io/?sport=nfl">NFL</a>
+            <a href="https://sports.40-160-91-131.sslip.io/?sport=cfb">College football</a>
+            <a href="https://nba.40-160-91-131.sslip.io">NBA</a>
+            <a href="https://f1.40-160-91-131.sslip.io">F1</a>
+            <a href="/paper.html">Paper Trading</a>
+          </div>
+          <span class="nav-fade" aria-hidden="true"></span>
         </nav>
       </div>
-      <h1>Sports Predictor</h1>
-      <p class="lede">Model picks for five sports, each with the reasoning behind it and a running record of how often it was right.</p>
+      <!-- Hero strip: the wider banner across the top of the home page. -->
+      <div class="hero-strip">
+        <h1>Sports Predictor</h1>
+        <p class="lede">Model picks for five sports, each with the reasoning behind it and a running record of how often it was right.</p>
+      </div>
     </div>
   </header>
+
+  <!-- Top bar overflow fade: shown only when the nav row actually overflows,
+       matching GlobalNav on the sport sites. -->
+  <script>
+    (function () {
+      var scroller = document.querySelector(".nav-scroller");
+      var fade = document.querySelector(".nav-fade");
+      if (!scroller || !fade) return;
+      function refresh() {
+        fade.classList.toggle("show", scroller.scrollWidth > scroller.clientWidth + 1);
+      }
+      refresh();
+      scroller.addEventListener("scroll", refresh);
+      window.addEventListener("resize", refresh);
+    })();
+  </script>
 
   <main class="wrap">
     <p class="rule"><strong>The rule</strong> <span>Only picks made before the game starts count. A pick rebuilt afterwards is still shown, labelled as such, and never counted.</span></p>

@@ -14,16 +14,35 @@ test("links point at the VPS sites, not the retired Azure apps", () => {
 
 test("carries the family frame: wordmark and a switcher to every sport", () => {
   assert.match(html, /<body data-sport="hub">/);
-  assert.match(html, /class="wordmark">Predictor</);
+  assert.match(html, /<a[^>]*class="wordmark"[^>]*>Predictor<\/a>/);
   const nav = html.match(/<nav aria-label="Sports"[\s\S]*?<\/nav>/);
   assert.ok(nav, "sport switcher nav");
-  // Home first, then the five sports. Home leads because on the sport sites
-  // the switcher's job is to let a visitor leave, and leaving should not
-  // require scrolling past five places they could also go; the hub keeps the
-  // same order so the control sits in the same place on every page.
-  assert.deepEqual([...nav[0].matchAll(/>(\w+)<\/a>/g)].map((m) => m[1]), ["Home", "PL", "F1", "NFL", "CFB", "NBA"]);
-  // ...and the page you are on is marked, not styled like the four links out.
-  assert.match(nav[0], /<a href="\/" aria-current="page">Home<\/a>/);
+  // No Home tab any more: the wordmark is home and carries aria-current on the
+  // hub. The six entries are the same on every surface.
+  assert.deepEqual([...nav[0].matchAll(/>(\w+[\w ]*)<\/a>/g)].map((m) => m[1].trim()), [
+    "Premier League",
+    "NFL",
+    "College football",
+    "NBA",
+    "F1",
+    "Paper Trading",
+  ]);
+  // The wordmark links home and is the current page on the hub (it sits beside
+  // the nav, not inside it, matching GlobalNav's separation of home from the
+  // sports row).
+  assert.match(html, /<a href="\/" class="wordmark" aria-current="page">Predictor<\/a>/);
+  // The active-entry style rule matches GlobalNav's: aria-current entries get
+  // the accent fill with stage-coloured ink. Pin it on the same selector the
+  // sport sites use (`nav a[aria-current="page"]`) so a future edit can't
+  // silently drop the active highlight.
+  assert.match(html, /nav\s+a\[aria-current="page"\][\s\S]*?background:\s*var\(--color-pr-accent\)/);
+  assert.match(html, /nav\s+a\[aria-current="page"\][\s\S]*?color:\s*var\(--color-pr-accent-ink\)/);
+  // Every entry is a real, deep-linkable href (never an in-page button). The
+  // sport hosts are asserted by "links point at the VPS sites" above; here we
+  // pin Paper Trading's local route and the nav-scroller markup.
+  assert.match(html, /<a href="\/paper\.html">Paper Trading<\/a>/);
+  assert.match(html, /<div class="nav-scroller">/);
+  assert.match(html, /<span class="nav-fade" aria-hidden="true"><\/span>/);
 });
 
 test("one card per sport, each in its own accent", () => {
@@ -83,7 +102,7 @@ test("the wordmark stays the family name, not the product name", () => {
   // sites all say "Predictor" there. This page's own name is Sports Predictor,
   // but making its wordmark differ from the five would break the one thing the
   // wordmark is for -- telling a reader they are in the same family.
-  const wordmark = html.match(/class="wordmark">([^<]+)</);
+  const wordmark = html.match(/class="wordmark"[^>]*>([^<]+)</);
   assert.ok(wordmark, "no wordmark");
   assert.equal(wordmark[1], "Predictor");
 });
