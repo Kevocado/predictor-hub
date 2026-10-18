@@ -39,8 +39,8 @@ def _won(row: dict) -> bool:
 
 
 def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
-              force_no: str | None = None) -> dict:
-    """Every number the report prints for one segment."""
+              force_no: str | None = None, is_current_model: bool = True) -> dict:
+    """Every number the report prints for one (segment, model_fingerprint)."""
     settled = [r for r in rows if r.get("status") == STATUS_SETTLED]
     outcomes = [1 if _won(r) else 0 for r in settled]
 
@@ -50,9 +50,6 @@ def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
 
     realised_edge = None
     if settled:
-        # What the bets were actually worth, against what we claimed they were
-        # worth: (hit rate - mean model_p) in points. Compare against the edge we
-        # logged; the gap between them is the model's calibration, not its edge.
         realised_edge = round((sum(outcomes) / len(outcomes)
                                - stats.fmean(r["model_p"] for r in settled)) * 100.0, 4)
 
@@ -60,18 +57,19 @@ def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
     trend = stats.calibration_trend(settled, min_n=gate_cfg["min_for_calibration_trend"])
     clvs = [v for v in (stats.clv_points(r, closing) for r in settled) if v is not None]
 
+    fingerprint = rows[0].get("model_fingerprint") if rows else None
+
     reasons: list[str] = []
     if force_no:
         reasons.append(force_no)
+    if not is_current_model:
+        reasons.append("superseded by a newer model; a fresh sample is required")
     if len(settled) < gate_cfg["min_settled"]:
         reasons.append(f"only {len(settled)} settled bets, need {gate_cfg['min_settled']}")
     if gate_cfg["require_ci_excludes_zero"]:
         if ci is None:
             reasons.append("no settled bets to put an interval on")
         elif not stats.is_profitable(ci):
-            # Named separately from "includes zero" because a segment that lost
-            # money consistently fails here while its interval still excludes
-            # zero, and printing "includes zero" for that would be a lie.
             verdict = ("includes zero" if stats.excludes_zero(ci) is False
                        else "is entirely below zero")
             reasons.append(f"pnl interval [{ci[0]:.4f}, {ci[1]:.4f}] {verdict}")
@@ -82,6 +80,9 @@ def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
             reasons.append(f"calibration gap widening ({trend['gap_early']:.2f} -> {trend['gap_late']:.2f} pts)")
 
     return {
+        "segment": rows[0].get("segment") if rows else None,
+        "model_fingerprint": fingerprint,
+        "is_current_model": is_current_model,
         "n_logged": len(rows),
         "n_settled": len(settled),
         "n_open": len(rows) - len(settled),
@@ -108,15 +109,53 @@ def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
 
 
 def build(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict) -> dict:
-    by_segment: dict[str, list[dict]] = {}
+    # Group by (segment, model_fingerprint) so an updated model starts a fresh
+    # sample. The gate applies to each group independently.
+    by_group: dict[tuple, list[dict]] = {}
     for row in rows:
-        by_segment.setdefault(row["segment"], []).append(row)
-    table = {
-        name: summarise(bucket, closing=closing, gate_cfg=gate_cfg,
-                        force_no=None if any(r.get("kind") != KIND_SHADOW for r in bucket)
-                        else "shadow rows carry no stake and cannot support an edge claim")
-        for name, bucket in sorted(by_segment.items())
-    }
+        key = (row.get("segment"), row.get("model_fingerprint"))
+        by_group.setdefault(key, []).append(row)
+
+    # Which fingerprint is "current" for each segment: the one whose most recent
+    # logged_at is the latest. A model that has been superseded cannot qualify,
+    # even if its own 300 bets looked good.
+    current_fp: dict[str, str | None] = {}
+    for (segment, fp), bucket in by_group.items():
+        if segment is None:
+            continue
+        latest = max((r.get("logged_at") or "") for r in bucket)
+        held = current_fp.get(segment)
+        held_latest = None
+        if held is not None:
+            held_latest = max((r.get("logged_at") or "") for r in by_group.get((segment, held), []))
+        if held is None or latest > held_latest:
+            current_fp[segment] = fp
+
+    table: dict[str, dict] = {}
+    for (segment, fp), bucket in sorted(by_group.items()):
+        if segment is None:
+            continue
+        is_current = (fp == current_fp.get(segment))
+        key = f"{segment} :: {fp if fp is not None else 'unknown'}"
+        table[key] = summarise(bucket, closing=closing, gate_cfg=gate_cfg,
+                               force_no=None if any(r.get("kind") != KIND_SHADOW for r in bucket)
+                               else "shadow rows carry no stake and cannot support an edge claim",
+                               is_current_model=is_current)
+
+    # Per-segment roll-up: current-model n and all-time n, for the summary line.
+    per_segment: dict[str, dict] = {}
+    for (segment, fp), bucket in by_group.items():
+        if segment is None:
+            continue
+        agg = per_segment.setdefault(segment, {"all_time_n": 0, "current_model_n": 0,
+                                              "fingerprints": set()})
+        agg["all_time_n"] += len(bucket)
+        agg["fingerprints"].add(fp)
+        if fp == current_fp.get(segment):
+            agg["current_model_n"] += len(bucket)
+    for agg in per_segment.values():
+        agg["fingerprints"] = sorted(agg["fingerprints"], key=lambda x: (x is None, str(x)))
+
     return {
         "schema_version": 1,
         "gate": gate_cfg,
@@ -125,16 +164,18 @@ def build(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict) -> dict
             "n_settled": sum(1 for r in rows if r.get("status") == STATUS_SETTLED),
             "n_candidates": sum(1 for r in rows if r.get("kind") != KIND_SHADOW),
             "n_shadow": sum(1 for r in rows if r.get("kind") == KIND_SHADOW),
-            "segments": len(table),
+            "segments": len({r.get("segment") for r in rows if r.get("segment")}),
+            "segment_groups": len(table),
             "segments_qualifying": sum(1 for v in table.values() if v["qualifies_for_edge_claim"]),
         },
+        "per_segment": per_segment,
         "segments": table,
     }
 
 
 def render(report: dict) -> str:
     """The printed table. Fixed width, no dependency on a table library."""
-    header = (f"{'segment':<26} {'n':>5} {'settled':>7} {'hit':>6} {'model_p':>8} {'price':>6} "
+    header = (f"{'segment :: fingerprint':<40} {'n':>5} {'settled':>7} {'hit':>6} {'model_p':>8} {'price':>6} "
               f"{'edge':>7} {'real.':>7} {'clv':>7} {'pnl':>9} {'roi':>7} {'dd':>7} {'edge?':>6}")
     lines = [
         "paper-trading segment report — PAPER ONLY, no orders, no credentials",
@@ -150,7 +191,7 @@ def render(report: dict) -> str:
 
     for name, s in sorted(report["segments"].items()):
         lines.append(
-            f"{name:<26} {s['n_logged']:>5} {s['n_settled']:>7} {num(s['hit_rate'], '{:.3f}'):>6} "
+            f"{name:<40} {s['n_logged']:>5} {s['n_settled']:>7} {num(s['hit_rate'], '{:.3f}'):>6} "
             f"{num(s['mean_model_p']):>8} {num(s['mean_market_price']):>6} "
             f"{num(s['mean_edge_points'], '{:.2f}'):>7} {num(s['realised_edge_points'], '{:.2f}'):>7} "
             f"{num(s['mean_clv_cents'], '{:+.2f}'):>7} {s['pnl']:>9.2f} {num(s['roi'], '{:+.3f}'):>7} "
@@ -163,8 +204,16 @@ def render(report: dict) -> str:
         "",
         f"{totals['n_logged']} rows logged ({totals['n_candidates']} candidates, "
         f"{totals['n_shadow']} shadow), {totals['n_settled']} settled, "
-        f"{totals['segments_qualifying']}/{totals['segments']} segments qualify for an edge claim.",
+        f"{totals['segments_qualifying']}/{totals['segment_groups']} segment-groups qualify for an edge claim.",
     ]
+    # Current-model vs all-time n per segment.
+    per_segment = report.get("per_segment") or {}
+    if per_segment:
+        lines.append("")
+        lines.append("per segment: current-model n / all-time n")
+        for seg, agg in sorted(per_segment.items()):
+            lines.append(f"  {seg}: {agg['current_model_n']} / {agg['all_time_n']}  "
+                         f"({len(agg['fingerprints'])} model fingerprint(s))")
     for name, s in sorted(report["segments"].items()):
         if s["disqualifying"]:
             lines.append(f"  {name}: " + "; ".join(s["disqualifying"]))

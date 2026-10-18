@@ -13,6 +13,7 @@
     "test_gate.py fails if it is ever lowered below 300."
   ],
   "edge_threshold_points": 4.0,
+  "max_spread_points": 8.0,
   "confidence_buckets": [
     [0.50, 0.60],
     [0.60, 0.70],

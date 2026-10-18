@@ -193,3 +193,71 @@ def test_a_dead_or_crossed_quote_is_not_logged():
 def test_a_no_side_price_is_the_no_ask_not_one_minus_the_yes_bid():
     row = kalshi_row(no_bid=0.58, no_ask=0.62)
     assert sources.buyable_price(row, "no") == 0.62
+
+
+# --- liquidity: a quote you cannot trade is not a price ----------------------
+
+def test_a_market_with_no_bid_is_not_logged():
+    made, skipped = build([kalshi_row(yes_bid=0.0)])
+    assert made == [] and skipped.get("no_bid") == 1
+
+
+def test_a_market_with_no_bid_field_at_all_is_not_logged():
+    made, skipped = build([kalshi_row(yes_bid=None)])
+    assert made == [] and skipped.get("no_bid") == 1
+
+
+def test_a_wide_spread_is_not_logged():
+    # 40c bid, 50c ask = 10 points, above the default 8-point limit
+    made, skipped = build([kalshi_row(yes_bid=0.40, yes_ask=0.50)])
+    assert made == [] and skipped.get("spread_too_wide") == 1
+
+
+def test_a_spread_at_exactly_the_limit_is_allowed():
+    # 40c bid, 48c ask = 8 points, exactly the limit
+    made, _ = build([kalshi_row(yes_bid=0.40, yes_ask=0.48)])
+    assert len(made) == 1
+
+
+def test_a_market_with_zero_volume_is_not_logged():
+    made, skipped = build([kalshi_row(volume=0.0)])
+    assert made == [] and skipped.get("zero_volume") == 1
+
+
+def test_a_market_with_no_volume_field_is_not_logged():
+    made, skipped = build([kalshi_row(volume=None)])
+    assert made == [] and skipped.get("zero_volume") == 1
+
+
+def test_a_dead_one_cent_ask_is_not_logged():
+    made, skipped = build([kalshi_row(yes_bid=0.01, yes_ask=0.01)])
+    assert made == [] and skipped.get("dead_quote") == 1
+
+
+def test_a_dead_ninety_nine_cent_ask_is_not_logged():
+    made, skipped = build([kalshi_row(yes_bid=0.98, yes_ask=0.99)])
+    assert made == [] and skipped.get("dead_quote") == 1
+
+
+def test_a_candidate_carries_the_liquidity_fields_it_was_checked_against():
+    made, _ = build([kalshi_row(yes_bid=0.38, yes_ask=0.40, volume=100.0, open_interest=50.0)])
+    assert len(made) == 1
+    row = made[0]
+    assert row["yes_bid"] == 0.38
+    assert row["no_bid"] == 0.58
+    assert row["spread_points"] == 2.0
+    assert row["volume"] == 100.0
+    assert row["open_interest"] == 50.0
+
+
+def test_a_candidate_carries_the_model_fingerprint_from_its_snapshot():
+    snap = nfl_snapshot(generated_at=GENERATED_AT)
+    snap["model_fingerprint"] = "abc123"
+    made, _ = build([kalshi_row()], snapshot=snap)
+    assert made[0]["model_fingerprint"] == "abc123"
+
+
+def test_a_missing_fingerprint_is_recorded_as_none_not_dropped():
+    made, _ = build([kalshi_row()])
+    assert "model_fingerprint" in made[0]
+    assert made[0]["model_fingerprint"] is None

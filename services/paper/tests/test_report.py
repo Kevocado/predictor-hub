@@ -59,7 +59,7 @@ def test_an_empty_ledger_produces_no_segments_to_gate():
 def test_a_segment_with_fewer_than_three_hundred_settled_bets_never_qualifies():
     for n in (1, 99, 299):
         report = build(batch(n), closing={}, gate_cfg=GATE)
-        s = report["segments"]["nfl:moneyline:0.60-0.70"]
+        s = report["segments"]["nfl:moneyline:0.60-0.70 :: unknown"]
         assert s["qualifies_for_edge_claim"] is False
         assert any("need 300" in r for r in s["disqualifying"]), n
 
@@ -68,7 +68,7 @@ def test_three_hundred_settled_bets_that_always_win_qualify():
     """The gate can be passed. A report that cannot say yes is not a gate, it is
     a wall — this is the shape of evidence that would earn the claim."""
     report = build(batch(300), closing={}, gate_cfg=GATE)
-    s = report["segments"]["nfl:moneyline:0.60-0.70"]
+    s = report["segments"]["nfl:moneyline:0.60-0.70 :: unknown"]
     assert s["qualifies_for_edge_claim"] is True
     assert s["disqualifying"] == []
 
@@ -80,7 +80,7 @@ def test_three_hundred_bets_that_always_lose_do_not_qualify():
     would hand it a pass and print "yes: has an edge" about a segment that lost
     money every single time."""
     report = build(batch(300, wins=0), closing={}, gate_cfg=GATE)
-    s = report["segments"]["nfl:moneyline:0.60-0.70"]
+    s = report["segments"]["nfl:moneyline:0.60-0.70 :: unknown"]
 
     assert s["n_settled"] == 300
     assert s["pnl"] < 0 and s["roi"] < 0
@@ -94,7 +94,7 @@ def test_three_hundred_bets_that_always_lose_do_not_qualify():
 def test_a_marginal_segment_is_reported_as_including_zero():
     """Near coin-flip pnl must not be passed off as an edge."""
     report = build(batch(300, wins=149), closing={}, gate_cfg=GATE)
-    s = report["segments"]["nfl:moneyline:0.60-0.70"]
+    s = report["segments"]["nfl:moneyline:0.60-0.70 :: unknown"]
     assert s["qualifies_for_edge_claim"] is False
     assert stats.excludes_zero(s["pnl_ci95"]) is False
 
@@ -102,7 +102,7 @@ def test_a_marginal_segment_is_reported_as_including_zero():
 def test_a_losing_segment_with_a_positive_interval_still_needs_its_numbers_to_agree():
     """n >= 300 is not enough on its own: the interval has to exclude zero."""
     report = build(batch(300, wins=100), closing={}, gate_cfg=GATE)
-    s = report["segments"]["nfl:moneyline:0.60-0.70"]
+    s = report["segments"]["nfl:moneyline:0.60-0.70 :: unknown"]
     assert s["n_settled"] == 300
     assert s["qualifies_for_edge_claim"] is False
 
@@ -113,7 +113,7 @@ def test_the_bootstrap_interval_is_reproducible():
     rows = batch(300, wins=160)
     a = build(rows, closing={}, gate_cfg=GATE)
     b = build(rows, closing={}, gate_cfg=GATE)
-    key = "nfl:moneyline:0.60-0.70"
+    key = "nfl:moneyline:0.60-0.70 :: unknown"
     assert a["segments"][key]["pnl_ci95"] == b["segments"][key]["pnl_ci95"]
 
 
@@ -127,7 +127,7 @@ def test_calibration_must_not_be_widening():
         r["outcome"] = "no"
         r["pnl_per_contract"] = -0.52
     report = build(rows, closing={}, gate_cfg=GATE)
-    s = report["segments"]["nfl:moneyline:0.60-0.70"]
+    s = report["segments"]["nfl:moneyline:0.60-0.70 :: unknown"]
     trend = s["calibration_trend"]
     assert trend["measurable"] is True and trend["widening"] is True
     assert s["qualifies_for_edge_claim"] is False
@@ -137,7 +137,7 @@ def test_calibration_must_not_be_widening():
 def test_a_calibration_trend_on_too_few_bets_says_so_rather_than_guessing():
     """'Not widening' on seven bets is indistinguishable from 'we have not looked'."""
     report = build(batch(10), closing={}, gate_cfg=GATE)
-    trend = report["segments"]["nfl:moneyline:0.60-0.70"]["calibration_trend"]
+    trend = report["segments"]["nfl:moneyline:0.60-0.70 :: unknown"]["calibration_trend"]
     assert trend["measurable"] is False and trend["widening"] is None
 
 
@@ -149,7 +149,7 @@ def test_a_shadow_segment_can_never_qualify():
     for r in rows:
         r["pnl_per_contract"] = 0.5
     report = build(rows, closing={}, gate_cfg=GATE)
-    s = report["segments"]["cfb:total:0.60-0.70"]
+    s = report["segments"]["cfb:total:0.60-0.70 :: unknown"]
     assert s["qualifies_for_edge_claim"] is False
     assert any("shadow" in r for r in s["disqualifying"])
 
@@ -157,13 +157,13 @@ def test_a_shadow_segment_can_never_qualify():
 # --- the numbers ---------------------------------------------------------------
 
 def test_realised_edge_is_the_hit_rate_minus_what_the_model_claimed():
-    s = build(batch(100, wins=70), closing={}, gate_cfg=GATE)["segments"]["nfl:moneyline:0.60-0.70"]
+    s = build(batch(100, wins=70), closing={}, gate_cfg=GATE)["segments"]["nfl:moneyline:0.60-0.70 :: unknown"]
     assert s["hit_rate"] == pytest.approx(0.70)
     assert s["realised_edge_points"] == pytest.approx((0.70 - 0.60) * 100)
 
 
 def test_pnl_roi_and_drawdown_agree_with_the_rows():
-    s = build(batch(10, wins=7), closing={}, gate_cfg=GATE)["segments"]["nfl:moneyline:0.60-0.70"]
+    s = build(batch(10, wins=7), closing={}, gate_cfg=GATE)["segments"]["nfl:moneyline:0.60-0.70 :: unknown"]
     assert s["pnl"] == pytest.approx(7 * 0.48 + 3 * -0.52)
     assert s["staked"] == pytest.approx(50.0)
     assert s["roi"] == pytest.approx(s["pnl"] / 50.0)
@@ -182,7 +182,7 @@ def test_closing_line_value_is_positive_when_we_beat_the_close():
     for r in rows:
         r["ticker"] = "KXNFLGAME-26OCT18BALCLE-BAL"
     closing = {"KXNFLGAME-26OCT18BALCLE-BAL": {"_seen_at": 1, "_kickoff": 2, "_price": 0.45}}
-    s = build(rows, closing=closing, gate_cfg=GATE)["segments"]["nfl:moneyline:0.60-0.70"]
+    s = build(rows, closing=closing, gate_cfg=GATE)["segments"]["nfl:moneyline:0.60-0.70 :: unknown"]
     assert s["mean_clv_cents"] == pytest.approx(-5.0)
     assert s["n_clv"] == 5
 
@@ -194,13 +194,13 @@ def test_closing_line_value_is_positive_when_the_market_moved_against_our_entry(
     for r in rows:
         r["ticker"] = "KXNFLGAME-26OCT18BALCLE-BAL"
     closing = {"KXNFLGAME-26OCT18BALCLE-BAL": {"_seen_at": 1, "_kickoff": 2, "_price": 0.55}}
-    s = build(rows, closing=closing, gate_cfg=GATE)["segments"]["nfl:moneyline:0.60-0.70"]
+    s = build(rows, closing=closing, gate_cfg=GATE)["segments"]["nfl:moneyline:0.60-0.70 :: unknown"]
     assert s["mean_clv_cents"] == pytest.approx(5.0)
 
 
 def test_an_unobserved_ticker_reports_no_clv_rather_than_zero():
     """No closing line is missing data, not a CLV of exactly zero."""
-    s = build(batch(5), closing={}, gate_cfg=GATE)["segments"]["nfl:moneyline:0.60-0.70"]
+    s = build(batch(5), closing={}, gate_cfg=GATE)["segments"]["nfl:moneyline:0.60-0.70 :: unknown"]
     assert s["mean_clv_cents"] is None and s["n_clv"] == 0
 
 
@@ -210,7 +210,7 @@ def test_an_empty_ledger_prints_no_segments_and_says_so(tmp_path, capsys):
     report = build([], closing={}, gate_cfg=GATE)
     text = render(report)
     assert "no segments" in text
-    assert "0 segments qualify" in text
+    assert "0/0 segment-groups qualify" in text
 
 
 def test_the_report_is_written_as_json_and_matches_what_was_printed(tmp_path):
@@ -224,4 +224,4 @@ def test_the_report_is_written_as_json_and_matches_what_was_printed(tmp_path):
     written = json.loads(out.read_text())
     assert written["schema_version"] == 1
     assert written["gate"]["min_settled"] == 300
-    assert written["segments"]["nfl:moneyline:0.60-0.70"]["qualifies_for_edge_claim"] is True
+    assert written["segments"]["nfl:moneyline:0.60-0.70 :: unknown"]["qualifies_for_edge_claim"] is True

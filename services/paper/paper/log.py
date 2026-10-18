@@ -30,6 +30,7 @@ from datetime import datetime, timezone
 from . import sources
 from .fees import kalshi_fee_cents
 from .ledger import (KIND_CANDIDATE, KIND_SHADOW, STATUS_OPEN, candidate_id, stake_for)
+from . import segments as segments_mod
 from .segments import bucket_label, edge_threshold, match, segment_key
 
 # Why a row was not logged. Counted, never printed per row: a report that lists
@@ -42,6 +43,10 @@ SKIP_REASONS = (
     "not_a_game_market",
     "no_matching_game",
     "no_model_probability",
+    "no_bid",
+    "spread_too_wide",
+    "zero_volume",
+    "dead_quote",
     "below_edge_threshold",
 )
 
@@ -125,6 +130,29 @@ def candidate_rows(rows: list[dict], games_by_sport: dict[str, dict], config: di
             skip("no_matching_game")
             continue
 
+        # -- liquidity: a quote you cannot actually trade is not a price ------
+        # The ask alone is not enough. A market with no bid, a wide spread, no
+        # volume, or a 1-cent ask is not a market anybody can enter, and logging
+        # it would report an edge that was never available to anyone.
+        yes_bid = row.get("yes_bid")
+        no_bid = row.get("no_bid")
+        volume = row.get("volume")
+        open_interest = row.get("open_interest")
+        if not isinstance(yes_bid, (int, float)) or float(yes_bid) <= 0:
+            skip("no_bid")
+            continue
+        spread = price - float(yes_bid)
+        max_spread = segments_mod.max_spread_points(config) / 100.0
+        if spread > max_spread:
+            skip("spread_too_wide")
+            continue
+        if not isinstance(volume, (int, float)) or float(volume) <= 0:
+            skip("zero_volume")
+            continue
+        if price <= 0.01 or price >= 0.99:
+            skip("dead_quote")
+            continue
+
         fee_cents = kalshi_fee_cents(price * 100.0, contracts=1)
         fee = fee_cents / 100.0
         edge = round((model_p - price - fee) * 100.0, 4)
@@ -169,6 +197,12 @@ def candidate_rows(rows: list[dict], games_by_sport: dict[str, dict], config: di
             "edge": edge,
             "segment": segment,
             "script_bucket": None,
+            "yes_bid": _num(row.get("yes_bid")),
+            "no_bid": _num(row.get("no_bid")),
+            "spread_points": round(spread * 100.0, 4),
+            "volume": _num(volume),
+            "open_interest": _num(open_interest),
+            "model_fingerprint": game.get("model_fingerprint"),
             "stake": 0.0,
             "logged_at": _iso(seen_at),
             "model_generated_at": game.get("generated_at"),
@@ -190,6 +224,10 @@ def candidate_rows(rows: list[dict], games_by_sport: dict[str, dict], config: di
                                   game_id=made["game_id"], committed_by_game=committed)
         committed[made["game_id"]] = committed.get(made["game_id"], 0.0) + made["stake"]
     return list(best.values()), skipped
+
+
+def _num(value) -> float | None:
+    return float(value) if isinstance(value, (int, float)) else None
 
 
 def _keep_best(best: dict[str, dict], made: dict) -> None:

@@ -73,6 +73,10 @@ def edge_threshold(config: dict) -> float:
     return float(config.get("edge_threshold_points", DEFAULT_EDGE_POINTS))
 
 
+def max_spread_points(config: dict) -> float:
+    return float(config.get("max_spread_points", 8.0))
+
+
 def buckets(config: dict) -> list[tuple[float, float]]:
     raw = config.get("confidence_buckets")
     if not isinstance(raw, list) or not raw:
