@@ -18,7 +18,13 @@ and a report that says so is the product working.
 
 CLOSING-LINE VALUE is reported next to pnl because pnl is noisy and CLV is not:
 CLV asks whether we found the price before the market did, which is the part of
-the edge that should persist. Positive pnl with negative CLV is luck.
+the edge that should persist. Positive CLV means we beat the closing price; a
+negative CLV with positive pnl is luck.
+
+MODEL FINGERPRINT grouping: each group is keyed by (segment, fingerprint). When
+`public_snapshot.json` lacks a fingerprint (current NFL state), every snapshot
+creates its own group; once the fingerprint is added it coalesces them. The
+report shows current-model n / all-time n per group.
 """
 from __future__ import annotations
 
