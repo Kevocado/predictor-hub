@@ -153,8 +153,8 @@ def render(report: dict) -> str:
             f"{name:<26} {s['n_logged']:>5} {s['n_settled']:>7} {num(s['hit_rate'], '{:.3f}'):>6} "
             f"{num(s['mean_model_p']):>8} {num(s['mean_market_price']):>6} "
             f"{num(s['mean_edge_points'], '{:.2f}'):>7} {num(s['realised_edge_points'], '{:.2f}'):>7} "
-            f"{num(s['mean_clv_cents'], '{:+.2f}'):>7} {s['pnl']:>>9} {num(s['roi'], '{:+.3f}'):>7} "
-            f"{s['max_drawdown']:>>7.3f} {('yes' if s['qualifies_for_edge_claim'] else 'no'):>6}"
+            f"{num(s['mean_clv_cents'], '{:+.2f}'):>7} {s['pnl']:>9.2f} {num(s['roi'], '{:+.3f}'):>7} "
+            f"{s['max_drawdown']:>7.3f} {('yes' if s['qualifies_for_edge_claim'] else 'no'):>6}"
         )
     if not report["segments"]:
         lines.append("(no segments: the ledger is empty)")

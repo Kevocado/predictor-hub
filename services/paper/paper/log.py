@@ -100,10 +100,18 @@ def candidate_rows(rows: list[dict], games_by_sport: dict[str, dict], config: di
         pick = sources.selection(row)
         probs = game.get("probs") or {}
         model_p = None
-        if pick and pick == game.get("home"):
-            model_p = probs.get("home_win")
-        elif pick and pick == game.get("away"):
-            model_p = probs.get("away_win")
+        if sport == "pl":
+            # PL moneylines have three outcomes: home win, tie, away win. Each is
+            # its own market (YES = that outcome), so the model probability is
+            # looked up by the selection code, not by home/away.
+            model_p = probs.get("draw") if pick == "TIE" else (
+                probs.get("home_win") if pick == game.get("home") else
+                probs.get("away_win") if pick == game.get("away") else None)
+        else:
+            if pick and pick == game.get("home"):
+                model_p = probs.get("home_win")
+            elif pick and pick == game.get("away"):
+                model_p = probs.get("away_win")
         if not isinstance(model_p, (int, float)):
             skip("no_model_probability")
             continue

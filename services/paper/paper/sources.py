@@ -34,12 +34,28 @@ GAME_LEVEL_STATS = frozenset({"moneyline", "winner"})
 
 # Which sibling repo holds which sport's lines. The collectors only exist for
 # these two: there is no CFB collector at all, which is why CFB is shadow-only.
-SITE_FOR_SPORT = {"nfl": "NFL_Predictor", "nba": "NBA_Predictor"}
+SITE_FOR_SPORT = {"nfl": "NFL_Predictor", "nba": "NBA_Predictor", "pl": "PL_Predictor"}
 
 _SPORT_FOR_SERIES_PREFIX = {
     "KXNFL": "nfl",
     "KXNBA": "nba",
     "KXNCAAF": "cfb",
+    "KXEPL": "pl",
+}
+
+#: PL clubs as Kalshi spells them (three-letter codes) -> the full names PL uses.
+#: Kalshi's event ticker is `<SERIES>-<YYMMMDD><HOME><AWAY>`, home first, so the
+#: first code is the home side. The list covers the 2025/26 season's clubs.
+PL_TEAM_CODES = {
+    "Arsenal": "ARS", "Aston Villa": "AVL", "Bournemouth": "BOU",
+    "Brentford": "BRE", "Brighton": "BHA", "Burnley": "BUR",
+    "Chelsea": "CHE", "Coventry": "COV", "Crystal Palace": "CRY",
+    "Everton": "EVE", "Fulham": "FUL", "Hull": "HUL",
+    "Ipswich": "IPS", "Leeds": "LEE", "Leicester": "LEI",
+    "Liverpool": "LIV", "Luton": "LUT", "Man City": "MCI",
+    "Man United": "MUN", "Newcastle": "NEW", "Nott'm Forest": "NFO",
+    "Sheffield United": "SHU", "Southampton": "SOU", "Sunderland": "SUN",
+    "Tottenham": "TOT", "West Ham": "WHU", "Wolves": "WOL",
 }
 
 _MONTHS = {m: i + 1 for i, m in enumerate(
@@ -295,15 +311,51 @@ def snapshot_games(snapshot: dict | None, sport: str) -> dict[str, dict]:
                         "away_cover": probs.get("away_cover_prob"),
                     },
                 }
+    elif sport == "pl":
+        generated_at = snapshot.get("generated_at")
+        for event_id, detail in ((snapshot.get("fixture_detail_by_event_id") or {}).items()):
+            if not isinstance(detail, dict):
+                continue
+            commence = detail.get("commence_time")
+            if not isinstance(commence, str):
+                continue
+            # A fixture with a post-match record has already been played; its
+            # probability is history, not something a candidate could have been
+            # logged against.
+            if detail.get("post_match"):
+                continue
+            home_name = detail.get("team_home")
+            away_name = detail.get("team_away")
+            home_code = PL_TEAM_CODES.get(home_name)
+            away_code = PL_TEAM_CODES.get(away_name)
+            if not home_code or not away_code:
+                continue
+            hw = (detail.get("home_win") or {}).get("prob")
+            dr = (detail.get("draw") or {}).get("prob")
+            aw = (detail.get("away_win") or {}).get("prob")
+            if not all(isinstance(x, (int, float)) for x in (hw, dr, aw)):
+                continue
+            games[event_id] = {
+                "game_id": event_id,
+                "sport": sport,
+                "generated_at": generated_at,
+                "date": commence[:10],
+                "home": home_code,
+                "away": away_code,
+                "probs": {
+                    "home_win": float(hw),
+                    "draw": float(dr),
+                    "away_win": float(aw),
+                },
+            }
     return games
 
 
 def snapshot_positions(snapshot: dict | None) -> dict[str, str]:
     """Player name -> position, from a snapshot's `hub_players` block.
 
-    Only NFL publishes one. It is what lets the allow-list say "WR/TE
-    receptions" and mean it: the Kalshi row for a prop carries a player NAME and
-    no position, so without this the entry could not be enforced.
+    Only NFL publishes one. PL has none, so the allow-list's position filter is
+    a no-op for it, which is fine: pl:moneyline has no position restriction.
     """
     if not snapshot:
         return {}
