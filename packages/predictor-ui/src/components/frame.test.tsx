@@ -26,13 +26,13 @@ describe("AppFrame", () => {
     expect(screen.getByRole("link", { name: "NFL" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "NBA" })).not.toHaveAttribute("aria-current");
   });
-  it("switches pages with plain navigation buttons (no half-built ARIA tabs)", () => {
+  it("switches pages through a real tablist", () => {
     const onTab = vi.fn();
     render(<AppFrame sport="pl" sportName="PL" sites={sites} tabs={tabs} activeTab="games" onTab={onTab}>body</AppFrame>);
-    expect(screen.queryByRole("tab")).toBeNull();
-    const pages = screen.getByRole("navigation", { name: "Pages" });
-    expect(pages.querySelector("[aria-current='page']")).toHaveTextContent("Games");
-    fireEvent.click(screen.getByRole("button", { name: "Data Hub" }));
+    const pages = screen.getByRole("tablist", { name: "Pages" });
+    expect(pages.querySelectorAll("[role='tab']")).toHaveLength(tabs.length);
+    expect(screen.getByRole("tab", { name: "Games" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("tab", { name: "Data Hub" }));
     expect(onTab).toHaveBeenCalledWith("hub");
   });
 });
