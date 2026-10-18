@@ -1,0 +1,86 @@
+name: Log paper candidates
+
+# Read the sibling sites' committed Kalshi ladders and append any candidate that
+# qualifies for the first time. PAPER ONLY: this workflow reads public files and
+# writes two JSON files. It places no order, uses no credential, and has no code
+# path that could.
+#
+# Scheduled to land just after the twice-daily line collectors, which run in the
+# SITE repos rather than here:
+#
+#   NFL_Predictor  .github/workflows/collect-kalshi-lines.yml   14:10 and 22:40 UTC
+#   NBA_Predictor  .github/workflows/collect-kalshi-lines.yml   15:30 and 23:15 UTC
+#
+# There is no cross-repo trigger for that, so this runs on its own cron and reads
+# whatever those collectors last committed. If they have not committed anything
+# new, the logger finds no new observation, every id is already on file, and the
+# commit step exits with "nothing new" — which is the correct and cheap outcome
+# rather than an error.
+#
+# The retry loop below is copied from NFL_Predictor's b784e56 ("snapshot and
+# collector pushes rebase and retry instead of failing on a race"). Several
+# snapshot workflows lost races to each other before that fix; the lesson is that
+# a push that fails on a non-fast-forward is a normal event on a shared branch, not
+# a broken build.
+
+on:
+  schedule:
+    - cron: "45 15 * * *"   # after the 14:10 NFL / 15:30 NBA collections
+    - cron: "35 23 * * *"   # after the 22:40 NFL / 23:15 NBA collections
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: data-commits
+  cancel-in-progress: false
+
+jobs:
+  log:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check out the two site repos that collect Kalshi ladders
+        # Only these two. NFL_Predictor collects the four player-prop series and
+        # NBA_Predictor the game markets; there is no CFB collector at all, which
+        # is why cfb:total can only ever be a shadow.
+        #
+        # Shallow on purpose and tracking main on purpose: this reads what those
+        # repos ship, not a pinned commit, so a new committed ladder is picked up
+        # the next time this runs. Both are public.
+        run: |
+          mkdir -p "$RUNNER_TEMP/sites"
+          for repo in NFL_Predictor NBA_Predictor; do
+            echo "cloning $repo"
+            git clone --quiet --depth 1 --branch main \
+              "https://github.com/Kevocado/$repo.git" "$RUNNER_TEMP/sites/$repo"
+          done
+      - name: Log candidates
+        # SITES_ROOT rather than a flag, so the one discovery rule in
+        # paper/sources.py is the one that runs.
+        env:
+          SITES_ROOT: ${{ runner.temp }}/sites
+        run: python3 scripts/paper_log.py
+      - name: Refresh the report
+        # The report is regenerated from the same ledger, so the published table
+        # never lags the rows.
+        env:
+          SITES_ROOT: ${{ runner.temp }}/sites
+        run: python3 scripts/paper_report.py
+      - name: Commit and push if changed
+        run: |
+          if [ -z "$(git status --porcelain data/paper)" ]; then echo "nothing new"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/paper
+          git commit -m "Log paper candidates [automated]"
+          for attempt in 1 2 3 4; do
+            git pull --rebase -q -X theirs && git push && exit 0
+            echo "push attempt $attempt failed; retrying"; sleep $((attempt * 5))
+          done
+          exit 1

@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "_comment": [
+    "Allow-list of segments the paper ledger may log as a CANDIDATE (staked).",
+    "A market not listed here is never a candidate; it can still be logged as a",
+    "shadow with no stake so it can be evaluated before anyone bets on it.",
+    "",
+    "edge_threshold_points is net of Kalshi's fee (paper/fees.py) and is",
+    "PRE-STATED, not tuned: 4.0 points, from the brief. Any sweep of this number",
+    "on the data it is applied to belongs in an exploratory section, not here.",
+    "",
+    "gate.min_settled is a floor, not a preference. services/paper/tests/",
+    "test_gate.py fails if it is ever lowered below 300."
+  ],
+  "edge_threshold_points": 4.0,
+  "confidence_buckets": [
+    [0.50, 0.60],
+    [0.60, 0.70],
+    [0.70, 0.80],
+    [0.80, 0.90],
+    [0.90, 1.01]
+  ],
+  "gate": {
+    "min_settled": 300,
+    "require_ci_excludes_zero": true,
+    "require_calibration_not_widening": true,
+    "min_for_calibration_trend": 100
+  },
+  "segments": [
+    {
+      "segment": "nfl:receptions",
+      "sport": "nfl",
+      "market": "receptions",
+      "positions": ["WR", "TE"],
+      "note": "From the brief. Blocked today: NFL publishes no per-prop probability (the API strips quantiles), so nothing can be logged until PR 1b."
+    },
+    {
+      "segment": "nfl:passing_tds",
+      "sport": "nfl",
+      "market": "passing_tds",
+      "positions": ["QB"],
+      "note": "From the brief. Same blocker as nfl:receptions."
+    },
+    {
+      "segment": "nba:moneyline",
+      "sport": "nba",
+      "market": "moneyline",
+      "note": "From the brief. Kalshi prices exist (KXNBAGAME); NBA publishes no per-game win probability, so nothing can be logged until NBA starts publishing one."
+    },
+    {
+      "segment": "nfl:moneyline",
+      "sport": "nfl",
+      "market": "moneyline",
+      "note": "NFL publishes per-game win probability, but NFL's collector fetches only four player-prop series and no KXNFLGAME ladder, so there is no price to pair it with."
+    },
+    {
+      "segment": "nfl:total",
+      "sport": "nfl",
+      "market": "total",
+      "note": "Same as nfl:moneyline: probability yes, KXNFLTOTAL price no."
+    },
+    {
+      "segment": "cfb:total",
+      "sport": "cfb",
+      "market": "total",
+      "note": "From the brief. There is no CFB Kalshi collector at all, so this can only ever be a shadow."
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+name: Settle paper rows
+
+# Mark open ledger rows settled from Kalshi's own resolution, then refresh the
+# report. PAPER ONLY: no orders, no credentials.
+#
+# Kalshi finalizes a market shortly after the event, and the collectors re-pull
+# recently settled markets on each run, so settlement needs no feed of its own —
+# it only has to run after the collectors have committed. Games run Sun-Thu
+# evening US time, so the results land in the small hours UTC; three passes a day
+# keeps a settled row from sitting open for a day. Settlement is idempotent, so a
+# run that has nothing to do writes nothing and costs nothing.
+#
+# The retry loop is copied from NFL_Predictor's b784e56, for the same reason as in
+# paper-log.yml: a non-fast-forward on a shared branch is a normal race, not a
+# broken build.
+
+on:
+  schedule:
+    - cron: "20 4 * * *"
+    - cron: "20 12 * * *"
+    - cron: "20 20 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: data-commits
+  cancel-in-progress: false
+
+jobs:
+  settle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check out the two site repos that collect Kalshi ladders
+        run: |
+          mkdir -p "$RUNNER_TEMP/sites"
+          for repo in NFL_Predictor NBA_Predictor; do
+            echo "cloning $repo"
+            git clone --quiet --depth 1 --branch main \
+              "https://github.com/Kevocado/$repo.git" "$RUNNER_TEMP/sites/$repo"
+          done
+      - name: Settle
+        env:
+          SITES_ROOT: ${{ runner.temp }}/sites
+        run: python3 scripts/paper_settle.py
+      - name: Refresh the report
+        env:
+          SITES_ROOT: ${{ runner.temp }}/sites
+        run: python3 scripts/paper_report.py
+      - name: Commit and push if changed
+        run: |
+          if [ -z "$(git status --porcelain data/paper)" ]; then echo "nothing new"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/paper
+          git commit -m "Settle paper rows [automated]"
+          for attempt in 1 2 3 4; do
+            git pull --rebase -q -X theirs && git push && exit 0
+            echo "push attempt $attempt failed; retrying"; sleep $((attempt * 5))
+          done
+          exit 1

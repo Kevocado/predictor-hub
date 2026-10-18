@@ -1,0 +1,18 @@
+{
+  "gate": {
+    "min_for_calibration_trend": 100,
+    "min_settled": 300,
+    "require_calibration_not_widening": true,
+    "require_ci_excludes_zero": true
+  },
+  "schema_version": 1,
+  "segments": {},
+  "totals": {
+    "n_candidates": 0,
+    "n_logged": 0,
+    "n_settled": 0,
+    "n_shadow": 0,
+    "segments": 0,
+    "segments_qualifying": 0
+  }
+}

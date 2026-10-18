@@ -1,0 +1,194 @@
+"""The arithmetic the report stands on: uncertainty, calibration, and closing line.
+
+Four things live here, all pure functions over a list of settled ledger rows.
+
+`max_drawdown` is a port of `max_drawdown` in `algo-trade-hub-prod`
+(`tradehub/backtest/metrics.py:36`, read at commit 12432be) — peak-to-trough on
+the cumulative curve, starting the peak at zero so a losing run from the start
+registers. Copied rather than imported for the same reason the fee schedule was.
+
+The bootstrap is a PAIRED bootstrap: one resample of row indices, applied to
+every per-bet quantity at once, so the confidence interval on pnl keeps the
+correlation between "how often we were right" and "what we paid". Resampling the
+columns independently would let an interval be built out of combinations of bets
+that never happened.
+
+Closing-line value is the reason this report exists at all: it compares the price
+we logged to the last price anybody could see before kickoff, so it is not
+measuring luck. CLV is positive when we beat that closing price, which is the
+part of an edge that is supposed to persist.
+"""
+from __future__ import annotations
+
+import random
+from statistics import fmean
+
+BOOTSTRAP_ITERS = 4000
+BOOTSTRAP_SEED = 20261017
+CI_LEVEL = 0.95
+
+
+def mean(values) -> float | None:
+    values = list(values)
+    return fmean(values) if values else None
+
+
+def max_drawdown(pnls) -> float:
+    """Largest peak-to-trough fall of the cumulative curve. Never negative."""
+    peak = cum = worst = 0.0
+    for pnl in pnls:
+        cum += pnl
+        peak = max(peak, cum)
+        worst = max(worst, peak - cum)
+    return worst
+
+
+def bootstrap_mean_ci(values, *, iters: int = BOOTSTRAP_ITERS, seed: int = BOOTSTRAP_SEED,
+                      level: float = CI_LEVEL) -> tuple[float, float] | None:
+    """Percentile interval on the mean, resampling whole rows.
+
+    Seeded, so the same ledger always prints the same interval. An unseeded CI in
+    a report that gates on "does this interval exclude zero" is a coin flip that
+    looks like evidence.
+    """
+    values = list(values)
+    if not values:
+        return None
+    n = len(values)
+    if n == 1:
+        return values[0], values[0]
+    rng = random.Random(seed)
+    means = []
+    for _ in range(iters):
+        means.append(fmean(values[rng.randrange(n)] for _ in range(n)))
+    means.sort()
+    lo = means[int((1 - level) / 2 * (iters - 1))]
+    hi = means[min(iters - 1, int(((1 + level) / 2) * (iters - 1)))]
+    return lo, hi
+
+
+def excludes_zero(interval: tuple[float, float] | None) -> bool | None:
+    """True when the interval is entirely on one side of zero."""
+    if interval is None:
+        return None
+    return interval[0] > 0.0 or interval[1] < 0.0
+
+
+def is_profitable(interval: tuple[float, float] | None) -> bool | None:
+    """True when the whole interval sits ABOVE zero.
+
+    The brief words the gate as "a CI on edge that excludes zero", and taken
+    literally that is not sufficient: a segment that lost all 300 of its bets
+    produces a tight interval well below zero, which also excludes zero, and
+    would sail through a gate meant to certify an edge. An edge is a claim that
+    the segment made money, so the interval has to exclude zero from BELOW. The
+    strict-inequality form is deliberate — a lower bound sitting exactly on zero
+    is not evidence of profit, it is an absence of evidence against.
+    """
+    if interval is None:
+        return None
+    return interval[0] > 0.0
+
+
+def calibration_gap(model_ps, outcomes) -> float | None:
+    """|mean model_p - hit rate|, in percentage points.
+
+    Zero means the model said exactly the right thing on average. Signed would be
+    more informative but is easy to misread, so the report carries the sign
+    separately as mean_model_p minus hit_rate.
+    """
+    pairs = [(p, o) for p, o in zip(model_ps, outcomes) if p is not None and o is not None]
+    if not pairs:
+        return None
+    predicted = fmean(p for p, _ in pairs)
+    actual = fmean(float(o) for _, o in pairs)
+    return abs(predicted - actual) * 100.0
+
+
+def calibration_trend(rows, *, min_n: int) -> dict:
+    """Is the calibration gap widening?
+
+    Compares the first half of the settled rows with the second half. It returns
+    a verdict only when there are enough rows to make the comparison mean
+    something; below that it says `measurable: False` rather than reporting a
+    trend computed from a handful of bets, because "not widening" on seven bets
+    is indistinguishable from "we have not looked".
+    """
+    settled = [r for r in rows if r.get("outcome") in ("yes", "no")]
+    n = len(settled)
+    if n < min_n:
+        return {"measurable": False, "n_settled": n, "min_n": min_n,
+                "widening": None, "gap_early": None, "gap_late": None}
+    half = n // 2
+    def gap(part):
+        return calibration_gap(
+            [r["model_p"] for r in part],
+            [1 if r["outcome"] == "yes" else 0 for r in part],
+        )
+    early, late = gap(settled[:half]), gap(settled[half:])
+    return {
+        "measurable": True,
+        "n_settled": n,
+        "min_n": min_n,
+        "gap_early": early,
+        "gap_late": late,
+        "widening": bool(late is not None and early is not None and late > early),
+    }
+
+
+def closing_prices(rows: list[dict]) -> dict[str, dict]:
+    """The last pre-kickoff buyable price per ticker, from the Kalshi snapshots.
+
+    Built by walking every observed row for that ticker and keeping the one with
+    the latest `snapshot_ts` that is still strictly before kickoff. The
+    comparison is against `occurrence`, not `close_time`, because Kalshi keeps
+    trading these markets after the game and a post-final price is not a closing
+    line.
+    """
+    best: dict[str, dict] = {}
+    for row in rows:
+        ticker = row.get("ticker")
+        seen_at = row.get("_seen_at")
+        start = row.get("_kickoff")
+        if not isinstance(ticker, str) or seen_at is None or start is None:
+            continue
+        if seen_at >= start:
+            continue  # observed at or after kickoff: not a closing line
+        price = row.get("_price")
+        if price is None:
+            continue
+        held = best.get(ticker)
+        if held is None or seen_at >= held["_seen_at"]:
+            best[ticker] = row
+    return best
+
+
+def clv_points(candidate: dict, closing: dict[str, dict]) -> float | None:
+    """Closing-line value in cents: how much better the logged price was than the
+    last price anyone could see before kickoff.
+
+    Positive means we beat the closing line — we logged 40c and the market ended
+    at 45c — which is the part of an edge that should persist, because it says we
+    got to the bet before the market did. Negative means the opposite: we paid
+    more than the market's final price, so the information that made the bet
+    interesting had already arrived and we were late to it. Positive pnl with
+    negative CLV is luck.
+    """
+    row = closing.get(candidate.get("ticker"))
+    if row is None:
+        return None
+    return round((row["_price"] - float(candidate["market_price"])) * 100.0, 4)
+
+
+def annotate_observed(rows: list[dict]) -> list[dict]:
+    """Pre-parse the timestamps `closing_prices` needs, without mutating the rows."""
+    from . import sources
+    out = []
+    for row in rows:
+        seen_at = sources.parse_ts(row.get("snapshot_ts"))
+        copy = dict(row)
+        copy["_seen_at"] = seen_at
+        copy["_kickoff"] = sources.kickoff(row)
+        copy["_price"] = sources.buyable_price(row, "yes")
+        out.append(copy)
+    return out

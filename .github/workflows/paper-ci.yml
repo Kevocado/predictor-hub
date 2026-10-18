@@ -1,0 +1,58 @@
+name: Paper ledger CI
+
+# The suite for services/paper. Its own workflow rather than a job in the hub's
+# node --test workflow, for the reason services/explainer has one: a red run has
+# to mean exactly one thing, and a fee-schedule mutation breaking the paper
+# ledger is not the same failure as a stale vendored component.
+#
+# Deliberately dependency-free. Everything under services/paper is stdlib, so the
+# only thing installed here is pytest — no uv, no lockfile, no virtualenv to
+# drift out of date. If a future change needs a real dependency, that is the
+# moment to copy the explainer's lockfile discipline rather than improvise.
+#
+# It also byte-compiles every tracked .py first, for the reason given in
+# explainer-ci.yml: a SyntaxError is the one class of break that no number of
+# green tests survives, because nothing collects.
+
+on:
+  pull_request: {}
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: paper-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: services/paper
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          # 3.11 is the floor every module claims in `requires`-style comments and
+          # the version the syntax of `X | None` and the 3.11 `fromisoformat` 'Z'
+          # handling depend on. A newer local interpreter passing is not evidence
+          # about this one.
+          python-version: "3.11"
+      - name: Install pytest
+        run: pip install --quiet pytest
+      - name: Byte-compile every tracked .py in the service
+        # git ls-files, not find: the file list is then exactly what is committed.
+        run: python -m py_compile $(git ls-files '*.py')
+      - name: Tests
+        # PYTHONPATH=. is what puts the `paper` package on the path, exactly as
+        # the explainer's job does it, so a local run and this run cannot be
+        # different commands.
+        run: PYTHONPATH=. python -m pytest -q
+      - name: Report the interpreter the suite actually ran on
+        run: python -VV
