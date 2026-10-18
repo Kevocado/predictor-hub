@@ -25,3 +25,9 @@
 # root is public. Keep these local; put durable records under docs/superpowers/ledgers/.
 /SESSION-STATE.md
 /Handover.MD
+
+# Python bytecode. services/paper/ is run from the repo and by a workflow, so it
+# generates these on every invocation; they are never worth a commit and a stale
+# .pyc in a release is the kind of thing that outlives the file it came from.
+__pycache__/
+*.py[cod]
