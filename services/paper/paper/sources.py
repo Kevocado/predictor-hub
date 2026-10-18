@@ -30,7 +30,7 @@ from pathlib import Path
 
 # Kalshi series whose ladder is about a game rather than a player. Only these can
 # ever pair with a game-level probability from a public snapshot.
-GAME_LEVEL_STATS = frozenset({"moneyline", "winner"})
+GAME_LEVEL_STATS = frozenset({"moneyline", "winner", "total"})
 
 # Which sibling repo holds which sport's lines. The collectors only exist for
 # these two: there is no CFB collector at all, which is why CFB is shadow-only.

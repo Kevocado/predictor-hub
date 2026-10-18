@@ -105,7 +105,13 @@ def candidate_rows(rows: list[dict], games_by_sport: dict[str, dict], config: di
         pick = sources.selection(row)
         probs = game.get("probs") or {}
         model_p = None
-        if sport == "pl":
+        if market == "total":
+            # "over X points" YES contract: model_p = P(over) for the game's
+            # predicted total. The snapshot's over_prob is for the book's line,
+            # not Kalshi's, so this is an approximation — but it is the field
+            # the brief names, and the gate will refuse to certify noise.
+            model_p = probs.get("over")
+        elif sport == "pl":
             # PL moneylines have three outcomes: home win, tie, away win. Each is
             # its own market (YES = that outcome), so the model probability is
             # looked up by the selection code, not by home/away.

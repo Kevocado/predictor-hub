@@ -29,6 +29,18 @@
   },
   "segments": [
     {
+      "segment": "nfl:moneyline",
+      "sport": "nfl",
+      "market": "moneyline",
+      "note": "NFL home/away moneyline. Kalshi prices from KXNFLGAME (collector PR #83); model_p from NFL's public snapshot (home_win_prob)."
+    },
+    {
+      "segment": "nfl:total",
+      "sport": "nfl",
+      "market": "total",
+      "note": "NFL over/under total. Kalshi prices from KXNFLTOTAL; model_p = over_prob from the snapshot (for the book's line, not Kalshi's — an approximation)."
+    },
+    {
       "segment": "pl:moneyline",
       "sport": "pl",
       "market": "moneyline",
