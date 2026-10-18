@@ -20,23 +20,30 @@
         null
       ]
     },
+    "nfl:moneyline:0.70-0.80": {
+      "all_time_n": 1,
+      "current_model_n": 1,
+      "fingerprints": [
+        null
+      ]
+    },
     "nfl:total:0.50-0.60": {
-      "all_time_n": 23,
-      "current_model_n": 23,
+      "all_time_n": 39,
+      "current_model_n": 39,
       "fingerprints": [
         null
       ]
     },
     "nfl:total:0.60-0.70": {
-      "all_time_n": 34,
-      "current_model_n": 34,
+      "all_time_n": 38,
+      "current_model_n": 38,
       "fingerprints": [
         null
       ]
     },
     "nfl:total:0.70-0.80": {
-      "all_time_n": 12,
-      "current_model_n": 12,
+      "all_time_n": 14,
+      "current_model_n": 14,
       "fingerprints": [
         null
       ]
@@ -130,6 +137,42 @@
       "segment": "nfl:moneyline:0.60-0.70",
       "staked": 0
     },
+    "nfl:moneyline:0.70-0.80 :: unknown": {
+      "calibration_gap_points": null,
+      "calibration_trend": {
+        "gap_early": null,
+        "gap_late": null,
+        "measurable": false,
+        "min_n": 100,
+        "n_settled": 0,
+        "widening": null
+      },
+      "disqualifying": [
+        "only 0 settled bets, need 300",
+        "no settled bets to put an interval on",
+        "calibration trend needs 100 settled bets, have 0"
+      ],
+      "hit_rate": null,
+      "is_current_model": true,
+      "max_drawdown": 0.0,
+      "mean_clv_cents": null,
+      "mean_edge_points": null,
+      "mean_market_price": null,
+      "mean_model_p": null,
+      "model_fingerprint": null,
+      "n_clv": 0,
+      "n_logged": 1,
+      "n_open": 1,
+      "n_settled": 0,
+      "n_void": 0,
+      "pnl": 0,
+      "pnl_ci95": null,
+      "qualifies_for_edge_claim": false,
+      "realised_edge_points": null,
+      "roi": null,
+      "segment": "nfl:moneyline:0.70-0.80",
+      "staked": 0
+    },
     "nfl:total:0.50-0.60 :: unknown": {
       "calibration_gap_points": null,
       "calibration_trend": {
@@ -154,8 +197,8 @@
       "mean_model_p": null,
       "model_fingerprint": null,
       "n_clv": 0,
-      "n_logged": 23,
-      "n_open": 23,
+      "n_logged": 39,
+      "n_open": 39,
       "n_settled": 0,
       "n_void": 0,
       "pnl": 0,
@@ -190,8 +233,8 @@
       "mean_model_p": null,
       "model_fingerprint": null,
       "n_clv": 0,
-      "n_logged": 34,
-      "n_open": 34,
+      "n_logged": 38,
+      "n_open": 38,
       "n_settled": 0,
       "n_void": 0,
       "pnl": 0,
@@ -226,8 +269,8 @@
       "mean_model_p": null,
       "model_fingerprint": null,
       "n_clv": 0,
-      "n_logged": 12,
-      "n_open": 12,
+      "n_logged": 14,
+      "n_open": 14,
       "n_settled": 0,
       "n_void": 0,
       "pnl": 0,
@@ -312,12 +355,12 @@
     }
   },
   "totals": {
-    "n_candidates": 74,
-    "n_logged": 74,
+    "n_candidates": 97,
+    "n_logged": 97,
     "n_settled": 0,
     "n_shadow": 0,
-    "segment_groups": 7,
-    "segments": 7,
+    "segment_groups": 8,
+    "segments": 8,
     "segments_qualifying": 0
   }
 }
