@@ -395,12 +395,24 @@
     (async function () {
       var report;
       try {
-        var res = await fetch("./data/paper/report.json");
-        if (!res.ok) throw new Error("report not available");
+        // Fetch the report straight from GitHub so the page reflects the latest
+        // committed report.json (the paper-log and paper-settle workflows commit
+        // it to main) without waiting for a hub redeploy. raw.githubusercontent
+        // sends Access-Control-Allow-Origin: *, so cross-origin fetch works.
+        var res = await fetch("https://raw.githubusercontent.com/Kevocado/predictor-hub/main/data/paper/report.json");
+        if (!res.ok) throw new Error("report not available on GitHub (" + res.status + ")");
         report = await res.json();
       } catch (e) {
-        document.getElementById("early-sample").querySelector(".banner-body").textContent = "The paper-trading report could not be loaded: " + e.message + ".";
-        return;
+        // Fall back to the baked copy shipped with the page, so the page still
+        // renders if GitHub raw is unreachable or the report hasn't been pushed yet.
+        try {
+          var baked = await fetch("./data/paper/report.json");
+          if (!baked.ok) throw new Error("baked report not available");
+          report = await baked.json();
+        } catch (e2) {
+          document.getElementById("early-sample").querySelector(".banner-body").textContent = "The paper-trading report could not be loaded: " + e2.message + ".";
+          return;
+        }
       }
 
       var totals = report.totals || {};
