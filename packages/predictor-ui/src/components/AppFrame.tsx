@@ -36,7 +36,9 @@ export function AppFrame({
   const resolvedHome = homeHref ?? sites.find((s) => s.sport === "hub")?.href ?? "/";
   const activeNav = activeEntry === undefined ? (sport === "hub" ? null : sport) : activeEntry;
 
-  const entries: NavEntry[] = sites.map((s) => ({ id: s.sport, label: s.label, href: s.href, sport: s.sport }));
+  const entries: NavEntry[] = sites
+    .filter((s) => s.sport !== "hub")
+    .map((s) => ({ id: s.sport, label: s.label, href: s.href, sport: s.sport }));
   if (paperTradingHref) {
     entries.push({ id: "paper", label: "Paper Trading", href: paperTradingHref, sport: "hub" });
   }
