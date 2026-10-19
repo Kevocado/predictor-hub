@@ -28,15 +28,15 @@
       ]
     },
     "nfl:total:0.50-0.60": {
-      "all_time_n": 39,
-      "current_model_n": 39,
+      "all_time_n": 48,
+      "current_model_n": 48,
       "fingerprints": [
         null
       ]
     },
     "nfl:total:0.60-0.70": {
-      "all_time_n": 40,
-      "current_model_n": 40,
+      "all_time_n": 48,
+      "current_model_n": 48,
       "fingerprints": [
         null
       ]
@@ -205,8 +205,8 @@
       "mean_model_p": 0.5519,
       "model_fingerprint": null,
       "n_clv": 0,
-      "n_logged": 39,
-      "n_open": 0,
+      "n_logged": 48,
+      "n_open": 9,
       "n_settled": 39,
       "n_void": 0,
       "pnl": -1.82,
@@ -244,8 +244,8 @@
       "mean_model_p": 0.6525,
       "model_fingerprint": null,
       "n_clv": 0,
-      "n_logged": 40,
-      "n_open": 2,
+      "n_logged": 48,
+      "n_open": 10,
       "n_settled": 38,
       "n_void": 0,
       "pnl": 2.36,
@@ -372,8 +372,8 @@
     }
   },
   "totals": {
-    "n_candidates": 102,
-    "n_logged": 102,
+    "n_candidates": 119,
+    "n_logged": 119,
     "n_settled": 94,
     "n_shadow": 0,
     "segment_groups": 8,
