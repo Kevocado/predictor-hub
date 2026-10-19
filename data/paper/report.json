@@ -21,8 +21,8 @@
       ]
     },
     "nfl:moneyline:0.70-0.80": {
-      "all_time_n": 1,
-      "current_model_n": 1,
+      "all_time_n": 3,
+      "current_model_n": 3,
       "fingerprints": [
         null
       ]
@@ -35,15 +35,15 @@
       ]
     },
     "nfl:total:0.60-0.70": {
-      "all_time_n": 38,
-      "current_model_n": 38,
+      "all_time_n": 40,
+      "current_model_n": 40,
       "fingerprints": [
         null
       ]
     },
     "nfl:total:0.70-0.80": {
-      "all_time_n": 14,
-      "current_model_n": 14,
+      "all_time_n": 15,
+      "current_model_n": 15,
       "fingerprints": [
         null
       ]
@@ -161,8 +161,8 @@
       "mean_model_p": null,
       "model_fingerprint": null,
       "n_clv": 0,
-      "n_logged": 1,
-      "n_open": 1,
+      "n_logged": 3,
+      "n_open": 3,
       "n_settled": 0,
       "n_void": 0,
       "pnl": 0,
@@ -233,8 +233,8 @@
       "mean_model_p": null,
       "model_fingerprint": null,
       "n_clv": 0,
-      "n_logged": 38,
-      "n_open": 38,
+      "n_logged": 40,
+      "n_open": 40,
       "n_settled": 0,
       "n_void": 0,
       "pnl": 0,
@@ -269,8 +269,8 @@
       "mean_model_p": null,
       "model_fingerprint": null,
       "n_clv": 0,
-      "n_logged": 14,
-      "n_open": 14,
+      "n_logged": 15,
+      "n_open": 15,
       "n_settled": 0,
       "n_void": 0,
       "pnl": 0,
@@ -355,8 +355,8 @@
     }
   },
   "totals": {
-    "n_candidates": 97,
-    "n_logged": 97,
+    "n_candidates": 102,
+    "n_logged": 102,
     "n_settled": 0,
     "n_shadow": 0,
     "segment_groups": 8,
