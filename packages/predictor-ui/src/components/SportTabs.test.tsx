@@ -74,4 +74,16 @@ describe("SportTabs", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Teams" }));
     expect(onTab).toHaveBeenCalledWith("teams");
   });
+
+  it("gives every tab a 40px tap target under 640px", () => {
+    render(<SportTabs tabs={TABS} active="games" onChange={() => {}} />);
+    for (const tab of screen.getAllByRole("tab")) {
+      expect(tab).toHaveClass("inline-flex", "items-center", "max-sm:min-h-10");
+    }
+  });
+
+  it("draws no empty tabpanel when the frame supplies no panels", () => {
+    render(<SportTabs tabs={TABS} active="games" onChange={() => {}} />);
+    expect(screen.queryByRole("tabpanel")).toBeNull();
+  });
 });

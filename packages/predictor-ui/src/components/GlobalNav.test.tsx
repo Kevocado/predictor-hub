@@ -39,4 +39,11 @@ describe("GlobalNav", () => {
     render(<GlobalNav entries={entries} activeId={null} />);
     expect(screen.queryByTestId("global-nav-fade")).toBeNull();
   });
+
+  it("gives every link a 40px tap target under 640px", () => {
+    render(<GlobalNav entries={entries} activeId={null} />);
+    for (const link of screen.getAllByRole("link")) {
+      expect(link).toHaveClass("inline-flex", "items-center", "max-sm:min-h-10");
+    }
+  });
 });

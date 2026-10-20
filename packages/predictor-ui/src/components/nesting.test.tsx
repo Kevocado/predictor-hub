@@ -360,7 +360,7 @@ const CASES: { name: string; element: ReactElement; controls: number }[] = [
         <MatchCard {...CARD} pick={{ label: "AVL", prob: 0.6 }} bar={[{ label: "TOT", prob: 0.4 }, { label: "AVL", prob: 0.6 }]} />
       </AppFrame>
     ),
-    controls: 7,
+    controls: 6,
   },
 
   { name: "RoundNavigator with everything", element: <RoundNavigator label="Week 5" canPrev canNext onPrev={() => {}} onNext={() => {}} onJumpToCurrent={() => {}} record={{ hits: 41, settled: 68, rebuilt: 2 }} />, controls: 3 },
