@@ -52,3 +52,6 @@ export { CalibrationChart } from "./trackRecord/CalibrationChart";
 export { RecentPicks } from "./trackRecord/RecentPicks";
 export { HowCounted } from "./trackRecord/HowCounted";
 export { HubTabs, type HubTab } from "./trackRecord/HubTabs";
+
+// The one family switcher list, shared by every site.
+export { SPORT_SITES, siteLinks } from "./lib/sites";
