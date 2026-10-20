@@ -49,7 +49,7 @@ export function GlobalNav({ entries, activeId, ariaLabel = "Sports" }: Props) {
   }, [activeId]);
 
   return (
-    <nav aria-label={ariaLabel} className="relative">
+    <nav aria-label={ariaLabel} className="relative min-w-0 max-w-full">
       <div
         ref={scrollRef}
         data-testid="global-nav-scroller"

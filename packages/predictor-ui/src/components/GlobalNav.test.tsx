@@ -30,6 +30,11 @@ describe("GlobalNav", () => {
     expect(scroller.className).toMatch(/overflow-x-auto/);
   });
 
+  it("lets the nav shrink below its entries' combined width (the page must not scroll sideways)", () => {
+    render(<GlobalNav entries={entries} activeId={null} />);
+    expect(screen.getByRole("navigation")).toHaveClass("min-w-0", "max-w-full");
+  });
+
   it("does not render the fade when not overflowing", () => {
     render(<GlobalNav entries={entries} activeId={null} />);
     expect(screen.queryByTestId("global-nav-fade")).toBeNull();

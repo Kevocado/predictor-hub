@@ -19,7 +19,7 @@ type Props = {
  */
 export function SportTabs({ tabs, active, onChange, panels, label = "Pages", className }: Props) {
   return (
-    <div className={className}>
+    <div className={`min-w-0 max-w-full${className ? ` ${className}` : ""}`}>
       <HubTabs tabs={tabs} active={active} onChange={onChange} panels={panels} label={label} />
     </div>
   );
