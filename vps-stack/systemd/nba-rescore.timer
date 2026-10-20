@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily NBA predictor refresh and re-score
+
+[Timer]
+# After the 12:00 UTC data refresh in CI, before the evening games.
+OnCalendar=*-*-* 13:40:00 UTC
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target
