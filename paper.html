@@ -481,7 +481,10 @@
       document.getElementById("early-sample").querySelector(".banner-body").innerHTML =
         "<strong>" + totals.n_logged + " paper bets logged, " + totals.n_settled + " settled.</strong> " +
         "A segment needs roughly " + min + " settled paper bets before its edge can be judged; none have reached it yet, so every segment reads \"cannot be judged yet\". " +
-        "Stakes are paper units only; no real money is placed.";
+        "Stakes are paper units only; no real money is placed." +
+        (totals.excluded_legacy_total_rows
+          ? " " + totals.excluded_legacy_total_rows + " earlier NFL total-points rows are excluded: they were priced at the wrong line, so they are not evidence."
+          : "");
     })();
   </script>
 </body>

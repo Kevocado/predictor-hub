@@ -303,6 +303,10 @@ def snapshot_games(snapshot: dict | None, sport: str) -> dict[str, dict]:
                     "date": str(game.get("gameday") or "")[:10],
                     "home": game.get("home_team"),
                     "away": game.get("away_team"),
+                    # The model's predicted total and its sigma: a total rung's
+                    # probability is evaluated at the rung's own line from these.
+                    "total_mu": probs.get("predicted_total"),
+                    "total_sigma": probs.get("total_sigma"),
                     "probs": {
                         "home_win": probs.get("home_win_prob"),
                         "away_win": probs.get("away_win_prob"),
