@@ -91,8 +91,8 @@ export function HubTabs({
   }, [currentTab]);
 
   return (
-    <div>
-      <div className="relative">
+    <div className="min-w-0 max-w-full">
+      <div className="relative min-w-0 max-w-full">
         <div
           ref={scrollerRef}
           data-testid="hub-tabs-scroller"

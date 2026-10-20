@@ -55,6 +55,14 @@ describe("SportTabs", () => {
     expect(list.className).toMatch(/overflow-x-auto/);
   });
 
+  it("lets its wrapper shrink below the tabs' combined width (the page must not scroll sideways)", () => {
+    // A flex item defaults to min-width:auto = its content's width; without min-w-0 the whole
+    // tab row's width becomes the page's width at 375px even though the list itself scrolls.
+    const { container } = render(<SportTabs tabs={TABS} active="games" onChange={() => {}} />);
+    expect(container.firstElementChild).toHaveClass("min-w-0", "max-w-full");
+    expect(screen.getByRole("tablist").parentElement?.parentElement).toHaveClass("min-w-0", "max-w-full");
+  });
+
   it("does not render the fade when not overflowing", () => {
     render(<SportTabs tabs={TABS} active="games" onChange={() => {}} />);
     expect(screen.queryByTestId("hub-tabs-fade")).toBeNull();
