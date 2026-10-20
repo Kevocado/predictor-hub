@@ -116,7 +116,7 @@ export function HubTabs({
                 tabIndex={current ? 0 : -1}
                 onClick={() => onChange(tab.id)}
                 onKeyDown={(event) => onKeyDown(event, index)}
-                className={`whitespace-nowrap border-b-2 pb-3 text-sm font-semibold transition-colors ${
+                className={`inline-flex items-center whitespace-nowrap border-b-2 pb-3 text-sm font-semibold transition-colors max-sm:min-h-10 ${
                   current ? "border-pr-accent text-pr-text" : "border-transparent text-pr-text-dim hover:text-pr-text"
                 }`}
               >
@@ -133,9 +133,9 @@ export function HubTabs({
           />
         )}
       </div>
-      {currentTab && (
+      {currentTab && panels && (
         <div role="tabpanel" id={panelId(currentTab)} aria-labelledby={tabId(currentTab)} tabIndex={0} className="pt-4">
-          {panels?.[currentTab.id]}
+          {panels[currentTab.id]}
         </div>
       )}
     </div>
