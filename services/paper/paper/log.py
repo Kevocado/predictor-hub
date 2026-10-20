@@ -24,6 +24,7 @@ publicly observable at the time it is stamped with.
 """
 from __future__ import annotations
 
+import math
 import sys
 from datetime import datetime, timezone
 
@@ -49,6 +50,25 @@ SKIP_REASONS = (
     "dead_quote",
     "below_edge_threshold",
 )
+
+
+def p_over_line(mu, sigma, line) -> float | None:
+    """P(total > line) for a Normal(mu, sigma) game total; None if any input is unusable.
+
+    A Kalshi total ladder has one rung per threshold, so the probability must be
+    evaluated at the rung's own line. The snapshot's single `over_prob` is for the
+    book's line and is wrong for every other rung.
+    """
+    try:
+        mu, sigma, line = float(mu), float(sigma), float(line)
+    except (TypeError, ValueError):
+        return None
+    if not (math.isfinite(mu) and math.isfinite(sigma) and math.isfinite(line)) or sigma <= 0:
+        return None
+    return 0.5 * (1.0 - math.erf((line - mu) / sigma / math.sqrt(2.0)))
+
+
+TOTAL_MODEL_BASIS = "normal(predicted_total, total_sigma) at the rung line"
 
 
 def _iso(stamp: datetime | None) -> str | None:
@@ -105,12 +125,12 @@ def candidate_rows(rows: list[dict], games_by_sport: dict[str, dict], config: di
         pick = sources.selection(row)
         probs = game.get("probs") or {}
         model_p = None
+        model_basis = None
         if market == "total":
-            # "over X points" YES contract: model_p = P(over) for the game's
-            # predicted total. The snapshot's over_prob is for the book's line,
-            # not Kalshi's, so this is an approximation — but it is the field
-            # the brief names, and the gate will refuse to certify noise.
-            model_p = probs.get("over")
+            # "over X points" YES contract: P(total > X) from the model's
+            # predicted total and sigma, at THIS rung's line.
+            model_p = p_over_line(game.get("total_mu"), game.get("total_sigma"), row.get("line"))
+            model_basis = TOTAL_MODEL_BASIS
         elif sport == "pl":
             # PL moneylines have three outcomes: home win, tie, away win. Each is
             # its own market (YES = that outcome), so the model probability is
@@ -195,6 +215,7 @@ def candidate_rows(rows: list[dict], games_by_sport: dict[str, dict], config: di
             "side": side,
             "line": row.get("line"),
             "model_p": round(model_p, 6),
+            "model_basis": model_basis,
             "market_price": price,
             "price_observed_at": _iso(seen_at),
             "kickoff": _iso(start),

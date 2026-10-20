@@ -108,7 +108,18 @@ def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
     }
 
 
+def _is_legacy_total(row: dict) -> bool:
+    """A total row logged before totals were priced at each rung's own line.
+
+    Those rows carry the snapshot's single book-line over_prob for every rung, so
+    their edges are fiction. They stay in the append-only ledger but are not evidence.
+    """
+    return row.get("market") == "total" and not row.get("model_basis")
+
+
 def build(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict) -> dict:
+    n_legacy = sum(1 for r in rows if _is_legacy_total(r))
+    rows = [r for r in rows if not _is_legacy_total(r)]
     # Group by (segment, model_fingerprint) so an updated model starts a fresh
     # sample. The gate applies to each group independently.
     by_group: dict[tuple, list[dict]] = {}
@@ -167,6 +178,7 @@ def build(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict) -> dict
             "segments": len({r.get("segment") for r in rows if r.get("segment")}),
             "segment_groups": len(table),
             "segments_qualifying": sum(1 for v in table.values() if v["qualifies_for_edge_claim"]),
+            "excluded_legacy_total_rows": n_legacy,
         },
         "per_segment": per_segment,
         "segments": table,
@@ -206,6 +218,8 @@ def render(report: dict) -> str:
         f"{totals['n_shadow']} shadow), {totals['n_settled']} settled, "
         f"{totals['segments_qualifying']}/{totals['segment_groups']} segment-groups qualify for an edge claim.",
     ]
+    if totals.get("excluded_legacy_total_rows"):
+        lines.append(f"{totals['excluded_legacy_total_rows']} earlier total rows excluded (priced at the wrong line).")
     # Current-model vs all-time n per segment.
     per_segment = report.get("per_segment") or {}
     if per_segment:

@@ -225,3 +225,15 @@ def test_the_report_is_written_as_json_and_matches_what_was_printed(tmp_path):
     assert written["schema_version"] == 1
     assert written["gate"]["min_settled"] == 300
     assert written["segments"]["nfl:moneyline:0.60-0.70 :: unknown"]["qualifies_for_edge_claim"] is True
+
+
+def test_legacy_total_rows_without_a_model_basis_are_excluded_from_the_report():
+    """Total rows logged before the per-line fix carry the book line's over_prob for
+    every rung. They stay in the append-only ledger but must not count as evidence."""
+    legacy = row(market="total", segment="nfl:total:0.50-0.60", id="old", model_basis=None)
+    sound = row(market="total", segment="nfl:total:0.50-0.60", id="new",
+                model_basis="normal(predicted_total, total_sigma) at the rung line")
+    report = build([legacy, sound], closing={}, gate_cfg=GATE)
+    assert report["totals"]["excluded_legacy_total_rows"] == 1
+    assert report["totals"]["n_logged"] == 1
+    assert sum(v["n_logged"] for v in report["segments"].values()) == 1

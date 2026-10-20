@@ -54,7 +54,8 @@ def kalshi_row(**overrides) -> dict:
 def nfl_snapshot(*, generated_at: str = GENERATED_AT, home_win: float = 0.60,
                  away_win: float = 0.40, played: bool = False,
                  home: str = "BAL", away: str = "CLE",
-                 game_id: str = "2026_06_BAL_CLE", date: str = "2026-10-18") -> dict:
+                 game_id: str = "2026_06_BAL_CLE", date: str = "2026-10-18",
+                 predicted_total: float | None = 47.0, total_sigma: float | None = 12.0) -> dict:
     """A public snapshot with one game, its probability, and no final score."""
     return {
         "generated_at": generated_at,
@@ -78,6 +79,8 @@ def nfl_snapshot(*, generated_at: str = GENERATED_AT, home_win: float = 0.60,
                         "away_win_prob": away_win,
                         "over_prob": 0.5,
                         "under_prob": 0.5,
+                        "predicted_total": predicted_total,
+                        "total_sigma": total_sigma,
                     }
                 },
             }
