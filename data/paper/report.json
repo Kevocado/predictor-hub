@@ -27,27 +27,6 @@
         null
       ]
     },
-    "nfl:total:0.50-0.60": {
-      "all_time_n": 48,
-      "current_model_n": 48,
-      "fingerprints": [
-        null
-      ]
-    },
-    "nfl:total:0.60-0.70": {
-      "all_time_n": 53,
-      "current_model_n": 53,
-      "fingerprints": [
-        null
-      ]
-    },
-    "nfl:total:0.70-0.80": {
-      "all_time_n": 15,
-      "current_model_n": 15,
-      "fingerprints": [
-        null
-      ]
-    },
     "pl:moneyline:0.50-0.60": {
       "all_time_n": 1,
       "current_model_n": 1,
@@ -181,123 +160,6 @@
       "segment": "nfl:moneyline:0.70-0.80",
       "staked": 0.0
     },
-    "nfl:total:0.50-0.60 :: unknown": {
-      "calibration_gap_points": 32.11384358974359,
-      "calibration_trend": {
-        "gap_early": null,
-        "gap_late": null,
-        "measurable": false,
-        "min_n": 100,
-        "n_settled": 39,
-        "widening": null
-      },
-      "disqualifying": [
-        "only 39 settled bets, need 300",
-        "pnl interval [-0.1585, 0.0690] includes zero",
-        "calibration trend needs 100 settled bets, have 39"
-      ],
-      "hit_rate": 0.2308,
-      "is_current_model": true,
-      "max_drawdown": 5.98,
-      "mean_clv_cents": null,
-      "mean_edge_points": 27.4472,
-      "mean_market_price": 0.261,
-      "mean_model_p": 0.5519,
-      "model_fingerprint": null,
-      "n_clv": 0,
-      "n_logged": 48,
-      "n_open": 9,
-      "n_settled": 39,
-      "n_void": 0,
-      "pnl": -1.82,
-      "pnl_ci95": [
-        -0.1585,
-        0.069
-      ],
-      "qualifies_for_edge_claim": false,
-      "realised_edge_points": -32.1138,
-      "roi": -0.0364,
-      "segment": "nfl:total:0.50-0.60",
-      "staked": 50.0
-    },
-    "nfl:total:0.60-0.70 :: unknown": {
-      "calibration_gap_points": 25.77214210526315,
-      "calibration_trend": {
-        "gap_early": null,
-        "gap_late": null,
-        "measurable": false,
-        "min_n": 100,
-        "n_settled": 38,
-        "widening": null
-      },
-      "disqualifying": [
-        "only 38 settled bets, need 300",
-        "pnl interval [-0.0668, 0.1958] includes zero",
-        "calibration trend needs 100 settled bets, have 38"
-      ],
-      "hit_rate": 0.3947,
-      "is_current_model": true,
-      "max_drawdown": 4.76,
-      "mean_clv_cents": null,
-      "mean_edge_points": 31.9827,
-      "mean_market_price": 0.3155,
-      "mean_model_p": 0.6525,
-      "model_fingerprint": null,
-      "n_clv": 0,
-      "n_logged": 53,
-      "n_open": 15,
-      "n_settled": 38,
-      "n_void": 0,
-      "pnl": 2.36,
-      "pnl_ci95": [
-        -0.0668,
-        0.1958
-      ],
-      "qualifies_for_edge_claim": false,
-      "realised_edge_points": -25.7721,
-      "roi": 0.0393,
-      "segment": "nfl:total:0.60-0.70",
-      "staked": 60.0
-    },
-    "nfl:total:0.70-0.80 :: unknown": {
-      "calibration_gap_points": 77.26025714285714,
-      "calibration_trend": {
-        "gap_early": null,
-        "gap_late": null,
-        "measurable": false,
-        "min_n": 100,
-        "n_settled": 14,
-        "widening": null
-      },
-      "disqualifying": [
-        "only 14 settled bets, need 300",
-        "pnl interval [-0.4321, -0.2471] is entirely below zero",
-        "calibration trend needs 100 settled bets, have 14"
-      ],
-      "hit_rate": 0.0,
-      "is_current_model": true,
-      "max_drawdown": 4.78,
-      "mean_clv_cents": null,
-      "mean_edge_points": 43.1174,
-      "mean_market_price": 0.3243,
-      "mean_model_p": 0.7726,
-      "model_fingerprint": null,
-      "n_clv": 0,
-      "n_logged": 15,
-      "n_open": 1,
-      "n_settled": 14,
-      "n_void": 0,
-      "pnl": -4.78,
-      "pnl_ci95": [
-        -0.4321,
-        -0.2471
-      ],
-      "qualifies_for_edge_claim": false,
-      "realised_edge_points": -77.2603,
-      "roi": -0.239,
-      "segment": "nfl:total:0.70-0.80",
-      "staked": 20.0
-    },
     "pl:moneyline:0.50-0.60 :: 38d8e310d6f6316d0951a40c95e0f4ed51eebba2ee04dd34a0c17d27ad09a9ad": {
       "calibration_gap_points": null,
       "calibration_trend": {
@@ -372,12 +234,13 @@
     }
   },
   "totals": {
-    "n_candidates": 124,
-    "n_logged": 124,
-    "n_settled": 94,
+    "excluded_legacy_total_rows": 116,
+    "n_candidates": 8,
+    "n_logged": 8,
+    "n_settled": 3,
     "n_shadow": 0,
-    "segment_groups": 8,
-    "segments": 8,
+    "segment_groups": 5,
+    "segments": 5,
     "segments_qualifying": 0
   }
 }
