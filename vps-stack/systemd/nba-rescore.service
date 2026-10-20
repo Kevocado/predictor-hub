@@ -7,6 +7,6 @@ Requires=docker.service
 Type=oneshot
 User=deploy
 # The tracking DB lives only in this container, and the daily CI refresh runs with --skip-predictions, so nothing else
-# ever re-scores upcoming games: the picks fans saw on 2026-10-20 were two weeks old. Same pipeline as POST /admin/refresh-full.
-ExecStart=/usr/bin/docker exec -w /app stack-nba-1 python -u -m nba_predictor.pipeline.ingest
+# ever re-scores upcoming games: the picks fans saw on 2026-10-20 were two weeks old. Ingest + the odds-derived markets pass.
+ExecStart=/usr/bin/docker exec -w /app stack-nba-1 python -u -m nba_predictor.pipeline.refresh_full
 TimeoutStartSec=90min
