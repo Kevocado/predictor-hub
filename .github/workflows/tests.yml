@@ -41,7 +41,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24" # node:test, no build step and no dependencies
       # No `SITES_ROOT`, deliberately: it is the switch that turns on the two

@@ -117,7 +117,7 @@ jobs:
           # `origin/<base>` is not there to diff against. The decision below
           # needs both sides of the diff, so the history has to come with it.
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24" # fetch and node:test, no build step
       - name: Decide whether this run enforces

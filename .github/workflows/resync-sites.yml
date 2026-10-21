@@ -46,7 +46,7 @@ jobs:
           repository: Kevocado/${{ matrix.repo }}
           path: site
           token: ${{ secrets.SITES_PAT }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Re-vendor from this commit
