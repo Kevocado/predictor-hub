@@ -1,0 +1,11 @@
+[Unit]
+Description=NBA predictor: update scores and game status in the schedule cache
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=deploy
+# Two ESPN scoreboard calls; writes the schedule cache only when a game changed. Skips quietly while the container is down (a deploy).
+ExecStart=/bin/sh -c '/usr/bin/docker exec -w /app stack-nba-1 python -m nba_predictor.pipeline.refresh_scores || true'
+TimeoutStartSec=5min
