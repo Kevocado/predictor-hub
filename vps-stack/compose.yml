@@ -80,6 +80,9 @@ services:
       # Persist the sportsbook odds cache: without this every restart/redeploy
       # cold-boots with an empty cache and burns a full RapidAPI re-pull.
       - ./volumes/nba-cache:/app/data/cache
+      # The daily retrain writes the models here. In the image they are a build-time copy, so every deploy
+      # reverted the site to older models until the next 13:40 UTC refresh. Seed once: docker cp stack-nba-1:/app/models/. volumes/nba-models/
+      - ./volumes/nba-models:/app/models
 
   nfl:
     <<: *app
