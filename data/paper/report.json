@@ -28,8 +28,8 @@
       ]
     },
     "nfl:total:0.50-0.60": {
-      "all_time_n": 1,
-      "current_model_n": 1,
+      "all_time_n": 2,
+      "current_model_n": 2,
       "fingerprints": [
         null
       ]
@@ -42,8 +42,8 @@
       ]
     },
     "nfl:total:0.70-0.80": {
-      "all_time_n": 5,
-      "current_model_n": 5,
+      "all_time_n": 7,
+      "current_model_n": 7,
       "fingerprints": [
         null
       ]
@@ -199,7 +199,6 @@
         "widening": null
       },
       "disqualifying": [
-        "shadow rows carry no stake and cannot support an edge claim",
         "only 0 settled bets, need 300",
         "no settled bets to put an interval on",
         "calibration trend needs 100 settled bets, have 0"
@@ -213,8 +212,8 @@
       "mean_model_p": null,
       "model_fingerprint": null,
       "n_clv": 0,
-      "n_logged": 1,
-      "n_open": 1,
+      "n_logged": 2,
+      "n_open": 2,
       "n_settled": 0,
       "n_void": 0,
       "pnl": 0,
@@ -273,7 +272,6 @@
         "widening": null
       },
       "disqualifying": [
-        "shadow rows carry no stake and cannot support an edge claim",
         "only 0 settled bets, need 300",
         "no settled bets to put an interval on",
         "calibration trend needs 100 settled bets, have 0"
@@ -287,8 +285,8 @@
       "mean_model_p": null,
       "model_fingerprint": null,
       "n_clv": 0,
-      "n_logged": 5,
-      "n_open": 5,
+      "n_logged": 7,
+      "n_open": 7,
       "n_settled": 0,
       "n_void": 0,
       "pnl": 0,
@@ -411,8 +409,8 @@
   },
   "totals": {
     "excluded_legacy_total_rows": 116,
-    "n_candidates": 8,
-    "n_logged": 20,
+    "n_candidates": 11,
+    "n_logged": 23,
     "n_settled": 3,
     "n_shadow": 12,
     "segment_groups": 9,
