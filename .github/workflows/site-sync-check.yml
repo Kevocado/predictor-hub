@@ -111,7 +111,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # A pull_request event checks out the merge commit at depth 1, so
           # `origin/<base>` is not there to diff against. The decision below

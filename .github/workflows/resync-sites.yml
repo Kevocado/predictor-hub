@@ -38,10 +38,10 @@ jobs:
           SITES_PAT: ${{ secrets.SITES_PAT }}
         run: |
           [ -n "$SITES_PAT" ] || { echo "SITES_PAT is not set: add a fine-grained PAT (contents + pull requests write on the four site repos)" >&2; exit 1; }
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: hub
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: Kevocado/${{ matrix.repo }}
           path: site
