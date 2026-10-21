@@ -1,0 +1,76 @@
+name: Open re-sync PRs in the sites
+
+# A change to packages/predictor-ui used to mean four hand-made re-vendoring PRs (and a red "Vendored UI is current"
+# until they merged). On a push to main that touches the package, open (or refresh) one PR per site that runs
+# `node scripts/sync-ui.mjs --from <this sha> <site>/<src>` and nothing else. It never merges: each site's own gate does.
+#
+# NEEDS A SECRET: SITES_PAT, a fine-grained personal access token with "Contents: write" and "Pull requests: write" on
+# PL_Predictor, NBA_Predictor, F1_Predictor and Sports_Predictor. GITHUB_TOKEN cannot reach other repositories. Without
+# the secret the job fails loudly at the first step instead of silently doing nothing.
+
+on:
+  push:
+    branches: [main]
+    paths: ["packages/predictor-ui/**"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: resync-sites
+  cancel-in-progress: false
+
+jobs:
+  resync:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { repo: PL_Predictor, src: frontend/src }
+          - { repo: NBA_Predictor, src: frontend/src }
+          - { repo: F1_Predictor, src: frontend/src }
+          - { repo: Sports_Predictor, src: src }
+    steps:
+      - name: The token must exist
+        env:
+          SITES_PAT: ${{ secrets.SITES_PAT }}
+        run: |
+          [ -n "$SITES_PAT" ] || { echo "SITES_PAT is not set: add a fine-grained PAT (contents + pull requests write on the four site repos)" >&2; exit 1; }
+      - uses: actions/checkout@v4
+        with:
+          path: hub
+      - uses: actions/checkout@v4
+        with:
+          repository: Kevocado/${{ matrix.repo }}
+          path: site
+          token: ${{ secrets.SITES_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Re-vendor from this commit
+        working-directory: hub
+        run: node scripts/sync-ui.mjs --from "$GITHUB_SHA" ../site/${{ matrix.src }}
+      - name: Open or refresh the PR
+        working-directory: site
+        env:
+          GH_TOKEN: ${{ secrets.SITES_PAT }}
+          SRC: ${{ matrix.src }}
+          HUB_SHA: ${{ github.sha }}
+        run: |
+          if [ -z "$(git status --porcelain "$SRC/predictor-ui")" ]; then echo "already current"; exit 0; fi
+          short=$(echo "$HUB_SHA" | cut -c1-7)
+          branch="chore/resync-ui"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git add "$SRC/predictor-ui"
+          git commit -m "chore: re-sync predictor-ui from hub $short"
+          git push --force-with-lease origin "$branch" || git push --force origin "$branch"
+          body="Automated re-vendor of packages/predictor-ui from predictor-hub $HUB_SHA (node scripts/sync-ui.mjs --from). Page content is unchanged unless the package's change says otherwise. Merge through the usual gate; this workflow never merges."
+          if gh pr view "$branch" --json state -q .state 2>/dev/null | grep -q OPEN; then
+            gh pr edit "$branch" --title "chore: re-sync predictor-ui from hub $short" --body "$body"
+          else
+            gh pr create --base main --head "$branch" --title "chore: re-sync predictor-ui from hub $short" --body "$body"
+          fi
