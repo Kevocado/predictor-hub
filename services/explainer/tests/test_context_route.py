@@ -68,3 +68,18 @@ def test_the_explain_route_still_works_beside_it(tmp_path):
         m.get(url__startswith="https://site.api.espn.com").mock(return_value=httpx.Response(200, json={"articles": []}))
         with client(tmp_path) as c:
             assert c.get("/explain/nfl/g1").json()["source"] == "template"
+
+
+def test_an_empty_answer_is_retried_soon_not_held_for_five_minutes(tmp_path, monkeypatch):
+    """A sport API that is still warming answers with no context; the next look must not be stuck with that for 5 minutes."""
+    from explainer import service
+
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(service.time, "monotonic", lambda: clock["t"])
+    with respx.mock() as m:
+        route = m.get(URL).mock(side_effect=[httpx.Response(200, json=facts()), httpx.Response(200, json=facts(context=CTX))])
+        with client(tmp_path) as c:
+            assert c.get("/explain/nfl/g1/context").json() == {}
+            clock["t"] += service.EMPTY_CONTEXT_TTL_SECONDS + 1
+            assert "matchups" in c.get("/explain/nfl/g1/context").json()
+        assert route.call_count == 2

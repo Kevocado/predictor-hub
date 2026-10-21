@@ -36,6 +36,9 @@ TEMPLATE_RETRY_SECONDS = 3 * 3600
 UNAVAILABLE = "unavailable"
 # How long a fixture's matchup context is reused before the sport API is asked again.
 CONTEXT_TTL_SECONDS = 300
+# An empty answer is often a sport API still warming its history after a deploy: keep it only briefly, so the matchup
+# section appears within a minute of the data being ready instead of five.
+EMPTY_CONTEXT_TTL_SECONDS = 30
 
 
 class NotFound(Exception):
@@ -171,7 +174,7 @@ class Explainer:
             raise NotFound(f"{sport} is not served")
         key = (sport, id)
         hit = self._context_cache.get(key)
-        if hit and time.monotonic() - hit[0] < CONTEXT_TTL_SECONDS:
+        if hit and time.monotonic() - hit[0] < (CONTEXT_TTL_SECONDS if hit[1] else EMPTY_CONTEXT_TTL_SECONDS):
             return hit[1]
         ctx = (await self._facts(sport, id)).context or {}
         out = {k: ctx[k] for k in ("matchups", "form_rows", "player_context") if ctx.get(k)}
