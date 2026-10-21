@@ -37,7 +37,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           # 3.11 is the floor every module claims in `requires`-style comments and
           # the version the syntax of `X | None` and the 3.11 `fromisoformat` 'Z'
