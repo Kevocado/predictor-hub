@@ -498,6 +498,16 @@ def main(argv: list[str] | None = None) -> int:
         print("no sibling site checkouts found; pass --sites-root", file=sys.stderr)
         return 2
 
+    # A collector that is not there must stop the run. Otherwise the ledger
+    # logs the sports whose collectors ARE there and silently omits the ones
+    # whose are not, and every count it reports is then wrong in a way nobody
+    # can see.
+    try:
+        sources.check_collectors(root, sports)
+    except sources.MissingCollector as exc:
+        print(f"missing Kalshi collector: {exc}", file=sys.stderr)
+        return 3
+
     config = segments_mod.load(args.segments)
     ledger = Ledger(args.ledger)
 

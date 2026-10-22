@@ -241,15 +241,78 @@ def read_line_files(paths) -> list[dict]:
     return rows
 
 
-def lines_files(sites_root: Path, sport: str) -> list[Path]:
-    """The committed Kalshi line snapshots for one sport, oldest file first."""
+class MissingCollector(RuntimeError):
+    """A sport's collector is not there, so its prices cannot be read.
+
+    Distinct from "this sport has no markets today", which is a normal state
+    and reads as an empty list. A missing collector means the ledger is
+    SILENTLY not logging a whole sport while still logging the others, and
+    every count it reports is then wrong in a way nobody can see. So it is
+    raised rather than skipped.
+    """
+
+
+#: The file a site repo carries when it HAS a Kalshi collector. A repo with
+#: this but no committed ladders yet is a collector that has not run, which is
+#: a normal state; a repo with neither has no collector at all.
+COLLECTOR_WORKFLOW = ".github/workflows/collect-kalshi-lines.yml"
+
+
+def collector_present(sites_root: Path, sport: str) -> bool:
+    """True when this sport's collector is there, configured or with data.
+
+    Three states, and only the middle one is an error:
+
+    * the site checkout is not there -- the clone failed;
+    * the checkout is there with a collector workflow but no committed ladders
+      yet -- the collector has not run, which is normal on its first day;
+    * the checkout is there with neither -- there is no collector, and the
+      sport is being skipped silently.
+    """
+    site = SITE_FOR_SPORT.get(sport)
+    if site is None:
+        return True
+    checkout = Path(sites_root) / site
+    if not checkout.is_dir():
+        return False
+    if (checkout / "data" / "lines").is_dir():
+        return True
+    return (checkout / COLLECTOR_WORKFLOW).is_file()
+
+
+def lines_files(sites_root: Path, sport: str, *, strict: bool = False) -> list[Path]:
+    """The committed Kalshi line snapshots for one sport, oldest file first.
+
+    With `strict`, a sport with no collector raises `MissingCollector` instead
+    of returning an empty list. An empty DIRECTORY means the collector ran and
+    found no markets, which is a real answer and is not an error.
+    """
     site = SITE_FOR_SPORT.get(sport)
     if site is None:
         return []
+    if strict and not collector_present(sites_root, sport):
+        raise MissingCollector(
+            f"no Kalshi collector for {sport}: {Path(sites_root) / site} has "
+            f"neither data/lines nor {COLLECTOR_WORKFLOW}. Logging the other "
+            "sports without it would understate the ledger silently, so this "
+            "is an error rather than an empty result."
+        )
     directory = Path(sites_root) / site / "data" / "lines"
     if not directory.is_dir():
         return []
     return sorted(directory.glob("*.jsonl.gz"))
+
+
+def check_collectors(sites_root: Path, sport_list: list[str] | None = None) -> list[str]:
+    """Every sport's collector is present. Raises on the first one that is not.
+
+    Called by the workflows before anything is written, so a missing collector
+    stops the run rather than producing a report that quietly omits a sport.
+    """
+    sports = list(sport_list if sport_list is not None else sorted(SITE_FOR_SPORT))
+    for sport in sports:
+        lines_files(sites_root, sport, strict=True)
+    return sports
 
 
 def kickoff(row: dict) -> datetime | None:

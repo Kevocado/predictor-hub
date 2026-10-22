@@ -142,7 +142,8 @@ def main(argv: list[str] | None = None) -> int:
     from pathlib import Path
 
     from .ledger import Ledger
-    from .sources import SITE_FOR_SPORT, discover_sites_root, lines_files, read_line_files
+    from .sources import (SITE_FOR_SPORT, MissingCollector, check_collectors,
+                          discover_sites_root, lines_files, read_line_files)
 
     parser = argparse.ArgumentParser(description="Settle paper rows from Kalshi's result. PAPER ONLY.")
     parser.add_argument("--ledger", default="data/paper/ledger.jsonl")
@@ -157,6 +158,15 @@ def main(argv: list[str] | None = None) -> int:
         if root is None:
             print("no sibling site checkouts found; pass --sites-root or --lines", file=sys.stderr)
             return 2
+        # A collector that is not there must stop the run. Settling the sports
+        # whose collectors ARE there and silently skipping the ones whose are
+        # not would leave rows open that should have settled, and the report
+        # would say "unresolved" as if the market had not resolved.
+        try:
+            check_collectors(root)
+        except MissingCollector as exc:
+            print(f"missing Kalshi collector: {exc}", file=sys.stderr)
+            return 3
         for sport in sorted(SITE_FOR_SPORT):
             files.extend(lines_files(root, sport))
 
