@@ -15,12 +15,71 @@
   "edge_threshold_points": 4.0,
   "max_spread_points": 8.0,
   "confidence_buckets": [
-    [0.50, 0.60],
-    [0.60, 0.70],
-    [0.70, 0.80],
-    [0.80, 0.90],
-    [0.90, 1.01]
+    [
+      0.5,
+      0.6
+    ],
+    [
+      0.6,
+      0.7
+    ],
+    [
+      0.7,
+      0.8
+    ],
+    [
+      0.8,
+      0.9
+    ],
+    [
+      0.9,
+      1.01
+    ]
   ],
+  "confidence_buckets_by_sport": {
+    "f1": [
+      [
+        0.05,
+        0.1
+      ],
+      [
+        0.1,
+        0.2
+      ],
+      [
+        0.2,
+        0.3
+      ],
+      [
+        0.3,
+        0.4
+      ],
+      [
+        0.4,
+        0.5
+      ],
+      [
+        0.5,
+        0.6
+      ],
+      [
+        0.6,
+        0.7
+      ],
+      [
+        0.7,
+        0.8
+      ],
+      [
+        0.8,
+        0.9
+      ],
+      [
+        0.9,
+        1.01
+      ]
+    ]
+  },
   "gate": {
     "min_settled": 300,
     "require_ci_excludes_zero": true,
@@ -38,7 +97,7 @@
       "segment": "nfl:total",
       "sport": "nfl",
       "market": "total",
-      "note": "NFL over/under total. Kalshi prices from KXNFLTOTAL; model_p = over_prob from the snapshot (for the book's line, not Kalshi's — an approximation)."
+      "note": "NFL over/under total. Kalshi prices from KXNFLTOTAL; model_p = over_prob from the snapshot (for the book's line, not Kalshi's \u2014 an approximation)."
     },
     {
       "segment": "pl:moneyline",
@@ -62,14 +121,19 @@
       "segment": "nfl:receptions",
       "sport": "nfl",
       "market": "receptions",
-      "positions": ["WR", "TE"],
+      "positions": [
+        "WR",
+        "TE"
+      ],
       "note": "From the brief. Blocked today: NFL publishes no per-prop probability (the API strips quantiles), so nothing can be logged until PR 1b."
     },
     {
       "segment": "nfl:passing_tds",
       "sport": "nfl",
       "market": "passing_tds",
-      "positions": ["QB"],
+      "positions": [
+        "QB"
+      ],
       "note": "From the brief. Same blocker as nfl:receptions."
     },
     {
@@ -103,10 +167,52 @@
       "note": "Same as nfl:moneyline: probability yes, KXNFLTOTAL price no."
     },
     {
+      "segment": "cfb:moneyline",
+      "sport": "cfb",
+      "market": "moneyline",
+      "note": "CFB home/away moneyline. Kalshi prices from KXNCAAFGAME; model_p = home_win_prob / away_win_prob from the CFB snapshot's weeks."
+    },
+    {
       "segment": "cfb:total",
       "sport": "cfb",
       "market": "total",
-      "note": "From the brief. There is no CFB Kalshi collector at all, so this can only ever be a shadow."
+      "note": "CFB total points. Kalshi prices from KXNCAAFTOTAL; model_p = P(over N.5 points) from predicted_total and total_sigma, at each rung's own line."
+    },
+    {
+      "segment": "cfb:spread",
+      "sport": "cfb",
+      "market": "spread",
+      "note": "CFB spread. Kalshi prices from KXNCAAFSPREAD, whose ladder is a MARGIN market ('<Team> wins by over N.5 points'); model_p = P(that team's margin > N.5) from predicted_margin and sigma, at each rung's own line."
+    },
+    {
+      "segment": "f1:race_win",
+      "sport": "f1",
+      "market": "race_win",
+      "note": "Kalshi KXF1RACE (\"Main Race: <driver> wins\"). model_p = that driver's p_win from the F1 snapshot's race prediction for the race the contract's event ticker names."
+    },
+    {
+      "segment": "f1:race_podium",
+      "sport": "f1",
+      "market": "race_podium",
+      "note": "Kalshi KXF1RACEPODIUM (\"to finish top 3\"). model_p = that driver's p_podium (P(position <= 3)) from the same race prediction."
+    },
+    {
+      "segment": "f1:top10",
+      "sport": "f1",
+      "market": "top10",
+      "note": "Kalshi KXF1TOP10 (\"to finish top 10\"). model_p = that driver's p_points_finish, which is P(finish in the points) and the F1 points table ends at P10, so the two are the same market."
+    },
+    {
+      "segment": "f1:pole",
+      "sport": "f1",
+      "market": "pole",
+      "note": "Kalshi KXF1POLE (\"is awarded Pole Position\"). model_p = that driver's p_pole from the snapshot's qualifying-session prediction, and only while that prediction's tier is one computed before the qualifying session started."
+    },
+    {
+      "segment": "f1:championship",
+      "sport": "f1",
+      "market": "championship",
+      "note": "Kalshi KXF1 (\"Will <driver> win the F1 Drivers Championship?\"), a season-long contract rather than a race. model_p = that driver's win_prob from the snapshot's championship block."
     }
   ]
 }

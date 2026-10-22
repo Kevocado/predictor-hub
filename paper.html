@@ -301,7 +301,36 @@
   td .n-nowrap { white-space: nowrap; }
   .segment-key { font-family: var(--font-pr-display); color: var(--color-pr-text); font-weight: 600; }
 
+  /* Sport filter: one row of chips above the segment table. */
+  .sport-filter { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0 0 1rem; }
+  .sport-chip {
+    font: inherit; font-size: 0.875rem; font-weight: 500;
+    color: var(--color-pr-text-dim); background: var(--color-pr-panel-2);
+    border: 1px solid var(--color-pr-rule); border-radius: var(--radius-pr);
+    padding: 0.375rem 0.75rem; min-height: 40px; cursor: pointer;
+  }
+  .sport-chip:hover { color: var(--color-pr-text); border-color: var(--color-pr-text-faint); }
+  .sport-chip.is-on { color: var(--color-pr-accent-ink); background: var(--color-pr-accent); border-color: var(--color-pr-accent); }
+  .sport-chip:focus-visible { outline: 2px solid var(--color-pr-accent); outline-offset: 2px; }
+  /* The sport's own accent, so the chip says which sport it filters to. */
+  .sport-chip[data-sport-filter="pl"] { --color-pr-accent: #ff2d78; }
+  .sport-chip[data-sport-filter="f1"] { --color-pr-accent: #ff4436; }
+  .sport-chip[data-sport-filter="nfl"] { --color-pr-accent: #4c8dff; }
+  .sport-chip[data-sport-filter="cfb"] { --color-pr-accent: #f5b301; }
+  .sport-chip[data-sport-filter="nba"] { --color-pr-accent: #ff7a1a; }
+  .sport-chip.is-on[data-sport-filter="pl"] { background: #ff2d78; border-color: #ff2d78; }
+  .sport-chip.is-on[data-sport-filter="f1"] { background: #ff4436; border-color: #ff4436; }
+  .sport-chip.is-on[data-sport-filter="nfl"] { background: #4c8dff; border-color: #4c8dff; }
+  .sport-chip.is-on[data-sport-filter="cfb"] { background: #f5b301; border-color: #f5b301; }
+  .sport-chip.is-on[data-sport-filter="nba"] { background: #ff7a1a; border-color: #ff7a1a; }
+  /* A segment row that is filtered out is hidden, not removed: the table keeps
+     its shape and the reader can widen the filter again. */
+  tr.is-hidden { display: none; }
+  td .why { color: var(--color-pr-text-faint); font-size: 0.75rem; line-height: 1.5; }
+
   .empty { padding: 1.5rem; color: var(--color-pr-text-faint); font-size: 0.875rem; line-height: 1.6; text-align: center; }
+  .panel-note { margin: 0 0 1rem; color: var(--color-pr-text-dim); font-size: 0.875rem; line-height: 1.6; }
+  .panel-note strong { color: var(--color-pr-text); }
 
   @media (prefers-reduced-motion: reduce) { * { transition-duration: 0.01ms !important; } }
 </style>
@@ -354,16 +383,45 @@
 
     <div class="panel">
       <div class="panel-head">
+        <h2>Per-sport rows (paper)</h2>
+        <span class="tag">one row per sport</span>
+      </div>
+      <p class="panel-note">CLV is a <strong>leading indicator</strong>: the gap between the price the model logged and the market's last price before kickoff. It is shown beside the result and is <strong>not</strong> a gate condition &mdash; a segment still needs 300 settled bets, an interval that excludes zero, and a calibration gap that is not widening before it may be called "has an edge".</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Sport</th>
+            <th>Logged <span class="label-paper">(paper)</span></th>
+            <th>Shadow <span class="label-paper">(paper)</span></th>
+            <th>Settled <span class="label-paper">(paper)</span></th>
+            <th>Result <span class="label-paper">(net of fee)</span></th>
+            <th>CLV <span class="label-paper">(mean, n)</span></th>
+            <th>Why not yet</th>
+          </tr>
+        </thead>
+        <tbody id="sport-table"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
         <h2>Per-segment table (paper)</h2>
         <span class="tag">current-model n / all-time n</span>
+      </div>
+      <p class="panel-note">CLV is a <strong>leading indicator</strong>, shown beside the result and never a gate condition. The "why not yet" column says what a segment is still missing.</p>
+      <div class="sport-filter" role="group" aria-label="Filter by sport">
+        <button type="button" class="sport-chip is-on" data-sport-filter="all">All sports</button>
       </div>
       <table>
         <thead>
           <tr>
             <th>Segment</th>
+            <th>Sport</th>
             <th>Current-model n <span class="label-paper">(paper)</span></th>
             <th>All-time n <span class="label-paper">(paper)</span></th>
             <th>Settled <span class="label-paper">(paper)</span></th>
+            <th>Result <span class="label-paper">(net of fee)</span></th>
+            <th>CLV <span class="label-paper">(mean, n)</span></th>
             <th>Status</th>
           </tr>
         </thead>
@@ -417,6 +475,7 @@
 
       var totals = report.totals || {};
       var perSegment = report.per_segment || {};
+      var perSport = report.per_sport || {};
       var segments = report.segments || {};
       var gate = report.gate || {};
 
@@ -445,23 +504,118 @@
       }
       headline.innerHTML = tallyList;
 
+      // ---- Per-sport rows ----
+      var sportBody = document.getElementById("sport-table");
+      var sportRows = "";
+      Object.keys(perSport || {}).forEach(function (sport) {
+        var s = perSport[sport];
+        var clv = s.mean_clv_cents === null || s.mean_clv_cents === undefined
+          ? "\u2014"
+          : (s.mean_clv_cents >= 0 ? "+" : "") + s.mean_clv_cents.toFixed(2);
+        var result = s.pnl === null || s.pnl === undefined ? "\u2014" : s.pnl.toFixed(2);
+        var ci = s.pnl_ci95
+          ? " [" + s.pnl_ci95[0].toFixed(2) + ", " + s.pnl_ci95[1].toFixed(2) + "]"
+          : "";
+        var why = s.why_not_yet
+          ? "<div class=\"why\">" + s.why_not_yet + "</div>"
+          : "";
+        var legacy = s.excluded_legacy_total_rows
+          ? "<div class=\"why\">" + s.excluded_legacy_total_rows +
+            " earlier total-points rows excluded: they were priced at the wrong line, so they are not evidence.</div>"
+          : "";
+        sportRows +=
+          "<tr>" +
+          "<td class=\"segment-key\">" + sport.toUpperCase() + "</td>" +
+          "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_logged || 0) + "</span></td>" +
+          "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_shadow || 0) + "</span></td>" +
+          "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_settled || 0) + "</span></td>" +
+          "<td class=\"n-nowrap\"><span class=\"mono\">" + result + "</span>" + ci + "</td>" +
+          "<td class=\"n-nowrap\"><span class=\"mono\">" + clv + "</span> <span class=\"label-paper\">(n=" + (s.n_clv || 0) + ")</span></td>" +
+          "<td>" + why + legacy + "</td>" +
+          "</tr>";
+      });
+      if (!sportRows) sportRows = "<tr><td colspan=\"7\" class=\"empty\">No sports logged yet.</td></tr>";
+      sportBody.innerHTML = sportRows;
+
       // ---- Per-segment table ----
+      // One table for every sport, with a filter above it. The filter HIDES
+      // rows rather than removing them, so the reader can widen it again and
+      // the table keeps its shape.
       var tbody = document.getElementById("segment-table");
+      var sports = Object.keys(perSport).sort();
+      var sportFilter = "all";
+
+      // The filter chips: "All sports" plus one per sport that has rows.
+      var chipHost = document.querySelector(".sport-filter");
+      sports.forEach(function (sport) {
+        var chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "sport-chip";
+        chip.setAttribute("data-sport-filter", sport);
+        chip.textContent = sport.toUpperCase();
+        chip.addEventListener("click", function () {
+          sportFilter = sport;
+          Array.prototype.forEach.call(chipHost.querySelectorAll(".sport-chip"), function (c) {
+            c.classList.toggle("is-on", c.getAttribute("data-sport-filter") === sportFilter);
+          });
+          applyFilter();
+        });
+        chipHost.appendChild(chip);
+      });
+      chipHost.addEventListener("click", function (event) {
+        var chip = event.target.closest(".sport-chip");
+        if (!chip) return;
+        sportFilter = chip.getAttribute("data-sport-filter");
+        Array.prototype.forEach.call(chipHost.querySelectorAll(".sport-chip"), function (c) {
+          c.classList.toggle("is-on", c.getAttribute("data-sport-filter") === sportFilter);
+        });
+        applyFilter();
+      });
+
       var rows = "";
       Object.keys(segments).forEach(function (key) {
         var s = segments[key];
+        var sport = s.sport || (s.segment || "").split(":")[0] || "";
         var status = s.qualifies_for_edge_claim ? "Has an edge (paper)" : "Cannot be judged yet";
+        var clv = s.mean_clv_cents === null || s.mean_clv_cents === undefined
+          ? "\u2014"
+          : (s.mean_clv_cents >= 0 ? "+" : "") + s.mean_clv_cents.toFixed(2);
+        var clvN = s.n_clv || 0;
+        var result = s.pnl === null || s.pnl === undefined
+          ? "\u2014"
+          : s.pnl.toFixed(2);
+        var ci = s.pnl_ci95
+          ? " [" + s.pnl_ci95[0].toFixed(2) + ", " + s.pnl_ci95[1].toFixed(2) + "]"
+          : "";
+        var why = s.disqualifying && s.disqualifying.length
+          ? "<div class=\"why\">" + s.disqualifying.join("; ") + "</div>"
+          : "";
         rows +=
-          "<tr>" +
-          "<td class=\"segment-key\">" + (s.segment || key) + "</td>" +
+          "<tr data-sport=\"" + sport + "\">" +
+          "<td class=\"segment-key\">" + (s.segment || key) + why + "</td>" +
+          "<td class=\"n-nowrap\">" + sport.toUpperCase() + "</td>" +
           "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_logged || 0) + "</span> logged <span class=\"label-paper\">(paper)</span></td>" +
           "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_settled || 0) + "</span> settled <span class=\"label-paper\">(paper)</span></td>" +
-          "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.staked || 0) + "</span> staked <span class=\"label-paper\">(paper units)</span></td>" +
+          "<td class=\"n-nowrap\"><span class=\"mono\">" + result + "</span>" + ci + "</td>" +
+          "<td class=\"n-nowrap\"><span class=\"mono\">" + clv + "</span> <span class=\"label-paper\">(n=" + clvN + ")</span></td>" +
           "<td><strong>" + status + "</strong></td>" +
           "</tr>";
       });
-      if (!rows) rows = "<tr><td colspan=\"5\" class=\"empty\">No segments logged yet.</td></tr>";
+      if (!rows) rows = "<tr><td colspan=\"8\" class=\"empty\">No segments logged yet.</td></tr>";
       tbody.innerHTML = rows;
+
+      function applyFilter() {
+        var shown = 0;
+        Array.prototype.forEach.call(tbody.querySelectorAll("tr"), function (tr) {
+          if (!tr.getAttribute("data-sport")) return;
+          var match = sportFilter === "all" || tr.getAttribute("data-sport") === sportFilter;
+          tr.classList.toggle("is-hidden", !match);
+          if (match) shown++;
+        });
+        var empty = tbody.querySelector("tr.empty");
+        if (empty) empty.classList.toggle("is-hidden", shown > 0);
+      }
+      applyFilter();
 
       // ---- HowCounted ----
       var how = document.getElementById("how-counted");

@@ -19,6 +19,12 @@ one place before the code:
 Rules 1-3 stop a post-kickoff price entering. Rule 4 stops a post-price
 probability entering. They are different leaks and need different guards.
 
+F1 adds a fifth guard of its own, because its contracts are not games. A
+Kalshi F1 contract is one DRIVER's contract, so the probability is that
+driver's own probability for that race; and Kalshi's F1 occurrence runs
+about six hours later than the session it names, so the cutoff is the
+earlier of Kalshi's occurrence and the session time the snapshot knows.
+
 PAPER ONLY. Nothing here places an order; the only price written is one that was
 publicly observable at the time it is stamped with.
 """
@@ -49,7 +55,68 @@ SKIP_REASONS = (
     "zero_volume",
     "dead_quote",
     "below_edge_threshold",
+    # F1: a Kalshi F1 contract is one driver's contract, so it has its own
+    # reasons for not being logged.
+    "f1_unpriceable_series",
+    "f1_no_matching_race",
+    "f1_no_driver",
+    "f1_hindsight_prediction",
 )
+
+
+def _f1_candidate(row: dict, parts: dict, games: dict):
+    """A Kalshi F1 row resolved to a race, a driver, and a probability.
+
+    Returns `(resolved, reason)`. `resolved` is None when the row cannot be
+    priced at all, and `reason` says which of the four F1 reasons it was:
+    the series is one the model publishes no probability for, the event
+    ticker names no race in the snapshot, the title names no single driver,
+    or the prediction is one the model published after the session it is
+    about.
+
+    F1 is not a game market: every Kalshi F1 contract is ONE DRIVER's
+    contract, so the probability is that driver's own probability for that
+    race, looked up by driver and race rather than by home and away.
+    """
+    market = sources.F1_SERIES_MARKETS.get(parts.get("series"))
+    if market is None:
+        return None, "f1_unpriceable_series"
+    spec = sources.F1_MARKETS[market]
+    scope = spec["scope"]
+    if scope == "season":
+        game = (games or {}).get("championship")
+        # The contract has to be for the season the snapshot is about: a 2025
+        # championship market priced with the 2026 championship probability
+        # would be a different contract entirely.
+        season = sources.f1_season(parts)
+        if game is not None and season is not None and season != game.get("season"):
+            return None, "f1_no_matching_race"
+    else:
+        game = sources.join_f1_race(row, games, scope)
+    if game is None:
+        return None, "f1_no_matching_race"
+    session = (game.get("sessions") or {}).get(scope) or {}
+    # A prediction the model published after the session it is about is not a
+    # forward-looking prediction: a backtest is a replay computed once the
+    # race was over, and a rebuild is a stored row the tracking store cannot
+    # vouch for. Neither may be paired with a live price.
+    if session.get("source") in sources.F1_HINDSIGHT_SOURCES:
+        return None, "f1_hindsight_prediction"
+    tiers = spec["tiers"]
+    if tiers is not None and session.get("tier") not in tiers:
+        return None, "f1_hindsight_prediction"
+    driver = sources.f1_driver(row.get("title"), game.get("drivers"))
+    if driver is None:
+        return None, "f1_no_driver"
+    model_p = (game.get("probs") or {}).get(driver, {}).get(market)
+    if not isinstance(model_p, (int, float)):
+        return None, "no_model_probability"
+    start = sources.parse_ts(session.get("start"))
+    if start is None:
+        return None, "f1_no_matching_race"
+    basis = (f"F1 snapshot {spec['field']} for {driver} "
+             f"({scope} session, tier {session.get('tier')})")
+    return (game, market, driver, float(model_p), basis, start), None
 
 
 def p_over_line(mu, sigma, line) -> float | None:
@@ -75,6 +142,104 @@ SCORE_GRID_MODEL_BASIS = "score_grid at the rung line"
 
 #: The basis recorded on a row priced from PL's published BTTS probability.
 BTTS_MODEL_BASIS = "published btts_yes_prob"
+
+
+#: The basis recorded on a row priced from the model's margin.
+SPREAD_MODEL_BASIS = "normal(predicted_margin, sigma) at the rung line"
+
+
+def p_covers_line(mu, sigma, line) -> float | None:
+    """P(margin > line) for a Normal(mu, sigma) margin; None if unusable.
+
+    Kalshi's spread ladder is a MARGIN market -- "Dartmouth wins by over 6.5
+    points" -- so the probability is the chance the team's margin exceeds the
+    rung's own line. Every rung has its own line, so one figure cannot price
+    the ladder.
+    """
+    return p_over_line(mu, sigma, line)
+
+
+def _negate(value):
+    """The negative of a number, or None if it is not one."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return -float(value)
+
+
+def spread_side(row: dict, game: dict) -> str | None:
+    """Which side of the game a spread rung is about, or None.
+
+    A spread rung is named after a TEAM ("Dartmouth wins by over 6.5 points",
+    "San Antonio wins by over 8.5 points"), not after a side, so the side has
+    to be worked out from the rung.
+
+    Two ways to work it out, and the ticker is tried first because it is exact.
+
+    **The ticker suffix.** Kalshi writes the team's code with the line's own
+    integer appended: `SAS9` for "over 8.5 points", `DART7` for "over 6.5
+    points". Every spread rung in both leagues' committed line files follows
+    that shape -- 1,896 NBA rows and 2,185 CFB rows, checked -- so the code is
+    the suffix minus that integer, and it is compared with the game's two team
+    codes. The NBA's schedule uses those same codes, so it matches exactly.
+
+    **The title.** The fallback, for a game whose codes the ledger does not
+    have. The title is compared against the team's name AS KALSHI SPELLS IT,
+    not as the model's snapshot spells it: Kalshi writes "Northern Colorado"
+    where CFBD writes "Northern Colo.", and "Ohio St." where CFBD writes "Ohio
+    State". Matching the title against the model's spelling would refuse most
+    of the spread ladder over a spelling difference.
+
+    A rung about a team that is in neither the game's codes nor its names is
+    refused: a spread priced with the other team's probability is worse than no
+    row at all.
+    """
+    by_code = _spread_side_by_code(row, game)
+    if by_code is not None:
+        return by_code
+
+    title = row.get("title")
+    if not isinstance(title, str):
+        return None
+    subject = title.split(" wins by over", 1)[0].strip()
+    if not subject:
+        return None
+    for side in ("home", "away"):
+        for name in (game.get(f"{side}_kalshi_name"), game.get(f"{side}_name")):
+            if name and subject == name:
+                return side
+    return None
+
+
+def _spread_side_by_code(row: dict, game: dict) -> str | None:
+    """The side, from the rung's ticker suffix. None when it cannot be read.
+
+    The suffix is `<team code><int(line) + 1>`, so the code is the suffix with
+    that integer removed. The integer is not guessed at: the rung's own `line`
+    says what it is, and if the suffix does not end with it, the suffix is
+    something this does not understand and the caller falls back to the title.
+    """
+    ticker = row.get("ticker")
+    event = row.get("event_ticker")
+    line = row.get("line")
+    if not isinstance(ticker, str) or not isinstance(event, str):
+        return None
+    if not ticker.startswith(event + "-"):
+        return None
+    suffix = ticker[len(event) + 1:]
+    try:
+        tail = str(int(float(line)) + 1)
+    except (TypeError, ValueError):
+        return None
+    if not suffix.endswith(tail):
+        return None
+    code = suffix[:-len(tail)]
+    if not code:
+        return None
+    matches = [side for side in ("home", "away") if game.get(side) == code]
+    # Two matches would mean the game's two teams have the same code, which
+    # cannot be resolved; one match is the answer; none means the rung is
+    # about a team that is not in this game.
+    return matches[0] if len(matches) == 1 else None
 
 
 def _iso(stamp: datetime | None) -> str | None:
@@ -115,60 +280,95 @@ def candidate_rows(rows: list[dict], games_by_sport: dict[str, dict], config: di
             skip("price_at_or_after_kickoff")
             continue
 
-        if market not in sources.GAME_LEVEL_STATS:
-            # Player props need a calibrated per-prop probability, which no site
-            # publishes yet. Deliberately not guessed at.
-            skip("not_a_game_market")
-            continue
-
-        game = sources.join_games(parts, games_by_sport.get(sport) or {})
-        if game is None:
-            skip("no_matching_game")
-            continue
-
-        # A Kalshi "<TEAM> wins" rung is the YES contract on that team.
-        side = "yes"
-        pick = sources.selection(row)
-        probs = game.get("probs") or {}
-        model_p = None
-        model_basis = None
-        if market == "total":
-            # "over X points" YES contract: P(total > X) from the model's
-            # predicted total and sigma, at THIS rung's line.
-            #
-            # PL publishes a joint score grid instead, and the grid is the
-            # better distribution to price a goal total from: a goal count is
-            # skewed and discrete, and a Normal fit of it was wrong by up to
-            # four points at the middle rungs, which is the size of the edge
-            # threshold itself. So a grid, when there is one, is used.
-            grid = game.get("score_grid")
-            if grid:
-                model_p = sources.grid_p_over(grid, row.get("line"))
-                model_basis = SCORE_GRID_MODEL_BASIS
-            else:
-                model_p = p_over_line(game.get("total_mu"), game.get("total_sigma"), row.get("line"))
-                model_basis = TOTAL_MODEL_BASIS
-        elif market == "btts":
-            # "Both Teams To Score" YES contract: P(both score), published
-            # outright by PL. No side is inferred from the grid.
-            model_p = probs.get("btts_yes")
-            model_basis = BTTS_MODEL_BASIS
-        elif sport == "pl":
-            # PL moneylines have three outcomes: home win, tie, away win. Each is
-            # its own market (YES = that outcome), so the model probability is
-            # looked up by the selection code, not by home/away.
-            model_p = probs.get("draw") if pick == "TIE" else (
-                probs.get("home_win") if pick == game.get("home") else
-                probs.get("away_win") if pick == game.get("away") else None)
+        if sport == "f1":
+            # A Kalshi F1 contract is one driver's contract, so it is priced
+            # from that driver's own probability, looked up by race and
+            # driver. The market is always the YES side: "Main Race: Max
+            # Verstappen wins" is the YES contract on Verstappen winning.
+            side = "yes"
+            resolved, reason = _f1_candidate(row, parts, games_by_sport.get(sport) or {})
+            if resolved is None:
+                skip(reason)
+                continue
+            game, market, pick, model_p, model_basis, session_start = resolved
+            # Kalshi's F1 occurrence runs about six hours later than the
+            # session it names, so the EARLIER of the two is the cutoff: a
+            # price seen after the real start is not a pre-session price,
+            # however Kalshi's own field reads.
+            start = min(start, session_start)
+            if seen_at >= start:
+                skip("price_at_or_after_kickoff")
+                continue
         else:
-            if pick and pick == game.get("home"):
-                model_p = probs.get("home_win")
-            elif pick and pick == game.get("away"):
-                model_p = probs.get("away_win")
-        if not isinstance(model_p, (int, float)):
-            skip("no_model_probability")
-            continue
-        model_p = float(model_p)
+            if market not in sources.GAME_LEVEL_STATS:
+                # Player props need a calibrated per-prop probability, which no site
+                # publishes yet. Deliberately not guessed at.
+                skip("not_a_game_market")
+                continue
+
+            game = sources.join_games(parts, games_by_sport.get(sport) or {})
+            if game is None:
+                skip("no_matching_game")
+                continue
+
+            # A Kalshi "<TEAM> wins" rung is the YES contract on that team.
+            side = "yes"
+            pick = sources.selection(row)
+            probs = game.get("probs") or {}
+            model_p = None
+            model_basis = None
+            if market == "total":
+                # "over X points" YES contract: P(total > X) from the model's
+                # predicted total and sigma, at THIS rung's line.
+                #
+                # PL publishes a joint score grid instead, and the grid is the
+                # better distribution to price a goal total from: a goal count is
+                # skewed and discrete, and a Normal fit of it was wrong by up to
+                # four points at the middle rungs, which is the size of the edge
+                # threshold itself. So a grid, when there is one, is used.
+                grid = game.get("score_grid")
+                if grid:
+                    model_p = sources.grid_p_over(grid, row.get("line"))
+                    model_basis = SCORE_GRID_MODEL_BASIS
+                else:
+                    model_p = p_over_line(game.get("total_mu"), game.get("total_sigma"), row.get("line"))
+                    model_basis = TOTAL_MODEL_BASIS
+            elif market == "btts":
+                # "Both Teams To Score" YES contract: P(both score), published
+                # outright by PL. No side is inferred from the grid.
+                model_p = probs.get("btts_yes")
+                model_basis = BTTS_MODEL_BASIS
+            elif market == "spread":
+                # "<Team> wins by over X points" YES contract: P(that team's
+                # margin > X), from the model's predicted margin and sigma, at
+                # THIS rung's line. The away team's margin is the negative of
+                # the model's home margin, so the sign follows the side the
+                # rung is about.
+                side_of_rung = spread_side(row, game)
+                if side_of_rung == "home":
+                    model_p = p_covers_line(game.get("margin_mu"), game.get("margin_sigma"), row.get("line"))
+                elif side_of_rung == "away":
+                    model_p = p_covers_line(
+                        _negate(game.get("margin_mu")), game.get("margin_sigma"), row.get("line"))
+                else:
+                    model_p = None
+                model_basis = SPREAD_MODEL_BASIS
+            elif sport == "pl":
+                # PL moneylines have three outcomes: home win, tie, away win. Each is
+                # its own market (YES = that outcome), so the model probability is
+                # looked up by the selection code, not by home/away.
+                model_p = probs.get("draw") if pick == "TIE" else (
+                    probs.get("home_win") if pick == game.get("home") else
+                    probs.get("away_win") if pick == game.get("away") else None)
+            else:
+                if pick and pick == game.get("home"):
+                    model_p = probs.get("home_win")
+                elif pick and pick == game.get("away"):
+                    model_p = probs.get("away_win")
+            if not isinstance(model_p, (int, float)):
+                skip("no_model_probability")
+                continue
+            model_p = float(model_p)
 
         # -- no-hindsight 4: the probability must predate the price -------------
         proven = _model_precedes_price(game.get("generated_at"), seen_at)
@@ -208,7 +408,7 @@ def candidate_rows(rows: list[dict], games_by_sport: dict[str, dict], config: di
             skip("below_edge_threshold")
             continue
 
-        bucket = bucket_label(model_p)
+        bucket = bucket_label(model_p, segments_mod.buckets(config, sport))
         if bucket is None:
             skip("below_edge_threshold")
             continue
@@ -232,7 +432,10 @@ def candidate_rows(rows: list[dict], games_by_sport: dict[str, dict], config: di
             "game_id": game_id,
             "event_ticker": row.get("event_ticker"),
             "ticker": row.get("ticker"),
-            "player": None,
+            # For F1 the contract IS about a driver, so the driver is the
+            # player; for every other sport the model prices the game, not
+            # the player, and the field stays empty.
+            "player": pick if sport == "f1" else None,
             "selection": pick,
             "side": side,
             "line": row.get("line"),
@@ -340,6 +543,16 @@ def main(argv: list[str] | None = None) -> int:
     if root is None:
         print("no sibling site checkouts found; pass --sites-root", file=sys.stderr)
         return 2
+
+    # A collector that is not there must stop the run. Otherwise the ledger
+    # logs the sports whose collectors ARE there and silently omits the ones
+    # whose are not, and every count it reports is then wrong in a way nobody
+    # can see.
+    try:
+        sources.check_collectors(root, sports)
+    except sources.MissingCollector as exc:
+        print(f"missing Kalshi collector: {exc}", file=sys.stderr)
+        return 3
 
     config = segments_mod.load(args.segments)
     ledger = Ledger(args.ledger)

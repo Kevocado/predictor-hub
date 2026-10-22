@@ -109,6 +109,74 @@
       ]
     }
   },
+  "per_sport": {
+    "nba": {
+      "excluded_legacy_total_rows": 0,
+      "has_edge_claim": false,
+      "mean_clv_cents": null,
+      "n_candidates": 7,
+      "n_clv": 0,
+      "n_logged": 17,
+      "n_open": 17,
+      "n_settled": 0,
+      "n_shadow": 10,
+      "pnl": 0,
+      "pnl_ci95": null,
+      "qualifies_for_edge_claim": false,
+      "roi": null,
+      "segment_groups": 8,
+      "segments": 4,
+      "share_clv_positive": null,
+      "sport": "nba",
+      "staked": 0,
+      "why_not_yet": "needs 300 more settled bets (has 0, needs 300); shadow rows carry no stake and cannot support an edge claim; superseded by a newer model; a fresh sample is required"
+    },
+    "nfl": {
+      "excluded_legacy_total_rows": 116,
+      "has_edge_claim": false,
+      "mean_clv_cents": null,
+      "n_candidates": 17,
+      "n_clv": 0,
+      "n_logged": 29,
+      "n_open": 26,
+      "n_settled": 3,
+      "n_shadow": 12,
+      "pnl": -0.64,
+      "pnl_ci95": [
+        -0.53,
+        0.31
+      ],
+      "qualifies_for_edge_claim": false,
+      "roi": -0.032,
+      "segment_groups": 8,
+      "segments": 8,
+      "share_clv_positive": null,
+      "sport": "nfl",
+      "staked": 20.0,
+      "why_not_yet": "needs 297 more settled bets (has 3, needs 300); pnl interval [-0.4200, -0.4200] is entirely below zero"
+    },
+    "pl": {
+      "excluded_legacy_total_rows": 0,
+      "has_edge_claim": false,
+      "mean_clv_cents": null,
+      "n_candidates": 2,
+      "n_clv": 0,
+      "n_logged": 2,
+      "n_open": 2,
+      "n_settled": 0,
+      "n_shadow": 0,
+      "pnl": 0,
+      "pnl_ci95": null,
+      "qualifies_for_edge_claim": false,
+      "roi": null,
+      "segment_groups": 2,
+      "segments": 2,
+      "share_clv_positive": null,
+      "sport": "pl",
+      "staked": 0,
+      "why_not_yet": "needs 300 more settled bets (has 0, needs 300)"
+    }
+  },
   "schema_version": 1,
   "segments": {
     "nba:moneyline:0.50-0.60 :: v20261021140946": {
@@ -146,6 +214,7 @@
       "roi": null,
       "segment": "nba:moneyline:0.50-0.60",
       "share_clv_positive": null,
+      "sport": "nba",
       "staked": 0
     },
     "nba:moneyline:0.50-0.60 :: v20261022022153": {
@@ -185,6 +254,7 @@
       "roi": null,
       "segment": "nba:moneyline:0.50-0.60",
       "share_clv_positive": null,
+      "sport": "nba",
       "staked": 0
     },
     "nba:moneyline:0.60-0.70 :: v20261020230522": {
@@ -223,6 +293,7 @@
       "roi": null,
       "segment": "nba:moneyline:0.60-0.70",
       "share_clv_positive": null,
+      "sport": "nba",
       "staked": 0
     },
     "nba:moneyline:0.60-0.70 :: v20261021140946": {
@@ -260,6 +331,7 @@
       "roi": null,
       "segment": "nba:moneyline:0.60-0.70",
       "share_clv_positive": null,
+      "sport": "nba",
       "staked": 0
     },
     "nba:moneyline:0.60-0.70 :: v20261022022153": {
@@ -299,6 +371,7 @@
       "roi": null,
       "segment": "nba:moneyline:0.60-0.70",
       "share_clv_positive": null,
+      "sport": "nba",
       "staked": 0
     },
     "nba:moneyline:0.70-0.80 :: v20261021140946": {
@@ -337,6 +410,7 @@
       "roi": null,
       "segment": "nba:moneyline:0.70-0.80",
       "share_clv_positive": null,
+      "sport": "nba",
       "staked": 0
     },
     "nba:moneyline:0.70-0.80 :: v20261022022153": {
@@ -375,6 +449,7 @@
       "roi": null,
       "segment": "nba:moneyline:0.70-0.80",
       "share_clv_positive": null,
+      "sport": "nba",
       "staked": 0
     },
     "nba:moneyline:0.80-0.90 :: v20261021140946": {
@@ -413,6 +488,7 @@
       "roi": null,
       "segment": "nba:moneyline:0.80-0.90",
       "share_clv_positive": null,
+      "sport": "nba",
       "staked": 0
     },
     "nfl:moneyline:0.50-0.60 :: unknown": {
@@ -453,6 +529,7 @@
       "roi": -0.042,
       "segment": "nfl:moneyline:0.50-0.60",
       "share_clv_positive": null,
+      "sport": "nfl",
       "staked": 10.0
     },
     "nfl:moneyline:0.60-0.70 :: unknown": {
@@ -493,6 +570,7 @@
       "roi": -0.053,
       "segment": "nfl:moneyline:0.60-0.70",
       "share_clv_positive": null,
+      "sport": "nfl",
       "staked": 10.0
     },
     "nfl:moneyline:0.70-0.80 :: unknown": {
@@ -532,6 +610,7 @@
       "roi": null,
       "segment": "nfl:moneyline:0.70-0.80",
       "share_clv_positive": null,
+      "sport": "nfl",
       "staked": 0.0
     },
     "nfl:total:0.50-0.60 :: unknown": {
@@ -569,6 +648,7 @@
       "roi": null,
       "segment": "nfl:total:0.50-0.60",
       "share_clv_positive": null,
+      "sport": "nfl",
       "staked": 0
     },
     "nfl:total:0.60-0.70 :: unknown": {
@@ -606,6 +686,7 @@
       "roi": null,
       "segment": "nfl:total:0.60-0.70",
       "share_clv_positive": null,
+      "sport": "nfl",
       "staked": 0
     },
     "nfl:total:0.70-0.80 :: unknown": {
@@ -643,6 +724,7 @@
       "roi": null,
       "segment": "nfl:total:0.70-0.80",
       "share_clv_positive": null,
+      "sport": "nfl",
       "staked": 0
     },
     "nfl:total:0.80-0.90 :: unknown": {
@@ -680,6 +762,7 @@
       "roi": null,
       "segment": "nfl:total:0.80-0.90",
       "share_clv_positive": null,
+      "sport": "nfl",
       "staked": 0
     },
     "nfl:total:0.90+ :: unknown": {
@@ -717,6 +800,7 @@
       "roi": null,
       "segment": "nfl:total:0.90+",
       "share_clv_positive": null,
+      "sport": "nfl",
       "staked": 0
     },
     "pl:moneyline:0.50-0.60 :: 38d8e310d6f6316d0951a40c95e0f4ed51eebba2ee04dd34a0c17d27ad09a9ad": {
@@ -754,6 +838,7 @@
       "roi": null,
       "segment": "pl:moneyline:0.50-0.60",
       "share_clv_positive": null,
+      "sport": "pl",
       "staked": 0
     },
     "pl:moneyline:0.60-0.70 :: 38d8e310d6f6316d0951a40c95e0f4ed51eebba2ee04dd34a0c17d27ad09a9ad": {
@@ -791,6 +876,7 @@
       "roi": null,
       "segment": "pl:moneyline:0.60-0.70",
       "share_clv_positive": null,
+      "sport": "pl",
       "staked": 0
     }
   },
