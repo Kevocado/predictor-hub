@@ -18,6 +18,9 @@ rather than fetched:
                                    carries results and aggregate model metrics but NO
                                    per-game probability. That asymmetry is why
                                    `snapshot_games()` returns nothing for NBA.
+                                   F1's carries per-DRIVER probabilities per race,
+                                   because a Kalshi F1 contract is one driver's
+                                   contract rather than a game's.
 
 Nothing in this module writes, and nothing here reaches the network.
 """
@@ -25,7 +28,8 @@ from __future__ import annotations
 
 import gzip
 import json
-from datetime import date, datetime, timezone
+import re
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 # Kalshi series whose ladder is about a game rather than a player. Only these can
@@ -37,16 +41,96 @@ from pathlib import Path
 # rung's own line; "btts" is priced from PL's published btts_yes_prob.
 GAME_LEVEL_STATS = frozenset({"moneyline", "winner", "total", "btts", "spread"})
 
-# Which sibling repo holds which sport's lines.
+# Which sibling repo holds which sport's lines. Every one of these repos has a
+# Kalshi collector: NFL_Predictor (player-prop series), NBA_Predictor (game
+# markets), PL_Predictor (EPL game and total markets), CFB_Predictor
+# (college-football game, spread and total markets) and F1_Predictor (the F1
+# driver contracts).
 SITE_FOR_SPORT = {"nfl": "NFL_Predictor", "nba": "NBA_Predictor",
-                  "pl": "PL_Predictor", "cfb": "CFB_Predictor"}
+                  "pl": "PL_Predictor", "cfb": "CFB_Predictor",
+                  "f1": "F1_Predictor"}
 
 _SPORT_FOR_SERIES_PREFIX = {
     "KXNFL": "nfl",
     "KXNBA": "nba",
     "KXNCAAF": "cfb",
     "KXEPL": "pl",
+    "KXF1": "f1",
 }
+
+# --- F1 -----------------------------------------------------------------------
+#
+# F1 is not a game market. Kalshi lists one binary contract per DRIVER per
+# race -- "Main Race: Max Verstappen wins" -- so the probability that belongs
+# to a rung is that driver's own probability for that race, and the lookup is
+# by (race, driver) rather than by home/away.
+
+#: Kalshi's F1 series -> the market this ledger prices for it.
+#:
+#: Only the contracts the model actually publishes a probability for are here.
+#: The F1 series that exist on Kalshi and are NOT here are skipped by name
+#: (`f1_unpriceable_series`), never guessed at:
+#:
+#:   KXF1TOP5         "to finish top 5"       -- the model publishes no p_top_5
+#:   KXF1FASTLAP      "fastest lap"           -- the model publishes no fastest-lap probability
+#:   KXF1RETIRE       "announce retirement"   -- a 2027-2030 question, not a race
+#:   KXF1OCCUR        "does the race happen"  -- about the event, not a driver
+#:   KXF1ACTION, KXF1BIGGESTMOVER, KXF1CHINA, KXF1NEXTTEAM
+#:                                             -- awards and next-year questions
+F1_SERIES_MARKETS = {
+    "KXF1RACE": "race_win",          # "Main Race: <driver> wins"              <- p_win
+    "KXF1RACEPODIUM": "race_podium",  # "... to finish top 3"                    <- p_podium
+    "KXF1TOP10": "top10",            # "... to finish top 10"                   <- p_points_finish
+    "KXF1POLE": "pole",              # "<driver> is awarded Pole Position"      <- p_pole
+    "KXF1": "championship",          # "Will <driver> win the ... Championship?" <- win_prob
+}
+
+#: Prediction tiers that are still forward-looking for a race contract. A
+#: race tier is how much of the weekend the model knew when it published:
+#: `pre_weekend` (nothing), `post_practice`, `post_qualifying` (the grid).
+#: All three are computed BEFORE the race starts, so all three are honest
+#: for a race contract.
+F1_RACE_TIERS = frozenset({"pre_weekend", "post_practice", "post_qualifying"})
+
+#: Prediction tiers that are still forward-looking for a qualifying-session
+#: contract. `post_qualifying` is NOT one of them: it is the tier the model
+#: publishes once the qualifying session has started, at which point the
+#: grid it is priced against is already known. `post_sprint_qualifying` is
+#: fine, because the sprint qualifying is a different session from the one a
+#: pole contract is about.
+F1_QUALIFYING_TIERS = frozenset({"pre_weekend", "post_practice", "post_sprint_qualifying"})
+
+#: Where each F1 market's probability comes from, and which prediction tiers
+#: are still forward-looking for it.
+#:
+#: `scope` is which of the snapshot's sessions the contract is about:
+#: `race` (the main race), `qualifying` (the session a pole contract is
+#: about), or `season` (the whole season, for the championship).
+F1_MARKETS = {
+    "race_win": {"field": "p_win", "scope": "race", "tiers": F1_RACE_TIERS},
+    "race_podium": {"field": "p_podium", "scope": "race", "tiers": F1_RACE_TIERS},
+    # `p_points_finish` is P(finish in the points), and the F1 model's
+    # points table ends at P10, so it is exactly Kalshi's "top 10".
+    "top10": {"field": "p_points_finish", "scope": "race", "tiers": F1_RACE_TIERS},
+    "pole": {"field": "p_pole", "scope": "qualifying", "tiers": F1_QUALIFYING_TIERS},
+    "championship": {"field": "win_prob", "scope": "season", "tiers": None},
+}
+
+#: Prediction sources that are NOT forward-looking. `backtest` is a
+#: no-lookahead replay computed after the race; `rebuilt` is a stored
+#: prediction the tracking store cannot vouch for. Neither may be paired
+#: with a live price.
+F1_HINDSIGHT_SOURCES = frozenset({"backtest", "rebuilt"})
+
+#: How far apart a Kalshi F1 event's own occurrence and the snapshot's
+#: session time may be and still be the same session. Kalshi's F1
+#: occurrence runs about six hours LATER than the real start -- verified
+#: against Kalshi's own finalisation timestamps, which for the Singapore,
+#: Dutch and Azerbaijan races are published BEFORE Kalshi's stated
+#: occurrence, which cannot be true of a race start. Race weekends are at
+#: least six days apart, so the nearest session within this window is never
+#: ambiguous.
+F1_MATCH_TOLERANCE = timedelta(hours=48)
 
 #: PL clubs as Kalshi spells them (three-letter codes) -> the full names PL uses.
 #: Kalshi's event ticker is `<SERIES>-<YYMMMDD><HOME><AWAY>`, home first, so the
@@ -226,17 +310,27 @@ def event_parts(event_ticker: str | None) -> dict | None:
     so they are NOT split here. The remainder is returned whole and matched
     against a specific game's two known codes in `join_games`, which is the only
     place the ambiguity can be resolved without guessing.
+
+    F1 is the exception: its event tickers are `<SERIES>-<GP CODE><YY>` for a
+    race weekend (`KXF1RACE-UNIS26`) and `<SERIES>-<YY>` for a season-long
+    contract (`KXF1-26`). Neither carries a date or team codes, so the race a
+    contract belongs to is resolved by WHEN, in `join_f1_race`.
     """
     if not isinstance(event_ticker, str) or "-" not in event_ticker:
         return None
     series, _, rest = event_ticker.partition("-")
-    if len(rest) < 7:
-        return None
     sport = None
     for prefix, name in _SPORT_FOR_SERIES_PREFIX.items():
         if series.startswith(prefix):
             sport = name
             break
+    if sport == "f1":
+        return {"sport": sport, "series": series,
+                "gp": None if rest.isdigit() else rest,
+                "season": rest if rest.isdigit() else None,
+                "date": None, "teams": None}
+    if len(rest) < 7:
+        return None
     stamp = rest[:7]
     month = _MONTHS.get(stamp[2:5].upper())
     if month is None or not stamp[0:2].isdigit() or not stamp[5:7].isdigit():
@@ -387,6 +481,8 @@ def snapshot_games(snapshot: dict | None, sport: str) -> dict[str, dict]:
                 # rungs, which is the size of the edge threshold itself.
                 "score_grid": _score_grid(detail.get("score_grid")),
             }
+    elif sport == "f1":
+        return _f1_games(snapshot)
     if sport == "nba":
         root = discover_sites_root()
         picks = _picks_history(root) if root is not None else []
@@ -395,6 +491,197 @@ def snapshot_games(snapshot: dict | None, sport: str) -> dict[str, dict]:
             for pick in _latest_pick_per_game(picks).values()
         }
     return games
+
+
+def _f1_games(snapshot: dict | None) -> dict[str, dict]:
+    """F1 race weekends and the drivers' championship, as this ledger's games.
+
+    An F1 Kalshi market is one DRIVER's contract, so a game's probabilities
+    are per driver rather than per side. `probs` maps a driver id to the
+    probability of each market that driver can be priced for, `drivers` is
+    the field the snapshot knows about, and `sessions` says, per session a
+    contract can be about, when that session starts and what the model
+    published about it.
+    """
+    if not snapshot:
+        return {}
+    generated_at = snapshot.get("generated_at")
+    races = {str(r.get("round")): r for r in (snapshot.get("races") or [])
+             if isinstance(r, dict) and r.get("round") is not None}
+    predictions = snapshot.get("predictions") or {}
+    qualifying = ((snapshot.get("session_predictions") or {}).get("qualifying") or {})
+    games: dict[str, dict] = {}
+    for key in sorted(races, key=lambda k: int(k) if k.isdigit() else 0):
+        game = _f1_race_game(snapshot.get("season"), key, races[key],
+                             predictions.get(key), qualifying.get(key), generated_at)
+        if game is not None:
+            games[key] = game
+    championship = _f1_championship_game(snapshot, generated_at)
+    if championship is not None:
+        games["championship"] = championship
+    return games
+
+
+def _f1_race_game(season, key, race, prediction, qualifying, generated_at):
+    """One race weekend, with everything its contracts can be priced from."""
+    probs: dict[str, dict] = {}
+    drivers: list[str] = []
+    sessions: dict[str, dict] = {}
+
+    def add(rows, market, field):
+        for row in rows or []:
+            if not isinstance(row, dict):
+                continue
+            driver_id = row.get("driver_id")
+            if not driver_id:
+                continue
+            if driver_id not in drivers:
+                drivers.append(driver_id)
+            value = row.get(field)
+            if isinstance(value, (int, float)):
+                probs.setdefault(driver_id, {})[market] = float(value)
+
+    if isinstance(prediction, dict):
+        sessions["race"] = {
+            "tier": prediction.get("tier"),
+            "source": prediction.get("source"),
+            "start": race.get("race_datetime"),
+        }
+        rows = prediction.get("predictions")
+        add(rows, "race_win", "p_win")
+        add(rows, "race_podium", "p_podium")
+        add(rows, "top10", "p_points_finish")
+    if isinstance(qualifying, dict):
+        sessions["qualifying"] = {
+            "tier": qualifying.get("tier"),
+            "source": qualifying.get("source"),
+            "start": qualifying.get("session_datetime"),
+        }
+        add(qualifying.get("predictions"), "pole", "p_pole")
+    if not probs:
+        return None
+    return {
+        "game_id": f"f1:{season}:{key}",
+        "sport": "f1",
+        "season": season,
+        "round": int(key) if key.isdigit() else None,
+        "race_name": race.get("race_name"),
+        "generated_at": generated_at,
+        # The F1 snapshot publishes no model fingerprint, so every F1 row
+        # lands in one report group. A known gap, not an oversight: the
+        # snapshot has nothing to put here.
+        "model_fingerprint": None,
+        "sessions": sessions,
+        "drivers": drivers,
+        "probs": probs,
+    }
+
+
+def _f1_championship_game(snapshot, generated_at):
+    """The drivers' championship, as one game.
+
+    A season-long futures contract, not a race: the model's probability for
+    it is `championship.drivers.standings[].win_prob`, and the contract is
+    decided by the last race of the season, which is therefore its cutoff.
+    """
+    championship = (snapshot.get("championship") or {}).get("drivers") or {}
+    standings = [s for s in (championship.get("standings") or []) if isinstance(s, dict)]
+    if not standings:
+        return None
+    starts = [parse_ts(r.get("race_datetime")) for r in (snapshot.get("races") or [])
+              if isinstance(r, dict)]
+    starts = [s for s in starts if s is not None]
+    probs: dict[str, dict] = {}
+    drivers: list[str] = []
+    for row in standings:
+        entity_id = row.get("entity_id")
+        if not entity_id:
+            continue
+        if entity_id not in drivers:
+            drivers.append(entity_id)
+        value = row.get("win_prob")
+        if isinstance(value, (int, float)):
+            probs.setdefault(entity_id, {})["championship"] = float(value)
+    return {
+        "game_id": f"f1:{snapshot.get('season')}:championship",
+        "sport": "f1",
+        "season": snapshot.get("season"),
+        "round": None,
+        "race_name": "F1 Drivers Championship",
+        "generated_at": generated_at,
+        "model_fingerprint": None,
+        "sessions": {"season": {"tier": None, "source": "live",
+                                "start": max(starts).isoformat() if starts else None}},
+        "drivers": drivers,
+        "probs": probs,
+    }
+
+
+def f1_season(parts: dict) -> int | None:
+    """The season a Kalshi F1 event ticker names, or None.
+
+    A season-long contract's ticker is `<SERIES>-<YY>` (`KXF1-26`), so the
+    year is the whole of what follows the dash.
+    """
+    raw = parts.get("season")
+    if not isinstance(raw, str) or not raw.isdigit():
+        return None
+    year = int(raw)
+    return year + 2000 if year < 100 else year
+
+
+def f1_driver(text: str | None, driver_ids) -> str | None:
+    """The snapshot driver a Kalshi F1 market is about, or None.
+
+    Kalshi titles the contract with the driver's full name ("Main Race: Max
+    Verstappen wins"); the snapshot keys it by a slug ("max_verstappen").
+    Every word of the slug appears in the title, so the match needs no
+    hand-maintained table: the slug's words must all appear in the title as
+    whole words, and exactly one driver may match.
+
+    Ambiguity and silence both return None, because a contract priced with
+    the wrong driver's probability is worse than no row at all.
+    """
+    if not isinstance(text, str) or not text:
+        return None
+    matches = []
+    for driver_id in driver_ids or []:
+        words = [w for w in str(driver_id).split("_") if w]
+        if not words:
+            continue
+        if all(re.search(rf"\b{re.escape(w)}\b", text, re.IGNORECASE) for w in words):
+            matches.append(driver_id)
+    return matches[0] if len(matches) == 1 else None
+
+
+def join_f1_race(row: dict, games: dict[str, dict], scope: str = "race") -> dict | None:
+    """The snapshot race a Kalshi F1 event ticker belongs to, or None.
+
+    Kalshi's F1 event ticker carries a grand-prix code (`KXF1RACE-UNIS26`),
+    but that code is respelled every season — 2025's `AGP25` is 2026's
+    `AUSGP26` — so it carries nothing the snapshot does not already know,
+    and a table of them would have to be rewritten every January.
+
+    What does not change is WHEN. The event's own `occurrence` is the
+    session the contract is about, and the snapshot says when each of its
+    sessions starts. The nearest session within `F1_MATCH_TOLERANCE` is the
+    one; nothing within it means the row is not priced.
+    """
+    occurrence = kickoff(row)
+    if occurrence is None:
+        return None
+    best, best_gap = None, None
+    for game in (games or {}).values():
+        session = (game.get("sessions") or {}).get(scope) or {}
+        start = parse_ts(session.get("start"))
+        if start is None:
+            continue
+        gap = abs((start - occurrence).total_seconds())
+        if best_gap is None or gap < best_gap:
+            best, best_gap = game, gap
+    if best is None or best_gap > F1_MATCH_TOLERANCE.total_seconds():
+        return None
+    return best
 
 
 def _picks_history(root: Path | None) -> list[dict]:
