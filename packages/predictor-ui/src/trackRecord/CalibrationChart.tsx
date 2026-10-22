@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CalibrationBucket, CalibrationSeries } from "./types";
 import type { MarketTally } from "./types";
 
@@ -25,13 +25,39 @@ const THIN = 5;
  * how many settled picks that market holds; a market with fewer than 3 settled
  * picks says "Too early" instead of a dot.
  */
-export function CalibrationChart({
+/**
+ * The chart measures its own width and draws 1:1 in it. A fixed viewBox scaled to the container shrinks the axis text
+ * with it (a 960-unit chart at 343px made 10px labels 3.6px tall); measured, the text is the same size on every screen.
+ */
+export function CalibrationChart(props: { series: CalibrationSeries[]; markets?: MarketTally[] }) {
+  const wrap = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el) return;
+    const read = () => setWidth(Math.round(el.getBoundingClientRect().width));
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(read);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <div ref={wrap} className="w-full">
+      <ChartBody {...props} width={width} />
+    </div>
+  );
+}
+
+function ChartBody({
   series,
   markets,
+  width,
 }: {
   series: CalibrationSeries[];
   /** Each market's counted tally, so the pills show settled-pick counts. */
   markets?: MarketTally[];
+  width: number;
 }) {
   const usable = series.filter((s) => s.buckets.some((b) => b.n > 0));
   const settledByMarket = new Map(
@@ -41,12 +67,13 @@ export function CalibrationChart({
     const m = markets?.find((m) => m.key === key);
     return m != null ? m.counted.n : (settledByMarket.get(key) ?? 0);
   };
-  const [pick, setPick] = useState(usable[0]?.key);
+  // Open on a market that has enough settled picks to draw, not on the first one listed.
+  const [pick, setPick] = useState(usable.find((s) => countFor(s.key) >= TOO_EARLY)?.key ?? usable[0]?.key);
   if (usable.length === 0) return <p className="text-sm text-pr-text-dim">No confidence buckets graded yet.</p>;
   const active = usable.find((s) => s.key === pick) ?? usable[0];
   const settled = countFor(active.key);
-  const W = 960;
-  const H = 400;
+  const W = Math.max(300, Math.min(width || 960, 1200));
+  const H = Math.max(280, Math.round(W * 0.4));
   const L = 34;
   const B = 26;
   const T = 8;
@@ -98,21 +125,22 @@ export function CalibrationChart({
       {usable.length > 1 && pills}
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        className="w-full min-h-[280px] lg:min-h-[360px]"
-        preserveAspectRatio="xMidYMin meet"
+        width={W}
+        height={H}
+        className="block max-w-full"
         role="img"
         aria-label={`Calibration for ${active.label}`}
       >
         {[0, 0.5, 1].map((v) => (
           <g key={v}>
             <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} className="stroke-pr-rule" strokeWidth={1} />
-            <text x={L - 6} y={y(v) + 4} textAnchor="end" className="fill-pr-text-faint text-[10px]">{Math.round(v * 100)}%</text>
+            <text x={L - 6} y={y(v) + 4} textAnchor="end" className="fill-pr-text-faint text-[11px]">{Math.round(v * 100)}%</text>
           </g>
         ))}
         {/* The diagonal: stated confidence = actual hit rate. */}
         <line x1={x(0.45)} y1={y(0.45)} x2={x(0.9)} y2={y(0.9)} className="stroke-pr-text-faint" strokeDasharray="4 4" strokeWidth={1} />
         {[0.5, 0.6, 0.7, 0.8].map((c) => (
-          <text key={c} x={x(c)} y={H - 8} textAnchor="middle" className="fill-pr-text-faint text-[10px]">{Math.round(c * 100)}%</text>
+          <text key={c} x={x(c)} y={H - 8} textAnchor="middle" className="fill-pr-text-faint text-[11px]">{Math.round(c * 100)}%</text>
         ))}
         {pts.map(({ b, mid, rate }) => {
           const thin = b.n < THIN;

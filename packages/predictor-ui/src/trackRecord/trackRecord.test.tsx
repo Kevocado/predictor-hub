@@ -7,7 +7,7 @@
  * words rather than drawing a zero.
  */
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CalibrationBlock } from "./CalibrationBlock";
 import { CalibrationChart } from "./CalibrationChart";
 import { HowCounted } from "./HowCounted";
@@ -117,13 +117,31 @@ describe("CalibrationChart", () => {
     expect(screen.queryByTestId("calibration-point")).toBeNull();
   });
 
-  it("is full width with no fixed cap, at hero height", () => {
-    const { container } = render(<CalibrationChart series={FULL.calibration!} markets={FULL.markets} />);
-    const svg = container.querySelector("svg");
-    expect(svg).not.toBeNull();
-    const cls = svg!.className.baseVal;
-    expect(cls).not.toMatch(/max-w-/);
-    expect(cls).toMatch(/min-h-\[280px\]/);
+  it("draws 1:1 in the width it is given, so its text is readable on a phone and the chart is tall enough on desktop", () => {
+    const rect = vi.spyOn(Element.prototype, "getBoundingClientRect");
+    try {
+      rect.mockReturnValue({ width: 343, height: 0, x: 0, y: 0, top: 0, left: 0, right: 343, bottom: 0, toJSON: () => ({}) } as DOMRect);
+      const { container, unmount } = render(<CalibrationChart series={FULL.calibration!} markets={FULL.markets} />);
+      const svg = container.querySelector("svg")!;
+      expect(svg.getAttribute("viewBox")).toBe("0 0 343 280");     // the phone: viewBox width = pixel width, not 960 scaled down
+      expect(svg.className.baseVal).not.toMatch(/max-w-(md|sm|xs)/);
+      unmount();
+
+      rect.mockReturnValue({ width: 1200, height: 0, x: 0, y: 0, top: 0, left: 0, right: 1200, bottom: 0, toJSON: () => ({}) } as DOMRect);
+      const wide = render(<CalibrationChart series={FULL.calibration!} markets={FULL.markets} />);
+      expect(wide.container.querySelector("svg")!.getAttribute("viewBox")).toBe("0 0 1200 480");   // the hero: bigger than before
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
+  it("opens on a market that has enough settled picks to draw", () => {
+    const series: CalibrationSeries[] = [
+      { key: "a", label: "Thin market", buckets: [{ bucket: "50-60%", n: 2, correct: 1 }] },
+      { key: "b", label: "Full market", buckets: [{ bucket: "50-60%", n: 12, correct: 7 }] },
+    ];
+    render(<CalibrationChart series={series} />);
+    expect(screen.getByRole("img", { name: "Calibration for Full market" })).toBeInTheDocument();
   });
 
   it("says so when nothing is graded", () => {
