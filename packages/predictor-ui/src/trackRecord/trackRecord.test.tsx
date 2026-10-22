@@ -135,6 +135,18 @@ describe("CalibrationChart", () => {
     }
   });
 
+  it("the chosen market's pill is drawn on the accent fill, not stacked with the panel fill", () => {
+    const series: CalibrationSeries[] = [
+      { key: "a", label: "Winner", buckets: [{ bucket: "50-60%", n: 12, correct: 7 }] },
+      { key: "b", label: "Spread", buckets: [{ bucket: "50-60%", n: 12, correct: 7 }] },
+    ];
+    render(<CalibrationChart series={series} />);
+    const active = screen.getByRole("button", { name: /Winner/, pressed: true });
+    expect(active.className).toMatch(/bg-pr-accent/);
+    expect(active.className).not.toMatch(/bg-pr-panel/);      // two competing backgrounds left dark text on a dark pill
+    expect(screen.getByRole("button", { name: /Spread/ }).className).toMatch(/bg-pr-panel-2/);
+  });
+
   it("opens on a market that has enough settled picks to draw", () => {
     const series: CalibrationSeries[] = [
       { key: "a", label: "Thin market", buckets: [{ bucket: "50-60%", n: 2, correct: 1 }] },
