@@ -77,8 +77,19 @@ def max_spread_points(config: dict) -> float:
     return float(config.get("max_spread_points", 8.0))
 
 
-def buckets(config: dict) -> list[tuple[float, float]]:
-    raw = config.get("confidence_buckets")
+def buckets(config: dict, sport: str | None = None) -> list[tuple[float, float]]:
+    """The confidence bands a row's probability is measured against.
+
+    A sport may have bands of its own, because a sport's probabilities have
+    their own shape: F1 spreads one race over two dozen drivers, so its best
+    race-winner probability is around 14%, and the 0.50+ bands that suit a
+    two-sided game would exclude every F1 contract there is. A sport with no
+    bands of its own uses the config's, and the config falls back to the
+    built-in ones, so nothing changes for a sport that has not asked for
+    anything different.
+    """
+    per_sport = config.get("confidence_buckets_by_sport") or {}
+    raw = (per_sport.get(sport) if sport else None) or config.get("confidence_buckets")
     if not isinstance(raw, list) or not raw:
         return list(DEFAULT_BUCKETS)
     return [(float(lo), float(hi)) for lo, hi in raw]
