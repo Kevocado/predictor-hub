@@ -49,6 +49,7 @@ export { RecordBlock } from "./trackRecord/RecordBlock";
 export { RecordHeadline, EARLY_SAMPLE } from "./trackRecord/RecordHeadline";
 export { WeekStrip } from "./trackRecord/WeekStrip";
 export { CalibrationChart } from "./trackRecord/CalibrationChart";
+export { CalibrationBlock } from "./trackRecord/CalibrationBlock";
 export { RecentPicks } from "./trackRecord/RecentPicks";
 export { HowCounted } from "./trackRecord/HowCounted";
 export { HubTabs, type HubTab } from "./trackRecord/HubTabs";
