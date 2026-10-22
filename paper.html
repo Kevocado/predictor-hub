@@ -333,6 +333,63 @@
   .panel-note strong { color: var(--color-pr-text); }
 
   @media (prefers-reduced-motion: reduce) { * { transition-duration: 0.01ms !important; } }
+
+  /* ---- Visual layer: verdict, proof path, sport cards ---- */
+  .hero-card { border: 1px solid var(--color-pr-rule); border-radius: var(--radius-pr); background: var(--color-pr-panel); padding: 1.25rem; margin-bottom: 1rem; }
+  .kicker { margin: 0; font-family: var(--font-pr-display); font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-pr-text-faint); }
+  .verdict-line { margin: 0.25rem 0 0.5rem; font-family: var(--font-pr-display); font-size: clamp(1.75rem, 5vw, 2.75rem); font-weight: 700; line-height: 1.05; text-transform: uppercase; }
+  .verdict-line.proven { color: var(--color-pr-win); }
+  .verdict-sub { margin: 0 0 1.25rem; max-width: 42rem; color: var(--color-pr-text-dim); line-height: 1.5; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-bottom: 1.25rem; }
+  .stat { border-left: 3px solid var(--color-pr-rule); padding-left: 0.75rem; }
+  .stat .num { display: block; font-family: var(--font-pr-display); font-size: clamp(2rem, 7vw, 3.25rem); font-weight: 700; line-height: 1; }
+  .stat .cap { display: block; margin-top: 0.25rem; font-size: 0.8125rem; color: var(--color-pr-text-dim); }
+  .stat.on { border-color: var(--color-pr-lean); }
+  .stat.win { border-color: var(--color-pr-win); }
+
+  .meter { display: grid; gap: 0.25rem; }
+  .meter .row { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.8125rem; color: var(--color-pr-text-dim); }
+  .meter .row b { color: var(--color-pr-text); font-family: var(--font-pr-display); font-size: 0.9375rem; font-weight: 600; }
+  .track { position: relative; height: 10px; border-radius: 5px; background: var(--color-pr-panel-2); overflow: hidden; }
+  .track > i { position: absolute; inset: 0 auto 0 0; min-width: 3px; border-radius: 5px; background: var(--color-pr-accent); }
+  .meter.big .track { height: 16px; border-radius: 8px; }
+  .meter.big .track > i { border-radius: 8px; }
+  .track.stack { display: flex; }
+  .track.stack > i { position: static; flex: none; border-radius: 0; min-width: 0; }
+  .seg-settled { background: var(--color-pr-accent); }
+  .seg-open { background: color-mix(in srgb, var(--color-pr-accent) 40%, transparent); }
+  .seg-shadow { background: repeating-linear-gradient(135deg, var(--color-pr-fill-mute) 0 3px, transparent 3px 6px); }
+
+  .flow { list-style: none; margin: 0 0 1rem; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; counter-reset: step; }
+  .flow li { position: relative; border: 1px solid var(--color-pr-rule); border-radius: var(--radius-pr); background: var(--color-pr-panel); padding: 0.875rem 0.875rem 0.875rem 0.875rem; counter-increment: step; }
+  .flow li::before { content: counter(step); display: grid; place-items: center; width: 1.75rem; height: 1.75rem; margin-bottom: 0.5rem; border-radius: 50%; border: 2px solid var(--color-pr-rule); font-family: var(--font-pr-display); font-weight: 700; color: var(--color-pr-text-dim); }
+  .flow li.done::before { background: var(--color-pr-win); border-color: var(--color-pr-win); color: var(--color-pr-win-ink); }
+  .flow li.here { border-color: var(--color-pr-lean); }
+  .flow li.here::before { border-color: var(--color-pr-lean); color: var(--color-pr-lean); }
+  .flow h3 { margin: 0 0 0.25rem; font-family: var(--font-pr-display); font-size: 1rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+  .flow p { margin: 0; font-size: 0.8125rem; line-height: 1.45; color: var(--color-pr-text-dim); }
+  .flow .you { display: inline-block; margin-top: 0.5rem; padding: 0 0.375rem; border-radius: var(--radius-pr); background: var(--color-pr-lean); color: var(--color-pr-win-ink); font-family: var(--font-pr-display); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+  .card { border: 1px solid var(--color-pr-rule); border-top: 4px solid var(--color-pr-accent); border-radius: var(--radius-pr); background: var(--color-pr-panel); padding: 0.875rem; display: grid; gap: 0.75rem; align-content: start; }
+  .card header { border: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+  .card h3 { margin: 0; font-family: var(--font-pr-display); font-size: 1.375rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
+  .chip { border: 1px solid var(--color-pr-rule); border-radius: var(--radius-pr); padding: 0.125rem 0.5rem; font-family: var(--font-pr-display); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-pr-text-dim); white-space: nowrap; }
+  .chip.win { border-color: var(--color-pr-win); color: var(--color-pr-win); }
+  .legend { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; font-size: 0.75rem; color: var(--color-pr-text-dim); }
+  .legend span::before { content: ""; display: inline-block; width: 0.625rem; height: 0.625rem; margin-right: 0.25rem; border-radius: 2px; vertical-align: -1px; background: var(--sw, var(--color-pr-accent)); }
+  .legend .l-open { --sw: color-mix(in srgb, var(--color-pr-accent) 40%, transparent); }
+  .legend .l-shadow { --sw: var(--color-pr-fill-mute); }
+  .facts { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; font-size: 0.8125rem; color: var(--color-pr-text-dim); }
+  .facts b { color: var(--color-pr-text); font-weight: 600; }
+  details.more { border-top: 1px solid var(--color-pr-rule); padding-top: 0.5rem; }
+  details.more summary, details.panel > summary { cursor: pointer; font-size: 0.8125rem; color: var(--color-pr-text-dim); }
+  details.more p { margin: 0.5rem 0 0; font-size: 0.8125rem; line-height: 1.5; color: var(--color-pr-text-faint); }
+  details.panel > summary { font-family: var(--font-pr-display); font-size: 1rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-pr-text); min-height: 40px; display: flex; align-items: center; gap: 0.5rem; }
+  details.panel[open] > summary { margin-bottom: 0.75rem; }
+  .table-scroll { overflow-x: auto; }
+  @media (max-width: 52rem) { .flow { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 30rem) { .flow { grid-template-columns: 1fr; } .stats { gap: 0.5rem; } }
 </style>
 </head>
 <body data-sport="hub">
@@ -354,39 +411,33 @@
       </div>
       <div class="hero-strip">
         <h1>Paper Trading</h1>
-        <p class="lede">Paper-trading ledger: whether each sport × market × confidence segment has a real edge over the market after fees. No real money, no order placement — stakes in paper units only.</p>
+        <p class="lede">Do our models beat the market once fees are paid? We bet on paper, keep score, and refuse to say yes until the evidence is there.</p>
       </div>
     </div>
   </header>
 
   <main class="wrap">
-    <p class="rule"><strong>The rule</strong> <span>A segment may only be called "has an edge" after about 300 settled paper bets, a paired-bootstrap confidence interval on edge that excludes zero, and a calibration gap that is not widening. Until then it is "cannot be judged yet" — the normal state.</span></p>
+    <section class="hero-card" aria-labelledby="verdict-line">
+      <p class="kicker">Does the model beat the market?</p>
+      <h2 class="verdict-line" id="verdict-line">Loading the ledger</h2>
+      <p class="verdict-sub" id="verdict-sub"></p>
+      <div class="stats" id="stats"></div>
+      <div class="meter big" id="overall-meter"></div>
+    </section>
 
-    <!-- Mandatory early-sample banner. -->
-    <div id="early-sample" class="banner" aria-live="polite">
-      <div class="banner-head">
-        <span class="title">Early sample</span>
-        <span class="tag" aria-label="Paper units only">paper units only</span>
-      </div>
-      <div class="banner-body">
-        <strong>No settled paper bets yet.</strong> A segment needs roughly 300 settled paper bets before its edge can be judged. Right now every segment shows logged (candidate) counts only; none are settled, so no figure here is a claim about the model. Stakes are paper units only.
-      </div>
-    </div>
+    <ol class="flow" id="flow" aria-label="How a paper bet becomes proof">
+      <li data-step="1"><h3>Log it</h3><p>The model finds a price it likes. The bet is written once at the buyable price and never edited.</p></li>
+      <li data-step="2"><h3>Settle it</h3><p>The game ends and Kalshi's own result decides win or loss, net of fees.</p></li>
+      <li data-step="3"><h3>Enough evidence</h3><p>The gate needs about 300 settled paper bets from at least 100 different games.</p></li>
+      <li data-step="4"><h3>Beats the market</h3><p>The profit interval sits entirely above zero and calibration is not drifting.</p></li>
+    </ol>
 
-    <div class="panel">
-      <div class="panel-head">
-        <h2>Headline record (paper)</h2>
-        <span class="tag">counted record</span>
-      </div>
-      <div id="headline" class="tally-list"></div>
-    </div>
+    <div class="cards" id="cards" aria-label="Progress by sport"></div>
 
-    <div class="panel">
-      <div class="panel-head">
-        <h2>Per-sport rows (paper)</h2>
-        <span class="tag">one row per sport</span>
-      </div>
-      <p class="panel-note">CLV is a <strong>leading indicator</strong>: the gap between the price the model logged and the market's last price before kickoff. It is shown beside the result and is <strong>not</strong> a gate condition &mdash; a segment still needs 300 settled bets, an interval that excludes zero, and a calibration gap that is not widening before it may be called "has an edge".</p>
+    <details class="panel">
+      <summary>All numbers by sport</summary>
+      <div class="table-scroll">
+      <p class="panel-note">CLV is a <strong>leading indicator</strong>: the gap between the price the model logged and the market's last price before kickoff. It is shown beside the result and is never a gate condition.</p>
       <table>
         <thead>
           <tr>
@@ -402,24 +453,22 @@
         </thead>
         <tbody id="sport-table"></tbody>
       </table>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head">
-        <h2>Per-segment table (paper)</h2>
-        <span class="tag">current-model n / all-time n</span>
       </div>
-      <p class="panel-note">CLV is a <strong>leading indicator</strong>, shown beside the result and never a gate condition. The "why not yet" column says what a segment is still missing.</p>
+    </details>
+
+    <details class="panel">
+      <summary>Every segment <span class="tag" id="seg-count"></span></summary>
+      <p class="panel-note">A segment is one sport, market and confidence band. "Current-model n" counts bets since the model last changed; "all-time n" counts every bet ever logged.</p>
       <div class="sport-filter" role="group" aria-label="Filter by sport">
         <button type="button" class="sport-chip is-on" data-sport-filter="all">All sports</button>
       </div>
+      <div class="table-scroll">
       <table>
         <thead>
           <tr>
             <th>Segment</th>
             <th>Sport</th>
             <th>Current-model n <span class="label-paper">(paper)</span></th>
-            <th>All-time n <span class="label-paper">(paper)</span></th>
             <th>Bets <span class="label-paper">(paper)</span></th>
             <th>Games <span class="label-paper">(paper)</span></th>
             <th>Settled <span class="label-paper">(paper)</span></th>
@@ -430,15 +479,13 @@
         </thead>
         <tbody id="segment-table"></tbody>
       </table>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head">
-        <h2>How the figures are counted (paper)</h2>
-        <span class="tag">HowCounted</span>
       </div>
+    </details>
+
+    <details class="panel">
+      <summary>How the figures are counted</summary>
       <div id="how-counted" class="empty">Loading…</div>
-    </div>
+    </details>
   </main>
 
   <script>
@@ -457,113 +504,123 @@
       var report;
       try {
         // Fetch the report straight from GitHub so the page reflects the latest
-        // committed report.json (the paper-log and paper-settle workflows commit
-        // it to main) without waiting for a hub redeploy. raw.githubusercontent
-        // sends Access-Control-Allow-Origin: *, so cross-origin fetch works.
+        // committed report.json without waiting for a hub redeploy.
         var res = await fetch("https://raw.githubusercontent.com/Kevocado/predictor-hub/main/data/paper/report.json");
         if (!res.ok) throw new Error("report not available on GitHub (" + res.status + ")");
         report = await res.json();
       } catch (e) {
-        // Fall back to the baked copy shipped with the page, so the page still
-        // renders if GitHub raw is unreachable or the report hasn't been pushed yet.
         try {
           var baked = await fetch("./data/paper/report.json");
           if (!baked.ok) throw new Error("baked report not available");
           report = await baked.json();
         } catch (e2) {
-          document.getElementById("early-sample").querySelector(".banner-body").textContent = "The paper-trading report could not be loaded: " + e2.message + ".";
+          document.getElementById("verdict-line").textContent = "Ledger unavailable";
+          document.getElementById("verdict-sub").textContent = "The paper-trading report could not be loaded: " + e2.message + ".";
           return;
         }
       }
 
       var totals = report.totals || {};
-      var perSegment = report.per_segment || {};
       var perSport = report.per_sport || {};
       var segments = report.segments || {};
       var gate = report.gate || {};
+      var minBets = gate.min_settled || 300;
+      var minGames = gate.min_settled_games || 100;
+      var NAMES = { nfl: "NFL", cfb: "College football", nba: "NBA", pl: "Premier League", f1: "Formula 1" };
 
-      // ---- Headline (RecordHeadline-style tally lines) ----
-      var headline = document.getElementById("headline");
-      var segKeys = Object.keys(perSegment);
-      var tallyList = "";
-      var anySettled = false;
-      segKeys.forEach(function (key) {
-        var ps = perSegment[key];
-        var n = ps.all_time_n || 0;
-        var cur = ps.current_model_n || 0;
-        if (ps.all_time_n && ps.all_time_n > 0) anySettled = true; // graded picks exist
-        var label = key.replace(/:.*$/, "").replace(/-/g, " ");
-        label = label.charAt(0).toUpperCase() + label.slice(1);
-        tallyList +=
-          "<div class=\"tally" + (n === 0 ? " nothing" : "") + "\">" +
-          "<span class=\"label\">" + label + "</span>" +
-          "<div class=\"number\"><span class=\"mono\">" + n + "</span><span class=\"faint\"> of " + n + "</span><span class=\"rate\">—</span></div>" +
-          "<div class=\"bar\"><div class=\"fill\" style=\"width:0%\"></div><div class=\"rate-line\" style=\"left:50%\"></div></div>" +
-          "<div class=\"note\">Nothing graded yet — this segment has no settled paper bets.</div>" +
-          "</div>";
-      });
-      if (segKeys.length === 0) {
-        tallyList = "<div class=\"tally nothing\"><span class=\"label\">No segments</span><div class=\"number\"><span class=\"mono\">0</span><span class=\"faint\"> of 0</span></div><div class=\"bar\"><div class=\"fill\" style=\"width:0%\"></div><div class=\"rate-line\" style=\"left:50%\"></div></div><div class=\"note\">No segments logged yet.</div></div>";
+      function esc(v) {
+        return String(v).replace(/[&<>"']/g, function (c) {
+          return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+        });
       }
-      headline.innerHTML = tallyList;
+      function pct(n, d) { return d > 0 ? Math.min(100, (n / d) * 100) : 0; }
+      function meter(label, n, d, cls) {
+        return '<div class="meter ' + (cls || "") + '">' +
+          '<div class="row"><span>' + label + '</span><b>' + n + ' / ' + d + '</b></div>' +
+          '<div class="track" role="progressbar" aria-label="' + esc(label) + '" aria-valuemin="0" aria-valuemax="' + d + '" aria-valuenow="' + n + '"><i style="width:' + pct(n, d).toFixed(1) + '%"></i></div></div>';
+      }
+      function clvText(s) {
+        return s.mean_clv_cents === null || s.mean_clv_cents === undefined
+          ? "—" : (s.mean_clv_cents >= 0 ? "+" : "") + s.mean_clv_cents.toFixed(2);
+      }
 
-      // ---- Per-sport rows ----
-      var sportBody = document.getElementById("sport-table");
-      var sportRows = "";
-      Object.keys(perSport || {}).forEach(function (sport) {
-        var s = perSport[sport];
-        var clv = s.mean_clv_cents === null || s.mean_clv_cents === undefined
-          ? "\u2014"
-          : (s.mean_clv_cents >= 0 ? "+" : "") + s.mean_clv_cents.toFixed(2);
-        var result = s.pnl === null || s.pnl === undefined ? "\u2014" : s.pnl.toFixed(2);
-        var ci = s.pnl_ci95
-          ? " [" + s.pnl_ci95[0].toFixed(2) + ", " + s.pnl_ci95[1].toFixed(2) + "]"
-          : "";
-        var why = s.why_not_yet
-          ? "<div class=\"why\">" + s.why_not_yet + "</div>"
-          : "";
-        var legacy = s.excluded_legacy_total_rows
-          ? "<div class=\"why\">" + s.excluded_legacy_total_rows +
-            " earlier total-points rows excluded: they were priced at the wrong line, so they are not evidence.</div>"
-          : "";
-        sportRows +=
-          "<tr>" +
-          "<td class=\"segment-key\">" + sport.toUpperCase() + "</td>" +
-          "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_bets || 0) + "</span></td>" +
-          "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_games || 0) + "</span></td>" +
-          "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_shadow || 0) + "</span></td>" +
-          "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_settled || 0) + "</span></td>" +
-          "<td class=\"n-nowrap\"><span class=\"mono\">" + result + "</span>" + ci + "</td>" +
-          "<td class=\"n-nowrap\"><span class=\"mono\">" + clv + "</span> <span class=\"label-paper\">(n=" + (s.n_clv || 0) + ")</span></td>" +
-          "<td>" + why + legacy + "</td>" +
-          "</tr>";
+      // ---- Verdict + headline numbers ----
+      var proven = totals.segments_qualifying || 0;
+      var settled = totals.n_settled || 0;
+      var line = document.getElementById("verdict-line");
+      line.textContent = proven > 0 ? proven + " segment" + (proven === 1 ? "" : "s") + " beat the market" : "Not proven yet";
+      line.classList.toggle("proven", proven > 0);
+      document.getElementById("verdict-sub").textContent =
+        proven > 0 ? "These segments cleared every part of the gate on paper. Below the line, the rest cannot be judged yet."
+                   : "Every segment still cannot be judged yet. That is the normal state, not a failure: " +
+                     "the ledger refuses to call an edge until the evidence is real.";
+      document.getElementById("stats").innerHTML =
+        '<div class="stat"><span class="num">' + (totals.n_logged || 0) + '</span><span class="cap">paper bets logged</span></div>' +
+        '<div class="stat on"><span class="num">' + settled + '</span><span class="cap">settled so far</span></div>' +
+        '<div class="stat' + (proven ? " win" : "") + '"><span class="num">' + proven + '</span><span class="cap">of ' + (totals.segments || 0) + ' segments proven</span></div>';
+      document.getElementById("overall-meter").innerHTML = meter("Settled bets toward the first verdict", Math.min(settled, minBets), minBets);
+      var step = proven > 0 ? 4 : settled > 0 ? 2 : 1;
+      Array.prototype.forEach.call(document.querySelectorAll("#flow li"), function (li) {
+        var n = Number(li.getAttribute("data-step"));
+        if (n < step) li.classList.add("done");
+        if (n === step) { li.classList.add("here"); li.insertAdjacentHTML("beforeend", '<span class="you">You are here</span>'); }
       });
-      if (!sportRows) sportRows = "<tr><td colspan=\"8\" class=\"empty\">No sports logged yet.</td></tr>";
-      sportBody.innerHTML = sportRows;
 
-      // ---- Per-segment table ----
-      // One table for every sport, with a filter above it. The filter HIDES
-      // rows rather than removing them, so the reader can widen it again and
-      // the table keeps its shape.
+      // ---- One card per sport ----
+      var order = Object.keys(perSport).sort(function (a, b) { return (perSport[b].n_logged || 0) - (perSport[a].n_logged || 0); });
+      document.getElementById("cards").innerHTML = order.map(function (sport) {
+        var s = perSport[sport];
+        var logged = s.n_logged || 0, set = s.n_settled || 0, shadow = s.n_shadow || 0;
+        var open = Math.max(0, logged - set - shadow);
+        var status = s.qualifies_for_edge_claim ? '<span class="chip win">Beats the market</span>' : '<span class="chip">Cannot be judged yet</span>';
+        var ci = s.pnl_ci95 ? " [" + s.pnl_ci95[0].toFixed(2) + ", " + s.pnl_ci95[1].toFixed(2) + "]" : "";
+        var result = s.pnl === null || s.pnl === undefined ? "—" : s.pnl.toFixed(2) + ci;
+        return '<article class="card" data-sport="' + esc(sport) + '">' +
+          '<header><h3>' + esc(NAMES[sport] || sport.toUpperCase()) + '</h3>' + status + '</header>' +
+          '<div class="meter"><div class="row"><span>' + logged + ' logged</span><b>' + (s.n_games || 0) + ' games</b></div>' +
+          '<div class="track stack" role="img" aria-label="' + set + ' settled, ' + open + ' open, ' + shadow + ' shadow of ' + logged + ' logged">' +
+          (logged ? '<i class="seg-settled" style="width:' + pct(set, logged).toFixed(1) + '%"></i><i class="seg-open" style="width:' + pct(open, logged).toFixed(1) + '%"></i><i class="seg-shadow" style="width:' + pct(shadow, logged).toFixed(1) + '%"></i>' : '') +
+          '</div></div>' +
+          '<div class="legend"><span>' + set + ' settled</span><span class="l-open">' + open + ' open</span><span class="l-shadow">' + shadow + ' shadow</span></div>' +
+          meter("Settled bets", Math.min(s.n_settled_bets || 0, minBets), minBets) +
+          meter("Settled games", Math.min(s.n_settled_games || 0, minGames), minGames) +
+          '<div class="facts"><span>Result <b>' + esc(result) + '</b></span><span>CLV <b>' + clvText(s) + '</b></span></div>' +
+          (s.why_not_yet ? '<details class="more"><summary>Why not yet</summary><p>' + esc(s.why_not_yet) + '</p>' +
+            (s.excluded_legacy_total_rows ? '<p>' + s.excluded_legacy_total_rows + ' earlier total-points rows excluded: they were priced at the wrong line, so they are not evidence.</p>' : '') +
+            '</details>' : '') +
+          '</article>';
+      }).join("") || '<p class="empty">No sports logged yet.</p>';
+
+      // ---- Numbers table by sport ----
+      var sportRows = "";
+      order.forEach(function (sport) {
+        var s = perSport[sport];
+        var result = s.pnl === null || s.pnl === undefined ? "—" : s.pnl.toFixed(2);
+        var ci = s.pnl_ci95 ? " [" + s.pnl_ci95[0].toFixed(2) + ", " + s.pnl_ci95[1].toFixed(2) + "]" : "";
+        var why = s.why_not_yet ? '<div class="why">' + esc(s.why_not_yet) + '</div>' : "";
+        var legacy = s.excluded_legacy_total_rows
+          ? '<div class="why">' + s.excluded_legacy_total_rows + ' earlier total-points rows excluded: they were priced at the wrong line, so they are not evidence.</div>' : "";
+        sportRows += '<tr><td class="segment-key">' + esc(sport.toUpperCase()) + '</td>' +
+          '<td class="n-nowrap"><span class="mono">' + (s.n_bets || 0) + '</span></td>' +
+          '<td class="n-nowrap"><span class="mono">' + (s.n_games || 0) + '</span></td>' +
+          '<td class="n-nowrap"><span class="mono">' + (s.n_shadow || 0) + '</span></td>' +
+          '<td class="n-nowrap"><span class="mono">' + (s.n_settled || 0) + '</span></td>' +
+          '<td class="n-nowrap"><span class="mono">' + result + '</span>' + ci + '</td>' +
+          '<td class="n-nowrap"><span class="mono">' + clvText(s) + '</span> <span class="label-paper">(n=' + (s.n_clv || 0) + ')</span></td>' +
+          '<td>' + why + legacy + '</td></tr>';
+      });
+      document.getElementById("sport-table").innerHTML = sportRows || '<tr><td colspan="8" class="empty">No sports logged yet.</td></tr>';
+
+      // ---- Segment table with sport filter (hides rows, never removes them) ----
       var tbody = document.getElementById("segment-table");
-      var sports = Object.keys(perSport).sort();
       var sportFilter = "all";
-
-      // The filter chips: "All sports" plus one per sport that has rows.
       var chipHost = document.querySelector(".sport-filter");
-      sports.forEach(function (sport) {
+      Object.keys(perSport).sort().forEach(function (sport) {
         var chip = document.createElement("button");
         chip.type = "button";
         chip.className = "sport-chip";
         chip.setAttribute("data-sport-filter", sport);
         chip.textContent = sport.toUpperCase();
-        chip.addEventListener("click", function () {
-          sportFilter = sport;
-          Array.prototype.forEach.call(chipHost.querySelectorAll(".sport-chip"), function (c) {
-            c.classList.toggle("is-on", c.getAttribute("data-sport-filter") === sportFilter);
-          });
-          applyFilter();
-        });
         chipHost.appendChild(chip);
       });
       chipHost.addEventListener("click", function (event) {
@@ -575,76 +632,47 @@
         });
         applyFilter();
       });
-
       var rows = "";
       Object.keys(segments).forEach(function (key) {
         var s = segments[key];
         var sport = s.sport || (s.segment || "").split(":")[0] || "";
         var status = s.qualifies_for_edge_claim ? "Has an edge (paper)" : "Cannot be judged yet";
-        var clv = s.mean_clv_cents === null || s.mean_clv_cents === undefined
-          ? "\u2014"
-          : (s.mean_clv_cents >= 0 ? "+" : "") + s.mean_clv_cents.toFixed(2);
-        var clvN = s.n_clv || 0;
-        var result = s.pnl === null || s.pnl === undefined
-          ? "\u2014"
-          : s.pnl.toFixed(2);
-        var ci = s.pnl_ci95
-          ? " [" + s.pnl_ci95[0].toFixed(2) + ", " + s.pnl_ci95[1].toFixed(2) + "]"
-          : "";
-        var why = s.disqualifying && s.disqualifying.length
-          ? "<div class=\"why\">" + s.disqualifying.join("; ") + "</div>"
-          : "";
-        rows +=
-          "<tr data-sport=\"" + sport + "\">" +
-          "<td class=\"segment-key\">" + (s.segment || key) + why + "</td>" +
-          "<td class=\"n-nowrap\">" + sport.toUpperCase() + "</td>" +
-          "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_logged || 0) + "</span> logged <span class=\"label-paper\">(paper)</span></td>" +
-          "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_bets || 0) + "</span></td>" +
-          "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_games || 0) + "</span></td>" +
-          "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_settled || 0) + "</span> settled <span class=\"label-paper\">(paper)</span></td>" +
-          "<td class=\"n-nowrap\"><span class=\"mono\">" + result + "</span>" + ci + "</td>" +
-          "<td class=\"n-nowrap\"><span class=\"mono\">" + clv + "</span> <span class=\"label-paper\">(n=" + clvN + ")</span></td>" +
-          "<td><strong>" + status + "</strong></td>" +
-          "</tr>";
+        var result = s.pnl === null || s.pnl === undefined ? "—" : s.pnl.toFixed(2);
+        var ci = s.pnl_ci95 ? " [" + s.pnl_ci95[0].toFixed(2) + ", " + s.pnl_ci95[1].toFixed(2) + "]" : "";
+        var why = s.disqualifying && s.disqualifying.length ? '<div class="why">' + esc(s.disqualifying.join("; ")) + '</div>' : "";
+        rows += '<tr data-sport="' + esc(sport) + '">' +
+          '<td class="segment-key">' + esc(s.segment || key) + why + '</td>' +
+          '<td class="n-nowrap">' + esc(sport.toUpperCase()) + '</td>' +
+          '<td class="n-nowrap"><span class="mono">' + (s.n_logged || 0) + '</span> logged <span class="label-paper">(paper)</span></td>' +
+          '<td class="n-nowrap"><span class="mono">' + (s.n_bets || 0) + '</span></td>' +
+          '<td class="n-nowrap"><span class="mono">' + (s.n_games || 0) + '</span></td>' +
+          '<td class="n-nowrap"><span class="mono">' + (s.n_settled || 0) + '</span> settled <span class="label-paper">(paper)</span></td>' +
+          '<td class="n-nowrap"><span class="mono">' + result + '</span>' + ci + '</td>' +
+          '<td class="n-nowrap"><span class="mono">' + clvText(s) + '</span> <span class="label-paper">(n=' + (s.n_clv || 0) + ')</span></td>' +
+          '<td><strong>' + status + '</strong></td></tr>';
       });
-      if (!rows) rows = "<tr><td colspan=\"10\" class=\"empty\">No segments logged yet.</td></tr>";
-      tbody.innerHTML = rows;
-
+      tbody.innerHTML = rows || '<tr><td colspan="9" class="empty">No segments logged yet.</td></tr>';
+      document.getElementById("seg-count").textContent = Object.keys(segments).length + " segments";
       function applyFilter() {
-        var shown = 0;
         Array.prototype.forEach.call(tbody.querySelectorAll("tr"), function (tr) {
           if (!tr.getAttribute("data-sport")) return;
-          var match = sportFilter === "all" || tr.getAttribute("data-sport") === sportFilter;
-          tr.classList.toggle("is-hidden", !match);
-          if (match) shown++;
+          tr.classList.toggle("is-hidden", !(sportFilter === "all" || tr.getAttribute("data-sport") === sportFilter));
         });
-        var empty = tbody.querySelector("tr.empty");
-        if (empty) empty.classList.toggle("is-hidden", shown > 0);
       }
       applyFilter();
 
-      // ---- HowCounted ----
-      var how = document.getElementById("how-counted");
-      var min = gate.min_settled || 300;
+      // ---- How counted ----
       var lines = [
-        "Every logged row is one candidate bet the model would make, written once at the first time it qualifies and never rewritten — no hindsight edits.",
-        "A segment is only logged as a candidate if it is on the allow-list (data/paper/segments.json) and its edge clears the pre-stated threshold (4.0 points, net of fee).",
+        "Every logged row is one candidate bet the model would make, written once at the first time it qualifies and never rewritten, so there are no hindsight edits.",
+        "A segment is only logged as a candidate if it is on the allow-list and its edge clears the pre-stated threshold (4.0 points, net of fee).",
         "Settling marks rows from final results; ties, pushes and voided or postponed games are void (no p&l), and the settle job is idempotent.",
         "Sizing is paper-only: fractional Kelly at 0.25x, capped at 1% of a 1,000-unit paper bankroll per bet and 2% per game.",
-        "To call a segment \"has an edge\": about " + min + " settled paper bets, a paired-bootstrap CI on edge that excludes zero, and a calibration gap that is not widening.",
-        "Until then the segment reads \"cannot be judged yet\" — that is the normal state, not a failure.",
+        "To call a segment \"has an edge\": about " + minBets + " settled paper bets from at least " + minGames + " games, a paired-bootstrap CI on edge that excludes zero, and a calibration gap that is not widening.",
+        "Until then the segment reads \"cannot be judged yet\". That is the normal state, not a failure." +
+          (totals.excluded_legacy_total_rows ? " " + totals.excluded_legacy_total_rows + " earlier total-points rows excluded: they were priced at the wrong line, so they are not evidence." : ""),
       ];
-      how.innerHTML = "<ul style=\"margin:0;padding-left:1.25rem;color:var(--color-pr-text-dim);font-size:0.875rem;line-height:1.7;\">" +
-        lines.map(function (l) { return "<li style=\"margin-bottom:0.5rem;\">" + l + "</li>"; }).join("") +
-        "</ul>";
-
-      document.getElementById("early-sample").querySelector(".banner-body").innerHTML =
-        "<strong>" + totals.n_logged + " paper bets logged, " + totals.n_settled + " settled.</strong> " +
-        "A segment needs roughly " + min + " settled paper bets before its edge can be judged; none have reached it yet, so every segment reads \"cannot be judged yet\". " +
-        "Stakes are paper units only; no real money is placed." +
-        (totals.excluded_legacy_total_rows
-          ? " " + totals.excluded_legacy_total_rows + " earlier NFL total-points rows are excluded: they were priced at the wrong line, so they are not evidence."
-          : "");
+      document.getElementById("how-counted").innerHTML = '<ul style="margin:0;padding-left:1.25rem;text-align:left;color:var(--color-pr-text-dim);font-size:0.875rem;line-height:1.7;">' +
+        lines.map(function (l) { return '<li style="margin-bottom:0.5rem;">' + l + '</li>'; }).join("") + '</ul>';
     })();
   </script>
 </body>
