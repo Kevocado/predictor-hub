@@ -274,6 +274,14 @@ def snapshot_games(snapshot: dict | None, sport: str) -> dict[str, dict]:
     accuracy, sigma, n) and nothing per-game, so this returns {} for NBA. That
     is a real gap and not a parsing failure — see the PR description.
     """
+    if sport == "nba":
+        root = discover_sites_root()
+        picks = _picks_history(root) if root is not None else []
+        return {
+            str(pick.get("game_id")): _nba_pick_snapshot(pick)
+            for pick in _latest_pick_per_game(picks).values()
+        }
+
     if not snapshot:
         return {}
     games: dict[str, dict] = {}
@@ -354,7 +362,75 @@ def snapshot_games(snapshot: dict | None, sport: str) -> dict[str, dict]:
                     "away_win": float(aw),
                 },
             }
+    if sport == "nba":
+        root = discover_sites_root()
+        picks = _picks_history(root) if root is not None else []
+        return {
+            str(pick.get("game_id")): _nba_pick_snapshot(pick)
+            for pick in _latest_pick_per_game(picks).values()
+        }
     return games
+
+
+def _picks_history(root: Path | None) -> list[dict]:
+    """Every pick row the NBA refresh has appended, oldest first.
+
+    The refresh appends every version a model has published, so a game can
+    appear many times; the caller decides which version to trust.
+    """
+    if root is None:
+        return []
+    path = root / "NBA_Predictor" / "data" / "picks_history.jsonl.gz"
+    return read_line_files([path]) if path.exists() else []
+
+
+def _latest_pick_per_game(picks: list[dict]) -> dict[str, dict]:
+    """One row per game: the pick published latest.
+
+    The ledger pairs a price with the model state that existed when the price
+    was seen, so the latest pick is what a reader has to compare against -- a
+    pick made after the price cannot have influenced it, and anything earlier
+    is superseded by this one.
+    """
+    latest: dict[str, dict] = {}
+    for row in picks:
+        game_id = str(row.get("game_id") or "")
+        if not game_id:
+            continue
+        held = latest.get(game_id)
+        if held is None or str(row.get("created_at") or "") > str(held.get("created_at") or ""):
+            latest[game_id] = row
+    return latest
+
+
+def _nba_pick_snapshot(pick: dict) -> dict:
+    """One game's latest pick, shaped like a snapshot game entry.
+
+    `generated_at` is the pick's own `created_at`: the model probability may
+    only be paired with a price observed at or after it.
+    """
+    home_win_prob = pick.get("home_win_prob")
+    away_win_prob = None if home_win_prob is None else 1.0 - float(home_win_prob)
+    return {
+        "game_id": str(pick.get("game_id")),
+        "sport": "nba",
+        "generated_at": str(pick.get("created_at") or ""),
+        "model_fingerprint": pick.get("model_version"),
+        "date": str(pick.get("game_date") or "")[:10],
+        "home": pick.get("home_team"),
+        "away": pick.get("away_team"),
+        "probs": {
+            "home_win": home_win_prob,
+            "away_win": away_win_prob,
+            "over": None,
+            "under": None,
+            "home_cover": None,
+            "away_cover": None,
+        },
+        # Priced at each rung's own line from the model's total and sigma.
+        "total_mu": pick.get("predicted_total"),
+        "total_sigma": pick.get("total_sigma"),
+    }
 
 
 def snapshot_positions(snapshot: dict | None) -> dict[str, str]:
