@@ -169,20 +169,34 @@ def _negate(value):
 def spread_side(row: dict, game: dict) -> str | None:
     """Which side of the game a spread rung is about, or None.
 
-    A spread rung is named after a TEAM in its title ("Dartmouth wins by over
-    6.5 points"), not after a side, and its ticker suffix carries the team's
-    code with the line appended ("DART7" for 6.5 points), so the suffix cannot
-    be read as a code either. The title is the only field that names the team
-    plainly, so it is what this matches on.
+    A spread rung is named after a TEAM ("Dartmouth wins by over 6.5 points",
+    "San Antonio wins by over 8.5 points"), not after a side, so the side has
+    to be worked out from the rung.
 
-    The comparison is against the game's team names AS KALSHI SPELLS THEM, not
-    as the model's own snapshot spells them: Kalshi writes "Northern Colorado"
+    Two ways to work it out, and the ticker is tried first because it is exact.
+
+    **The ticker suffix.** Kalshi writes the team's code with the line's own
+    integer appended: `SAS9` for "over 8.5 points", `DART7` for "over 6.5
+    points". Every spread rung in both leagues' committed line files follows
+    that shape -- 1,896 NBA rows and 2,185 CFB rows, checked -- so the code is
+    the suffix minus that integer, and it is compared with the game's two team
+    codes. The NBA's schedule uses those same codes, so it matches exactly.
+
+    **The title.** The fallback, for a game whose codes the ledger does not
+    have. The title is compared against the team's name AS KALSHI SPELLS IT,
+    not as the model's snapshot spells it: Kalshi writes "Northern Colorado"
     where CFBD writes "Northern Colo.", and "Ohio St." where CFBD writes "Ohio
     State". Matching the title against the model's spelling would refuse most
     of the spread ladder over a spelling difference.
 
-    A rung about a team that is not in the game matches neither and is refused.
+    A rung about a team that is in neither the game's codes nor its names is
+    refused: a spread priced with the other team's probability is worse than no
+    row at all.
     """
+    by_code = _spread_side_by_code(row, game)
+    if by_code is not None:
+        return by_code
+
     title = row.get("title")
     if not isinstance(title, str):
         return None
@@ -194,6 +208,38 @@ def spread_side(row: dict, game: dict) -> str | None:
             if name and subject == name:
                 return side
     return None
+
+
+def _spread_side_by_code(row: dict, game: dict) -> str | None:
+    """The side, from the rung's ticker suffix. None when it cannot be read.
+
+    The suffix is `<team code><int(line) + 1>`, so the code is the suffix with
+    that integer removed. The integer is not guessed at: the rung's own `line`
+    says what it is, and if the suffix does not end with it, the suffix is
+    something this does not understand and the caller falls back to the title.
+    """
+    ticker = row.get("ticker")
+    event = row.get("event_ticker")
+    line = row.get("line")
+    if not isinstance(ticker, str) or not isinstance(event, str):
+        return None
+    if not ticker.startswith(event + "-"):
+        return None
+    suffix = ticker[len(event) + 1:]
+    try:
+        tail = str(int(float(line)) + 1)
+    except (TypeError, ValueError):
+        return None
+    if not suffix.endswith(tail):
+        return None
+    code = suffix[:-len(tail)]
+    if not code:
+        return None
+    matches = [side for side in ("home", "away") if game.get(side) == code]
+    # Two matches would mean the game's two teams have the same code, which
+    # cannot be resolved; one match is the answer; none means the rung is
+    # about a team that is not in this game.
+    return matches[0] if len(matches) == 1 else None
 
 
 def _iso(stamp: datetime | None) -> str | None:
