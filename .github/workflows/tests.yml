@@ -54,6 +54,7 @@ jobs:
           node --test \
             tests/craft-floor.test.mjs \
             tests/hub.test.mjs \
+            tests/paper-page.test.mjs \
             tests/site-sync.test.mjs \
             tests/sync-ui-source.test.mjs \
             tests/sync-ui.test.mjs \
