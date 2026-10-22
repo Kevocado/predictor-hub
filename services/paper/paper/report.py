@@ -55,7 +55,16 @@ def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
 
     ci = stats.bootstrap_mean_ci(pnls)
     trend = stats.calibration_trend(settled, min_n=gate_cfg["min_for_calibration_trend"])
-    clvs = [v for v in (stats.clv_points(r, closing) for r in settled) if v is not None]
+    # CLV is a LEADING indicator, so it is measured over EVERY logged row --
+    # candidates and shadows, settled and open -- not only the settled ones.
+    # An open row's close is known as soon as the market's last pre-kickoff
+    # price is, which is before the game; hiding that until settlement would
+    # throw away the one thing CLV is for.
+    #
+    # It is deliberately NOT one of the gate's conditions. CLV says whether the
+    # entry was early; it does not say whether the bet won, and a segment is
+    # never called "has an edge" on the strength of it.
+    clvs = [v for v in (stats.clv_points(r, closing) for r in rows) if v is not None]
 
     fingerprint = rows[0].get("model_fingerprint") if rows else None
 
@@ -94,6 +103,10 @@ def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
         "realised_edge_points": realised_edge,
         "mean_clv_cents": round(stats.fmean(clvs), 4) if clvs else None,
         "n_clv": len(clvs),
+        # The share of rows that beat the close. A segment where most rows beat
+        # the close is one where the model got in before the market; a segment
+        # where few do is one where the entry was late.
+        "share_clv_positive": round(sum(1 for v in clvs if v > 0) / len(clvs), 4) if clvs else None,
         "calibration_gap_points": (round(trend["gap_late"], 4) if trend["measurable"]
                                    else stats.calibration_gap(
                                        [r["model_p"] for r in settled], outcomes)),
@@ -188,11 +201,13 @@ def build(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict) -> dict
 def render(report: dict) -> str:
     """The printed table. Fixed width, no dependency on a table library."""
     header = (f"{'segment :: fingerprint':<40} {'n':>5} {'settled':>7} {'hit':>6} {'model_p':>8} {'price':>6} "
-              f"{'edge':>7} {'real.':>7} {'clv':>7} {'pnl':>9} {'roi':>7} {'dd':>7} {'edge?':>6}")
+              f"{'edge':>7} {'real.':>7} {'clv':>7} {'clv+':>6} {'pnl':>9} {'roi':>7} {'dd':>7} {'edge?':>6}")
     lines = [
         "paper-trading segment report — PAPER ONLY, no orders, no credentials",
         f"gate: >= {report['gate']['min_settled']} settled bets AND bootstrap CI on pnl "
         f"entirely above zero AND calibration gap not widening",
+        "clv is a leading indicator, not a gate condition: clv+ is the share of "
+        "logged rows that beat the market's last pre-kickoff price",
         "",
         header,
         "-" * len(header),
@@ -206,7 +221,8 @@ def render(report: dict) -> str:
             f"{name:<40} {s['n_logged']:>5} {s['n_settled']:>7} {num(s['hit_rate'], '{:.3f}'):>6} "
             f"{num(s['mean_model_p']):>8} {num(s['mean_market_price']):>6} "
             f"{num(s['mean_edge_points'], '{:.2f}'):>7} {num(s['realised_edge_points'], '{:.2f}'):>7} "
-            f"{num(s['mean_clv_cents'], '{:+.2f}'):>7} {s['pnl']:>9.2f} {num(s['roi'], '{:+.3f}'):>7} "
+            f"{num(s['mean_clv_cents'], '{:+.2f}'):>7} {num(s.get('share_clv_positive'), '{:.2f}'):>6} "
+            f"{s['pnl']:>9.2f} {num(s['roi'], '{:+.3f}'):>7} "
             f"{s['max_drawdown']:>7.3f} {('yes' if s['qualifies_for_edge_claim'] else 'no'):>6}"
         )
     if not report["segments"]:

@@ -21,6 +21,7 @@ part of an edge that is supposed to persist.
 from __future__ import annotations
 
 import random
+from datetime import datetime
 from statistics import fmean
 
 BOOTSTRAP_ITERS = 4000
@@ -144,6 +145,10 @@ def closing_prices(rows: list[dict]) -> dict[str, dict]:
     comparison is against `occurrence`, not `close_time`, because Kalshi keeps
     trading these markets after the game and a post-final price is not a closing
     line.
+
+    Both sides' prices are kept. A NO row is closed against the NO price: a
+    market's YES and NO prices are not the same number, and pricing a NO row
+    against the YES side would report a CLV for a price nobody could buy.
     """
     best: dict[str, dict] = {}
     for row in rows:
@@ -155,7 +160,8 @@ def closing_prices(rows: list[dict]) -> dict[str, dict]:
         if seen_at >= start:
             continue  # observed at or after kickoff: not a closing line
         price = row.get("_price")
-        if price is None:
+        no_price = row.get("_no_price")
+        if price is None and no_price is None:
             continue
         held = best.get(ticker)
         if held is None or seen_at >= held["_seen_at"]:
@@ -173,11 +179,42 @@ def clv_points(candidate: dict, closing: dict[str, dict]) -> float | None:
     more than the market's final price, so the information that made the bet
     interesting had already arrived and we were late to it. Positive pnl with
     negative CLV is luck.
+
+    The close is taken on the row's OWN side: a NO row is closed against the NO
+    price, because that is the price the NO side was trading at.
+
+    A close observed BEFORE the row was logged is not a close. It says what the
+    market thought before we got there, which is not the same question, so such a
+    row has no CLV rather than a misleading one. Missing is None, never zero:
+    a zero would claim we exactly matched the close, which is a different claim
+    from "we do not know".
     """
     row = closing.get(candidate.get("ticker"))
     if row is None:
         return None
-    return round((row["_price"] - float(candidate["market_price"])) * 100.0, 4)
+    side = candidate.get("side") or "yes"
+    if side == "no":
+        close_price = row.get("_no_price")
+    else:
+        close_price = row.get("_price")
+    if close_price is None:
+        return None
+    # The close has to have been observed at or after our own entry, or it is
+    # not evidence about the close.
+    logged_at = _parse_observed(candidate.get("price_observed_at"))
+    seen_at = row.get("_seen_at")
+    if logged_at is not None and isinstance(seen_at, datetime) and seen_at < logged_at:
+        return None
+    market_price = candidate.get("market_price")
+    if not isinstance(market_price, (int, float)):
+        return None
+    return round((float(close_price) - float(market_price)) * 100.0, 4)
+
+
+def _parse_observed(value) -> datetime | None:
+    """An ISO-8601 instant as an aware datetime, or None."""
+    from . import sources
+    return sources.parse_ts(value)
 
 
 def annotate_observed(rows: list[dict]) -> list[dict]:
@@ -190,5 +227,6 @@ def annotate_observed(rows: list[dict]) -> list[dict]:
         copy["_seen_at"] = seen_at
         copy["_kickoff"] = sources.kickoff(row)
         copy["_price"] = sources.buyable_price(row, "yes")
+        copy["_no_price"] = sources.buyable_price(row, "no")
         out.append(copy)
     return out
