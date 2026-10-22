@@ -1150,6 +1150,12 @@ def _nba_pick_snapshot(pick: dict) -> dict:
         # Priced at each rung's own line from the model's total and sigma.
         "total_mu": pick.get("predicted_total"),
         "total_sigma": pick.get("total_sigma"),
+        # And the margin's, for the spread market. A spread rung needs
+        # P(margin > line), which is computed from the margin's OWN sigma: the
+        # total's sigma is a different quantity on a different scale and cannot
+        # stand in for it.
+        "margin_mu": pick.get("predicted_margin"),
+        "margin_sigma": pick.get("margin_sigma"),
     }
 
 
