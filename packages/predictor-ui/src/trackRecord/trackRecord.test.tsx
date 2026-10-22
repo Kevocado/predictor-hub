@@ -7,14 +7,15 @@
  * words rather than drawing a zero.
  */
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { CalibrationBlock } from "./CalibrationBlock";
 import { CalibrationChart } from "./CalibrationChart";
 import { HowCounted } from "./HowCounted";
 import { RecentPicks } from "./RecentPicks";
 import { RecordBlock } from "./RecordBlock";
 import { RecordHeadline } from "./RecordHeadline";
 import { WeekStrip } from "./WeekStrip";
-import type { RecordModel } from "./types";
+import type { CalibrationSeries, MarketTally, RecordModel } from "./types";
 
 const FULL: RecordModel = {
   lead: "game_outcome",
@@ -88,9 +89,73 @@ describe("CalibrationChart", () => {
     expect(screen.getAllByTestId("calibration-point")).toHaveLength(2);
   });
 
+  it("shows each market's settled-pick count on its pill", () => {
+    const twoMarkets: CalibrationSeries[] = [
+      { key: "game_outcome", label: "Winner pick", buckets: [{ bucket: "50-60%", n: 10, correct: 6 }] },
+      { key: "spread", label: "Spread", buckets: [{ bucket: "50-60%", n: 14, correct: 7 }] },
+    ];
+    const twoMarketTallies: MarketTally[] = [
+      { key: "game_outcome", label: "Winner pick", counted: { correct: 25, n: 52 } },
+      { key: "spread", label: "Spread", counted: { correct: 18, n: 40 } },
+    ];
+    render(<CalibrationChart series={twoMarkets} markets={twoMarketTallies} />);
+    const buttons = screen.getAllByRole("button");
+    // Winner pick counted.n = 52.
+    const winner = buttons.find((b) => b.textContent?.includes("Winner pick"));
+    expect(winner).toBeDefined();
+    expect(winner!.textContent).toContain("52 settled");
+    // Spread counted.n = 40.
+    const spread = buttons.find((b) => b.textContent?.includes("Spread"));
+    expect(spread).toBeDefined();
+    expect(spread!.textContent).toContain("40 settled");
+  });
+
+  it("says Too early when the market has fewer than 3 settled picks", () => {
+    const series = [{ key: "moneyline", label: "Moneyline", buckets: [{ bucket: "50-60%", n: 2, correct: 1 }] }];
+    render(<CalibrationChart series={series} />);
+    expect(screen.getByText(/Too early to calibrate Moneyline/)).toBeInTheDocument();
+    expect(screen.queryByTestId("calibration-point")).toBeNull();
+  });
+
+  it("draws 1:1 in the width it is given, so its text is readable on a phone and the chart is tall enough on desktop", () => {
+    const rect = vi.spyOn(Element.prototype, "getBoundingClientRect");
+    try {
+      rect.mockReturnValue({ width: 343, height: 0, x: 0, y: 0, top: 0, left: 0, right: 343, bottom: 0, toJSON: () => ({}) } as DOMRect);
+      const { container, unmount } = render(<CalibrationChart series={FULL.calibration!} markets={FULL.markets} />);
+      const svg = container.querySelector("svg")!;
+      expect(svg.getAttribute("viewBox")).toBe("0 0 343 280");     // the phone: viewBox width = pixel width, not 960 scaled down
+      expect(svg.className.baseVal).not.toMatch(/max-w-(md|sm|xs)/);
+      unmount();
+
+      rect.mockReturnValue({ width: 1200, height: 0, x: 0, y: 0, top: 0, left: 0, right: 1200, bottom: 0, toJSON: () => ({}) } as DOMRect);
+      const wide = render(<CalibrationChart series={FULL.calibration!} markets={FULL.markets} />);
+      expect(wide.container.querySelector("svg")!.getAttribute("viewBox")).toBe("0 0 1200 480");   // the hero: bigger than before
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
+  it("opens on a market that has enough settled picks to draw", () => {
+    const series: CalibrationSeries[] = [
+      { key: "a", label: "Thin market", buckets: [{ bucket: "50-60%", n: 2, correct: 1 }] },
+      { key: "b", label: "Full market", buckets: [{ bucket: "50-60%", n: 12, correct: 7 }] },
+    ];
+    render(<CalibrationChart series={series} />);
+    expect(screen.getByRole("img", { name: "Calibration for Full market" })).toBeInTheDocument();
+  });
+
   it("says so when nothing is graded", () => {
     render(<CalibrationChart series={[]} />);
     expect(screen.getByText("No confidence buckets graded yet.")).toBeInTheDocument();
+  });
+});
+
+describe("CalibrationBlock", () => {
+  it("wraps the chart in the titled record block", () => {
+    const series = [{ key: "moneyline", label: "Moneyline", buckets: [{ bucket: "50-60%", n: 10, correct: 6 }] }];
+    render(<CalibrationBlock series={series} />);
+    expect(screen.getByRole("region", { name: "Does 70% mean 70%?" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Calibration for Moneyline" })).toBeInTheDocument();
   });
 });
 
