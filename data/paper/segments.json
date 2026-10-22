@@ -103,10 +103,22 @@
       "note": "Same as nfl:moneyline: probability yes, KXNFLTOTAL price no."
     },
     {
+      "segment": "cfb:moneyline",
+      "sport": "cfb",
+      "market": "moneyline",
+      "note": "CFB home/away moneyline. Kalshi prices from KXNCAAFGAME; model_p = home_win_prob / away_win_prob from the CFB snapshot's weeks."
+    },
+    {
       "segment": "cfb:total",
       "sport": "cfb",
       "market": "total",
-      "note": "From the brief. There is no CFB Kalshi collector at all, so this can only ever be a shadow."
+      "note": "CFB total points. Kalshi prices from KXNCAAFTOTAL; model_p = P(over N.5 points) from predicted_total and total_sigma, at each rung's own line."
+    },
+    {
+      "segment": "cfb:spread",
+      "sport": "cfb",
+      "market": "spread",
+      "note": "CFB spread. Kalshi prices from KXNCAAFSPREAD, whose ladder is a MARGIN market ('<Team> wins by over N.5 points'); model_p = P(that team's margin > N.5) from predicted_margin and sigma, at each rung's own line."
     }
   ]
 }
