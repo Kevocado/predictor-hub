@@ -64,7 +64,19 @@
       "segment": "nba:moneyline",
       "sport": "nba",
       "market": "moneyline",
-      "note": "From the brief. Kalshi prices exist (KXNBAGAME); NBA publishes no per-game win probability, so nothing can be logged until NBA starts publishing one."
+      "note": "NBA moneyline. Kalshi prices from KXNBAGAME; model_p = home win probability from the props table (home_win_prob), served per game from the tracking database."
+    },
+    {
+      "segment": "nba:spread",
+      "sport": "nba",
+      "market": "spread",
+      "note": "NBA spread. Kalshi prices from KXNBASPREAD; model_p = P(home covers spread) = P(predicted_margin > spread) from predicted_margin and the margin sigma, per game from the tracking database."
+    },
+    {
+      "segment": "nba:total",
+      "sport": "nba",
+      "market": "total",
+      "note": "NBA total. Kalshi prices from KXNBATOTAL; model_p = P(over total) = P(total > line) from predicted_total and the total sigma, per game from the tracking database."
     },
     {
       "segment": "nfl:moneyline",
