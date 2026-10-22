@@ -82,6 +82,7 @@
   },
   "gate": {
     "min_settled": 300,
+    "min_settled_games": 100,
     "require_ci_excludes_zero": true,
     "require_calibration_not_widening": true,
     "min_for_calibration_trend": 100

@@ -391,7 +391,8 @@
         <thead>
           <tr>
             <th>Sport</th>
-            <th>Logged <span class="label-paper">(paper)</span></th>
+            <th>Bets <span class="label-paper">(paper)</span></th>
+            <th>Games <span class="label-paper">(paper)</span></th>
             <th>Shadow <span class="label-paper">(paper)</span></th>
             <th>Settled <span class="label-paper">(paper)</span></th>
             <th>Result <span class="label-paper">(net of fee)</span></th>
@@ -419,6 +420,8 @@
             <th>Sport</th>
             <th>Current-model n <span class="label-paper">(paper)</span></th>
             <th>All-time n <span class="label-paper">(paper)</span></th>
+            <th>Bets <span class="label-paper">(paper)</span></th>
+            <th>Games <span class="label-paper">(paper)</span></th>
             <th>Settled <span class="label-paper">(paper)</span></th>
             <th>Result <span class="label-paper">(net of fee)</span></th>
             <th>CLV <span class="label-paper">(mean, n)</span></th>
@@ -526,7 +529,8 @@
         sportRows +=
           "<tr>" +
           "<td class=\"segment-key\">" + sport.toUpperCase() + "</td>" +
-          "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_logged || 0) + "</span></td>" +
+          "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_bets || 0) + "</span></td>" +
+          "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_games || 0) + "</span></td>" +
           "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_shadow || 0) + "</span></td>" +
           "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_settled || 0) + "</span></td>" +
           "<td class=\"n-nowrap\"><span class=\"mono\">" + result + "</span>" + ci + "</td>" +
@@ -534,7 +538,7 @@
           "<td>" + why + legacy + "</td>" +
           "</tr>";
       });
-      if (!sportRows) sportRows = "<tr><td colspan=\"7\" class=\"empty\">No sports logged yet.</td></tr>";
+      if (!sportRows) sportRows = "<tr><td colspan=\"8\" class=\"empty\">No sports logged yet.</td></tr>";
       sportBody.innerHTML = sportRows;
 
       // ---- Per-segment table ----
@@ -595,13 +599,15 @@
           "<td class=\"segment-key\">" + (s.segment || key) + why + "</td>" +
           "<td class=\"n-nowrap\">" + sport.toUpperCase() + "</td>" +
           "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_logged || 0) + "</span> logged <span class=\"label-paper\">(paper)</span></td>" +
+          "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_bets || 0) + "</span></td>" +
+          "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_games || 0) + "</span></td>" +
           "<td class=\"n-nowrap\"><span class=\"mono\">" + (s.n_settled || 0) + "</span> settled <span class=\"label-paper\">(paper)</span></td>" +
           "<td class=\"n-nowrap\"><span class=\"mono\">" + result + "</span>" + ci + "</td>" +
           "<td class=\"n-nowrap\"><span class=\"mono\">" + clv + "</span> <span class=\"label-paper\">(n=" + clvN + ")</span></td>" +
           "<td><strong>" + status + "</strong></td>" +
           "</tr>";
       });
-      if (!rows) rows = "<tr><td colspan=\"8\" class=\"empty\">No segments logged yet.</td></tr>";
+      if (!rows) rows = "<tr><td colspan=\"10\" class=\"empty\">No segments logged yet.</td></tr>";
       tbody.innerHTML = rows;
 
       function applyFilter() {

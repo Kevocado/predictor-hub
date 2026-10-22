@@ -112,6 +112,41 @@ ever be shadows.
 `tests/test_gate.py` fails if the 300-bet floor is ever lowered. A gate that can
 be lowered by an edit is not a gate.
 
+## The evidence is games, not bets
+
+A Kalshi ladder is many contracts on one game. A CFB game carries a moneyline,
+a spread ladder of a dozen rungs and a total ladder of a dozen more; the live
+ledger holds **239 CFB candidates from 44 games**, and the F1 contracts are one
+per driver per race, so six of them are one race of evidence. So the count of
+bets is not the count of evidence: three quarters of the CFB spread segment's
+bets are the same game said again at a different price.
+
+Three things follow, and all three are in the report:
+
+- **Every segment reports `n_games` next to `n_bets`.** `game_id` is the cluster
+  key everywhere: the site's own game identifier for NFL, NBA, CFB and PL, and
+  the *race* for F1.
+
+  A row with **no** `game_id` does not fall back to its ticker. A ladder's rung
+  tickers are unique per rung — a 12-rung CFB spread game holds 12 distinct
+  tickers — so a ticker fallback makes every rung its own "game", which
+  *inflates* the game count and *narrows* the interval: the same bug, in the
+  opposite direction. Rows with no game id instead share one bucket per segment,
+  count as **no games at all**, and the gate says how many rows they were.
+- **The pnl interval is a CLUSTER bootstrap.** Each game's rungs are summed
+  into one value and the GAMES are resampled. Resampling bets instead would
+  treat thirteen rungs of one game as thirteen independent observations, which
+  is how a segment gets a narrow interval out of a handful of games. The
+  interval is therefore on the mean pnl **per game**, which is a different and
+  larger number than the old per-bet one.
+- **A second floor, `min_settled_games: 100`, has to be met alongside the
+  300-bet floor.** Both are required; neither replaces the other. The
+  300-bet floor is untouched, and `tests/test_gate.py` fails if the game floor
+  is lowered below 100 either.
+
+The floor is a number of GAMES because a game is the unit the world supplies:
+the game's outcome is one draw, however many contracts the ledger held on it.
+
 ## F1
 
 **F1 is not a game market.** Kalshi lists one binary contract per *driver* per

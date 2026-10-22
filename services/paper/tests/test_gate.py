@@ -14,7 +14,7 @@ from pathlib import Path
 
 from conftest import config
 
-from paper.segments import SEGMENTS_PATH, MIN_SETTLED_FLOOR, load
+from paper.segments import (SEGMENTS_PATH, MIN_SETTLED_FLOOR, MIN_SETTLED_GAMES_FLOOR, load)
 
 PACKAGE = Path(__file__).resolve().parents[1] / "paper"
 COMMITTED = Path(__file__).resolve().parents[3] / SEGMENTS_PATH
@@ -26,6 +26,21 @@ def test_the_committed_gate_is_not_below_the_floor():
     assert committed["gate"]["min_settled"] >= MIN_SETTLED_FLOOR, (
         f"min_settled was lowered below {MIN_SETTLED_FLOOR}; the gate may be raised, "
         "never lowered, and lowering it needs a deliberate change to this test too"
+    )
+
+
+def test_the_committed_game_floor_is_not_below_the_floor():
+    """The second floor, on GAMES, cannot be lowered either.
+
+    A Kalshi ladder is many contracts on one game, so the 300-BET floor can be
+    met by about twenty-five games of evidence. This floor is what stops that,
+    and it is the same kind of guard as the bet floor: it may be raised, never
+    lowered, and lowering it needs a deliberate change to this test too.
+    """
+    committed = load(COMMITTED)
+    assert committed["gate"]["min_settled_games"] >= MIN_SETTLED_GAMES_FLOOR, (
+        f"min_settled_games was lowered below {MIN_SETTLED_GAMES_FLOOR}; the gate may "
+        "be raised, never lowered, and lowering it needs a deliberate change to this test too"
     )
 
 
@@ -101,5 +116,6 @@ def test_no_order_or_credential_code_anywhere_in_this_pr():
 def test_the_fixture_config_agrees_with_the_committed_gate():
     """The tests build their own allow-list; it must not be laxer than the real one."""
     assert config()["gate"]["min_settled"] >= MIN_SETTLED_FLOOR
+    assert config()["gate"]["min_settled_games"] >= MIN_SETTLED_GAMES_FLOOR
     assert config()["edge_threshold_points"] == json.loads(
         COMMITTED.read_text())["edge_threshold_points"]

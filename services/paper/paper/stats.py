@@ -68,6 +68,43 @@ def bootstrap_mean_ci(values, *, iters: int = BOOTSTRAP_ITERS, seed: int = BOOTS
     return lo, hi
 
 
+def bootstrap_mean_ci_clustered(pairs, *, iters: int = BOOTSTRAP_ITERS, seed: int = BOOTSTRAP_SEED,
+                               level: float = CI_LEVEL) -> tuple[float, float] | None:
+    """Percentile interval on the mean, resampling GAMES rather than bets.
+
+    `pairs` is a sequence of (game key, value). Each game's values are summed
+    into one observation, and the games are what get resampled.
+
+    A Kalshi ladder is many contracts on one game: a CFB game carries a
+    moneyline, a spread ladder and a total ladder, and the live ledger holds
+    239 CFB candidates from 44 games. Treating thirteen rungs of one game as
+    thirteen independent observations makes the interval far too narrow -- the
+    rungs of one game move together, because the game did. Resampling games
+    cannot manufacture independence that the data does not have.
+
+    The interval is on the mean pnl PER GAME, which is why the number is larger
+    than the old per-bet interval: it is a different quantity, and the report
+    says so.
+    """
+    totals: dict[object, float] = {}
+    for key, value in pairs:
+        totals[key] = totals.get(key, 0.0) + float(value)
+    values = list(totals.values())
+    if not values:
+        return None
+    n = len(values)
+    if n == 1:
+        return values[0], values[0]
+    rng = random.Random(seed)
+    means = []
+    for _ in range(iters):
+        means.append(fmean(values[rng.randrange(n)] for _ in range(n)))
+    means.sort()
+    lo = means[int((1 - level) / 2 * (iters - 1))]
+    hi = means[min(iters - 1, int(((1 + level) / 2) * (iters - 1)))]
+    return lo, hi
+
+
 def excludes_zero(interval: tuple[float, float] | None) -> bool | None:
     """True when the interval is entirely on one side of zero."""
     if interval is None:

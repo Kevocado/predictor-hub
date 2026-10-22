@@ -33,6 +33,17 @@ DEFAULT_BUCKETS = [(0.50, 0.60), (0.60, 0.70), (0.70, 0.80), (0.80, 0.90), (0.90
 # The floor the brief sets for an "has an edge" claim. Not configurable downward.
 MIN_SETTLED_FLOOR = 300
 
+# A second floor, on GAMES rather than bets, met ALONGSIDE the one above.
+#
+# A Kalshi ladder is many contracts on one game: a CFB game has a moneyline, a
+# spread ladder and a total ladder, and the live ledger holds 239 CFB candidates
+# from 44 games. So 300 settled BETS can be about twenty-five games of
+# evidence, and a segment could be certified on noise. This floor counts the
+# games, so the evidence has to be spread across real games to count.
+#
+# It is ADDED to the bet floor, not a replacement for it: both have to be met.
+MIN_SETTLED_GAMES_FLOOR = 100
+
 
 class SegmentError(RuntimeError):
     """segments.json exists but cannot be used as an allow-list."""
@@ -115,10 +126,13 @@ def match(config: dict, *, sport: str, market: str, position: str | None = None)
 
 
 def gate(config: dict) -> dict:
-    """The edge-claim gate: minimum settled bets, and the other two conditions."""
+    """The edge-claim gate: minimum settled bets AND games, and the other two conditions."""
     raw = config.get("gate") or {}
     return {
         "min_settled": int(raw.get("min_settled", MIN_SETTLED_FLOOR)),
+        # The second floor, on games. Met alongside min_settled, never instead
+        # of it: 300 bets from 25 games is still only 25 games of evidence.
+        "min_settled_games": int(raw.get("min_settled_games", MIN_SETTLED_GAMES_FLOOR)),
         "require_ci_excludes_zero": bool(raw.get("require_ci_excludes_zero", True)),
         "require_calibration_not_widening": bool(raw.get("require_calibration_not_widening", True)),
         # Below this the "is the gap widening" comparison is two numbers from a

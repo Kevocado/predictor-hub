@@ -29,6 +29,7 @@ from pathlib import Path
 
 from . import segments as segments_mod
 from . import sources, stats
+from .segments import MIN_SETTLED_GAMES_FLOOR
 from .ledger import KIND_CANDIDATE, KIND_SHADOW, STATUS_SETTLED, Ledger, resolved
 
 REPORT_PATH = Path("data/paper/report.json")
@@ -36,6 +37,39 @@ REPORT_PATH = Path("data/paper/report.json")
 
 def _won(row: dict) -> bool:
     return row.get("outcome") == "yes"
+
+
+# The bucket a row with no game id shares with the other such rows of its
+# segment. It is not a game id, and it never counts as a game.
+NO_GAME_ID = "\x00no_game_id:"
+
+
+def game_id_of(row: dict) -> str:
+    """The row's game id, or "" when it has none.
+
+    `game_id` is the site's own game identifier for NFL, NBA, CFB and PL, and
+    the RACE for F1 (whose contracts are one per driver per race).
+    """
+    return str(row.get("game_id") or "").strip()
+
+
+def cluster_key(row: dict) -> str:
+    """The key a ledger row's evidence is clustered by: one game, one race.
+
+    A row WITH a game id clusters on it. A row WITHOUT one must NOT fall back
+    to its ticker: a ladder's rung tickers are unique per rung -- a 12-rung CFB
+    spread game holds 12 distinct tickers -- so a ticker fallback would make
+    every rung its own "game". That inflates the game count and narrows the
+    interval, which is the exact bug the clustering exists to fix. It is
+    fail-open, and it was fail-open here until a reviewer caught it.
+
+    So rows with no game id share ONE bucket per segment instead. They count
+    as no games at all, and the report says how many rows they were.
+    """
+    gid = game_id_of(row)
+    if gid:
+        return gid
+    return NO_GAME_ID + str(row.get("segment") or "")
 
 
 def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
@@ -53,7 +87,23 @@ def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
         realised_edge = round((sum(outcomes) / len(outcomes)
                                - stats.fmean(r["model_p"] for r in settled)) * 100.0, 4)
 
-    ci = stats.bootstrap_mean_ci(pnls)
+    # The evidence is GAMES, not bets. A Kalshi ladder is many contracts on one
+    # game -- a CFB game carries a moneyline, a spread ladder and a total ladder
+    # -- so the live ledger holds 239 CFB candidates from 44 games. Counting every
+    # rung as an independent bet lets 300 bets be about twenty-five games of
+    # evidence, and resampling bets treats thirteen rungs of one game as
+    # thirteen independent observations, which makes the interval far too
+    # narrow.
+    #
+    settled_games = {game_id_of(r) for r in settled} - {""}
+    all_games = {game_id_of(r) for r in rows} - {""}
+    n_settled_no_game_id = sum(1 for r in settled if not game_id_of(r))
+
+    # The interval is on the mean pnl PER GAME, which is a different quantity
+    # from the old per-bet interval and a larger number.
+    ci = stats.bootstrap_mean_ci_clustered(
+        [(cluster_key(r), float(r.get("pnl_per_contract") or 0.0)) for r in settled]
+    )
     trend = stats.calibration_trend(settled, min_n=gate_cfg["min_for_calibration_trend"])
     # CLV is a LEADING indicator, so it is measured over EVERY logged row --
     # candidates and shadows, settled and open -- not only the settled ones.
@@ -75,6 +125,15 @@ def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
         reasons.append("superseded by a newer model; a fresh sample is required")
     if len(settled) < gate_cfg["min_settled"]:
         reasons.append(f"only {len(settled)} settled bets, need {gate_cfg['min_settled']}")
+    min_settled_games = int(gate_cfg.get("min_settled_games", MIN_SETTLED_GAMES_FLOOR))
+    if len(settled_games) < min_settled_games:
+        reasons.append(f"only {len(settled_games)} settled games, need {min_settled_games}")
+    if n_settled_no_game_id:
+        # A row that cannot be attributed to a game is evidence we cannot
+        # count, and the interval lumps it into one bucket, so the counts and
+        # the interval are not describing the same population. Fail closed.
+        reasons.append(f"{n_settled_no_game_id} settled rows have no game id, "
+                       "so their games are not counted")
     if gate_cfg["require_ci_excludes_zero"]:
         if ci is None:
             reasons.append("no settled bets to put an interval on")
@@ -97,6 +156,17 @@ def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
         "n_settled": len(settled),
         "n_open": len(rows) - len(settled),
         "n_void": sum(1 for r in rows if r.get("status") == "void"),
+        # The evidence, in both units. A segment's bets are not independent of
+        # each other -- the rungs of one game move together -- so the number of
+        # GAMES is what says how much there is to know.
+        "n_bets": len(rows),
+        "n_games": len(all_games),
+        "n_settled_bets": len(settled),
+        "n_settled_games": len(settled_games),
+        # Rows that cannot be attributed to a game. They are counted as no
+        # games, and the gate says so.
+        "n_rows_no_game_id": sum(1 for r in rows if not game_id_of(r)),
+        "n_settled_no_game_id": n_settled_no_game_id,
         "hit_rate": round(sum(outcomes) / len(outcomes), 4) if outcomes else None,
         "mean_model_p": round(stats.fmean(r["model_p"] for r in settled), 4) if settled else None,
         "mean_market_price": round(stats.fmean(r["market_price"] for r in settled), 4) if settled else None,
@@ -160,16 +230,23 @@ def _reason_shape(reason: str) -> str:
 
 
 def _why_not_yet(reasons: list[str], *, n_settled: int, min_settled: int,
+                 n_settled_games: int, min_settled_games: int,
                  has_shadow_only: bool) -> str | None:
     """The reason a sport cannot be judged yet, in plain words, or None.
 
     The gate's own wording is a list of technical phrases written for the person
     reading the source. The page has to say the same thing to a reader who does
-    not know what a "segment group" is, so the count shortfall is stated as a
-    number of bets still needed and the other two conditions are named.
+    not know what a "segment group" is, so each count shortfall is stated as a
+    number still needed and the other conditions are named.
 
     "needs 295 more settled bets" is both plain and specific. "only 5 settled
     bets, need 300" is neither as plain nor as useful.
+
+    BOTH floors are named when both are short, and each is named in its own
+    unit. A reader who sees "needs 97 more settled games" learns something a
+    reader of "only 3 settled games, need 100" does not: that the evidence is
+    spread too thinly over games, which is a different problem from having too
+    few bets.
     """
     if not reasons:
         return None
@@ -177,12 +254,19 @@ def _why_not_yet(reasons: list[str], *, n_settled: int, min_settled: int,
     shortfall = max(0, min_settled - n_settled)
     if shortfall:
         parts.append(f"needs {shortfall} more settled bets (has {n_settled}, needs {min_settled})")
+    game_shortfall = max(0, min_settled_games - n_settled_games)
+    if game_shortfall:
+        parts.append(f"needs {game_shortfall} more settled games (has {n_settled_games}, "
+                     f"needs {min_settled_games}); the bets are spread over too few games "
+                     "to be independent evidence")
     if has_shadow_only:
         parts.append("its rows are shadows, which carry no stake and cannot support an edge claim")
     for reason in reasons:
-        # The count and the shadow reason are already said above, in plainer
+        # The counts and the shadow reason are already said above, in plainer
         # words; saying them twice reads as two separate problems.
         if "settled bets" in reason:
+            continue
+        if "settled games" in reason:
             continue
         if has_shadow_only and "shadow rows carry no stake" in reason:
             continue
@@ -218,7 +302,14 @@ def _per_sport(rows: list[dict], table: dict[str, dict], gate_cfg: dict,
         pnls = [float(r.get("pnl_per_contract") or 0.0) for r in settled]
         stakes = [float(r.get("stake") or 0.0) for r in settled]
         staked = sum(stakes)
-        ci = stats.bootstrap_mean_ci(pnls)
+        # Clustered, for the same reason the per-segment interval is: the rungs
+        # of one game are not independent observations.
+        ci = stats.bootstrap_mean_ci_clustered(
+            [(cluster_key(r), float(r.get("pnl_per_contract") or 0.0)) for r in settled]
+        )
+        settled_games = {game_id_of(r) for r in settled} - {""}
+        all_games = {game_id_of(r) for r in sport_rows} - {""}
+        n_settled_no_game_id = sum(1 for r in settled if not game_id_of(r))
         clvs = []
         for key, s in table.items():
             if not key.startswith(f"{sport}:"):
@@ -230,6 +321,7 @@ def _per_sport(rows: list[dict], table: dict[str, dict], gate_cfg: dict,
         # other segments have not cleared.
         sport_qualifies = bool(qualifies) and all(
             s.get("qualifies_for_edge_claim") for s in qualifies)
+        min_settled_games = int(gate_cfg.get("min_settled_games", MIN_SETTLED_GAMES_FLOOR))
         reasons: list[str] = []
         for s in qualifies:
             reasons.extend(s.get("disqualifying") or [])
@@ -246,6 +338,14 @@ def _per_sport(rows: list[dict], table: dict[str, dict], gate_cfg: dict,
             "n_shadow": sum(1 for r in sport_rows if r.get("kind") == KIND_SHADOW),
             "n_settled": len(settled),
             "n_open": len(sport_rows) - len(settled),
+            # Both units: a sport's bets are not independent of each other, so
+            # the number of GAMES is what says how much there is to know.
+            "n_bets": len(sport_rows),
+            "n_games": len(all_games),
+            "n_settled_bets": len(settled),
+            "n_settled_games": len(settled_games),
+            "n_rows_no_game_id": sum(1 for r in sport_rows if not game_id_of(r)),
+            "n_settled_no_game_id": n_settled_no_game_id,
             "segments": len({r.get("segment") for r in sport_rows if r.get("segment")}),
             "segment_groups": len(qualifies),
             "pnl": round(sum(pnls), 4),
@@ -263,6 +363,8 @@ def _per_sport(rows: list[dict], table: dict[str, dict], gate_cfg: dict,
                 unique_reasons,
                 n_settled=len(settled),
                 min_settled=gate_cfg["min_settled"],
+                n_settled_games=len(settled_games),
+                min_settled_games=min_settled_games,
                 has_shadow_only=bool(sport_rows) and all(r.get("kind") == KIND_SHADOW
                                                         for r in sport_rows),
             ) if not sport_qualifies else None),
@@ -348,12 +450,15 @@ def build(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict) -> dict
 
 def render(report: dict) -> str:
     """The printed table. Fixed width, no dependency on a table library."""
-    header = (f"{'segment :: fingerprint':<40} {'n':>5} {'settled':>7} {'hit':>6} {'model_p':>8} {'price':>6} "
+    header = (f"{'segment :: fingerprint':<40} {'n':>5} {'games':>6} {'settled':>7} {'hit':>6} {'model_p':>8} {'price':>6} "
               f"{'edge':>7} {'real.':>7} {'clv':>7} {'clv+':>6} {'pnl':>9} {'roi':>7} {'dd':>7} {'edge?':>6}")
     lines = [
         "paper-trading segment report — PAPER ONLY, no orders, no credentials",
-        f"gate: >= {report['gate']['min_settled']} settled bets AND bootstrap CI on pnl "
+        f"gate: >= {report['gate']['min_settled']} settled bets AND >= "
+        f"{report['gate']['min_settled_games']} settled games AND bootstrap CI on pnl "
         f"entirely above zero AND calibration gap not widening",
+        "the pnl interval is a CLUSTER bootstrap: it resamples games, not bets, because "
+        "the rungs of one game are not independent (its interval is per game)",
         "clv is a leading indicator, not a gate condition: clv+ is the share of "
         "logged rows that beat the market's last pre-kickoff price",
         "",
@@ -366,7 +471,7 @@ def render(report: dict) -> str:
 
     for name, s in sorted(report["segments"].items()):
         lines.append(
-            f"{name:<40} {s['n_logged']:>5} {s['n_settled']:>7} {num(s['hit_rate'], '{:.3f}'):>6} "
+            f"{name:<40} {s['n_logged']:>5} {s['n_games']:>6} {s['n_settled']:>7} {num(s['hit_rate'], '{:.3f}'):>6} "
             f"{num(s['mean_model_p']):>8} {num(s['mean_market_price']):>6} "
             f"{num(s['mean_edge_points'], '{:.2f}'):>7} {num(s['realised_edge_points'], '{:.2f}'):>7} "
             f"{num(s['mean_clv_cents'], '{:+.2f}'):>7} {num(s.get('share_clv_positive'), '{:.2f}'):>6} "
