@@ -47,6 +47,18 @@
       "note": "PL home / draw / away. Kalshi prices from KXEPLGAME (collector PR #80); model_p from PL's public snapshot (home_win.prob, draw.prob, away_win.prob)."
     },
     {
+      "segment": "pl:total",
+      "sport": "pl",
+      "market": "total",
+      "note": "PL total goals. Kalshi prices from KXEPLTOTAL; model_p = P(over N.5 goals) from PL's published score_grid, evaluated at each rung's own line."
+    },
+    {
+      "segment": "pl:btts",
+      "sport": "pl",
+      "market": "btts",
+      "note": "PL both teams to score. Kalshi prices from KXEPLBTTS; model_p = the snapshot's published btts_yes_prob."
+    },
+    {
       "segment": "nfl:receptions",
       "sport": "nfl",
       "market": "receptions",

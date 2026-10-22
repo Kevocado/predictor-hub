@@ -70,6 +70,12 @@ def p_over_line(mu, sigma, line) -> float | None:
 
 TOTAL_MODEL_BASIS = "normal(predicted_total, total_sigma) at the rung line"
 
+#: The basis recorded on a row priced from PL's joint score grid.
+SCORE_GRID_MODEL_BASIS = "score_grid at the rung line"
+
+#: The basis recorded on a row priced from PL's published BTTS probability.
+BTTS_MODEL_BASIS = "published btts_yes_prob"
+
 
 def _iso(stamp: datetime | None) -> str | None:
     return stamp.isoformat() if stamp else None
@@ -129,8 +135,24 @@ def candidate_rows(rows: list[dict], games_by_sport: dict[str, dict], config: di
         if market == "total":
             # "over X points" YES contract: P(total > X) from the model's
             # predicted total and sigma, at THIS rung's line.
-            model_p = p_over_line(game.get("total_mu"), game.get("total_sigma"), row.get("line"))
-            model_basis = TOTAL_MODEL_BASIS
+            #
+            # PL publishes a joint score grid instead, and the grid is the
+            # better distribution to price a goal total from: a goal count is
+            # skewed and discrete, and a Normal fit of it was wrong by up to
+            # four points at the middle rungs, which is the size of the edge
+            # threshold itself. So a grid, when there is one, is used.
+            grid = game.get("score_grid")
+            if grid:
+                model_p = sources.grid_p_over(grid, row.get("line"))
+                model_basis = SCORE_GRID_MODEL_BASIS
+            else:
+                model_p = p_over_line(game.get("total_mu"), game.get("total_sigma"), row.get("line"))
+                model_basis = TOTAL_MODEL_BASIS
+        elif market == "btts":
+            # "Both Teams To Score" YES contract: P(both score), published
+            # outright by PL. No side is inferred from the grid.
+            model_p = probs.get("btts_yes")
+            model_basis = BTTS_MODEL_BASIS
         elif sport == "pl":
             # PL moneylines have three outcomes: home win, tie, away win. Each is
             # its own market (YES = that outcome), so the model probability is
