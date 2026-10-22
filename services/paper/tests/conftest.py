@@ -95,7 +95,8 @@ def config(**overrides) -> dict:
         "edge_threshold_points": 4.0,
         "confidence_buckets": [[0.50, 0.60], [0.60, 0.70], [0.70, 0.80],
                                [0.80, 0.90], [0.90, 1.01]],
-        "gate": {"min_settled": 300, "require_ci_excludes_zero": True,
+        "gate": {"min_settled": 300, "min_settled_games": 100,
+                 "require_ci_excludes_zero": True,
                  "require_calibration_not_widening": True,
                  "min_for_calibration_trend": 100},
         "segments": [

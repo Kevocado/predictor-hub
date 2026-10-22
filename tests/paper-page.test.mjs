@@ -41,10 +41,36 @@ test("the report carries the per-sport rows the page reads", () => {
     assert.equal(row.sport, sport);
     for (const key of ["n_logged", "n_shadow", "n_settled", "pnl",
                        "mean_clv_cents", "n_clv", "share_clv_positive",
-                       "excluded_legacy_total_rows", "qualifies_for_edge_claim"]) {
+                       "excluded_legacy_total_rows", "qualifies_for_edge_claim",
+                       "n_bets", "n_games", "n_settled_bets", "n_settled_games"]) {
       assert.ok(key in row, `${sport} row has no ${key}`);
     }
   }
+});
+
+test("the page shows the games as well as the bets", () => {
+  // A segment's bets are not independent of each other -- the rungs of one
+  // game move together -- so the page has to show both counts or the reader
+  // cannot tell how much evidence there is.
+  assert.match(html, /n_bets/);
+  assert.match(html, /n_games/);
+  assert.match(html, />Games <span class="label-paper">/);
+});
+
+test("the report's games count is never more than its bets count", () => {
+  // A game holds at least one bet, so the game count cannot exceed the bet
+  // count. If it does, the two are being counted over different populations.
+  for (const [sport, row] of Object.entries(report.per_sport || {})) {
+    assert.ok(row.n_games <= row.n_bets, `${sport}: ${row.n_games} games > ${row.n_bets} bets`);
+    assert.ok(row.n_settled_games <= row.n_settled_bets,
+              `${sport}: ${row.n_settled_games} settled games > ${row.n_settled_bets} settled bets`);
+  }
+});
+
+test("the gate carries the second floor on games", () => {
+  assert.equal(report.gate.min_settled_games, 100);
+  // The first floor is untouched: this adds to it, it does not replace it.
+  assert.equal(report.gate.min_settled, 300);
 });
 
 test("no sport below the gate is called as having an edge", () => {
