@@ -45,24 +45,44 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-      - name: Check out the two site repos that collect Kalshi ladders
-        # Only these two. NFL_Predictor collects the four player-prop series and
-        # NBA_Predictor the game markets; there is no CFB collector at all, which
-        # is why cfb:total can only ever be a shadow.
+      - name: Check out every site repo that collects Kalshi ladders
+        # Every repo the ledger reads ladders from: NFL_Predictor (player-prop
+        # series), NBA_Predictor (game markets), PL_Predictor (EPL game and
+        # total markets), CFB_Predictor (college-football game, spread and
+        # total markets) and F1_Predictor (the F1 driver contracts).
+        #
+        # The list is the ledger's own (services/paper/paper/sources.py
+        # SITE_FOR_SPORT), so a sport added there is added here by the test
+        # tests/paper-workflows.test.mjs rather than by remembering.
         #
         # Shallow on purpose and tracking main on purpose: this reads what those
         # repos ship, not a pinned commit, so a new committed ladder is picked up
-        # the next time this runs. Both are public.
+        # the next time this runs. All are public.
         run: |
+          set -euo pipefail
           mkdir -p "$RUNNER_TEMP/sites"
-          for repo in NFL_Predictor NBA_Predictor; do
+          for repo in NFL_Predictor NBA_Predictor PL_Predictor CFB_Predictor F1_Predictor; do
             echo "cloning $repo"
             git clone --quiet --depth 1 --branch main \
               "https://github.com/Kevocado/$repo.git" "$RUNNER_TEMP/sites/$repo"
           done
+          # A clone that failed must not read as "this sport has no markets".
+          # `set -e` catches a failed clone, but the loop's own exit status is
+          # the LAST command's, so an earlier failure would be invisible.
+          for repo in NFL_Predictor NBA_Predictor PL_Predictor CFB_Predictor F1_Predictor; do
+            if [ ! -d "$RUNNER_TEMP/sites/$repo" ]; then
+              echo "::error::could not check out $repo; the ledger would skip it silently"
+              exit 1
+            fi
+          done
       - name: Log candidates
         # SITES_ROOT rather than a flag, so the one discovery rule in
         # paper/sources.py is the one that runs.
+        #
+        # A missing collector is an error here, not an empty result: the ledger
+        # would otherwise log the sports whose collectors are present and
+        # silently omit the one whose is not, and every count it reports would
+        # be wrong in a way nothing shows.
         env:
           SITES_ROOT: ${{ runner.temp }}/sites
         run: python3 scripts/paper_log.py
@@ -73,6 +93,11 @@ jobs:
           SITES_ROOT: ${{ runner.temp }}/sites
         run: python3 scripts/paper_report.py
       - name: Commit and push if changed
+        # Only on a green run. A red run must not publish a partial ledger: the
+        # report is regenerated from the same rows, so a failed step that still
+        # committed would put a report on the branch that does not match the
+        # ledger, and the next run would read it as the truth.
+        if: success()
         run: |
           if [ -z "$(git status --porcelain data/paper)" ]; then echo "nothing new"; exit 0; fi
           git config user.name "github-actions[bot]"
