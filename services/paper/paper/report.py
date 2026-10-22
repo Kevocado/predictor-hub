@@ -90,6 +90,7 @@ def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
 
     return {
         "segment": rows[0].get("segment") if rows else None,
+        "sport": rows[0].get("sport") if rows else None,
         "model_fingerprint": fingerprint,
         "is_current_model": is_current_model,
         "n_logged": len(rows),
@@ -107,6 +108,10 @@ def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
         # the close is one where the model got in before the market; a segment
         # where few do is one where the entry was late.
         "share_clv_positive": round(sum(1 for v in clvs if v > 0) / len(clvs), 4) if clvs else None,
+        # The raw values, so the per-sport roll-up can combine segments without
+        # re-deriving them. Dropped before the report is written: it is an
+        # intermediate, not a figure a reader should see.
+        "_clv_values": clvs,
         "calibration_gap_points": (round(trend["gap_late"], 4) if trend["measurable"]
                                    else stats.calibration_gap(
                                        [r["model_p"] for r in settled], outcomes)),
@@ -130,8 +135,148 @@ def _is_legacy_total(row: dict) -> bool:
     return row.get("market") == "total" and not row.get("model_basis")
 
 
+def _collapse_reasons(reasons: list[str]) -> list[str]:
+    """The same reason said once, however many segment groups it applies to.
+
+    Two reasons that differ only in their numbers are one reason: "only 5
+    settled bets, need 300" and "only 3 settled bets, need 300" are the same
+    problem in two segments. The first of each shape is kept.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for reason in reasons:
+        shape = _reason_shape(reason)
+        if shape in seen:
+            continue
+        seen.add(shape)
+        out.append(reason)
+    return out
+
+
+def _reason_shape(reason: str) -> str:
+    """A reason with its numbers removed, so two of them can be compared."""
+    import re
+    return re.sub(r"-?\d+(?:\.\d+)?", "N", reason)
+
+
+def _why_not_yet(reasons: list[str], *, n_settled: int, min_settled: int,
+                 has_shadow_only: bool) -> str | None:
+    """The reason a sport cannot be judged yet, in plain words, or None.
+
+    The gate's own wording is a list of technical phrases written for the person
+    reading the source. The page has to say the same thing to a reader who does
+    not know what a "segment group" is, so the count shortfall is stated as a
+    number of bets still needed and the other two conditions are named.
+
+    "needs 295 more settled bets" is both plain and specific. "only 5 settled
+    bets, need 300" is neither as plain nor as useful.
+    """
+    if not reasons:
+        return None
+    parts: list[str] = []
+    shortfall = max(0, min_settled - n_settled)
+    if shortfall:
+        parts.append(f"needs {shortfall} more settled bets (has {n_settled}, needs {min_settled})")
+    if has_shadow_only:
+        parts.append("its rows are shadows, which carry no stake and cannot support an edge claim")
+    for reason in reasons:
+        # The count and the shadow reason are already said above, in plainer
+        # words; saying them twice reads as two separate problems.
+        if "settled bets" in reason:
+            continue
+        if has_shadow_only and "shadow rows carry no stake" in reason:
+            continue
+        parts.append(reason)
+    return "; ".join(parts) if parts else "; ".join(reasons)
+
+
+def _per_sport(rows: list[dict], table: dict[str, dict], gate_cfg: dict,
+               legacy_by_sport: dict[str, int]) -> dict[str, dict]:
+    """One roll-up per sport, for the page's per-sport rows.
+
+    The per-segment table groups by (segment, model fingerprint), which is what
+    the gate is applied to. A reader wants to know how a SPORT is doing, and the
+    page needs a sport filter, so the same evidence is rolled up one level up
+    here rather than being re-derived in the browser.
+
+    The roll-up is a summary of the segment groups, not a second gate. Whether a
+    sport qualifies is the AND of its segment groups' verdicts, so a sport can
+    never qualify that one of its segments does not.
+    """
+    by_sport: dict[str, list[dict]] = {}
+    for row in rows:
+        sport = row.get("sport")
+        if sport:
+            by_sport.setdefault(str(sport), []).append(row)
+    # The legacy rows are excluded from the evidence ABOVE, so they are not in
+    # `rows` by the time this runs; their count is passed in so the sport can
+    # still say that some of its rows were set aside.
+
+    out: dict[str, dict] = {}
+    for sport, sport_rows in sorted(by_sport.items()):
+        settled = [r for r in sport_rows if r.get("status") == STATUS_SETTLED]
+        pnls = [float(r.get("pnl_per_contract") or 0.0) for r in settled]
+        stakes = [float(r.get("stake") or 0.0) for r in settled]
+        staked = sum(stakes)
+        ci = stats.bootstrap_mean_ci(pnls)
+        clvs = []
+        for key, s in table.items():
+            if not key.startswith(f"{sport}:"):
+                continue
+            clvs.extend([v for v in (s.get("_clv_values") or []) if v is not None])
+        qualifies = [s for s in table.values() if s.get("sport") == sport]
+        # A sport qualifies only if EVERY one of its segment groups qualifies.
+        # "Any" would let one good segment carry a sport past the gate that its
+        # other segments have not cleared.
+        sport_qualifies = bool(qualifies) and all(
+            s.get("qualifies_for_edge_claim") for s in qualifies)
+        reasons: list[str] = []
+        for s in qualifies:
+            reasons.extend(s.get("disqualifying") or [])
+        # Each segment group has its own reasons, and the same reason often
+        # applies to all of them ("only 5 settled bets, need 300"). Saying it
+        # once per group reads as several separate problems, so the reasons are
+        # grouped by their shape: the ones that are the same apart from the
+        # numbers are said once.
+        unique_reasons = _collapse_reasons(reasons)
+        out[sport] = {
+            "sport": sport,
+            "n_logged": len(sport_rows),
+            "n_candidates": sum(1 for r in sport_rows if r.get("kind") != KIND_SHADOW),
+            "n_shadow": sum(1 for r in sport_rows if r.get("kind") == KIND_SHADOW),
+            "n_settled": len(settled),
+            "n_open": len(sport_rows) - len(settled),
+            "segments": len({r.get("segment") for r in sport_rows if r.get("segment")}),
+            "segment_groups": len(qualifies),
+            "pnl": round(sum(pnls), 4),
+            "staked": round(staked, 4),
+            "roi": round(sum(pnls) / staked, 4) if staked else None,
+            "pnl_ci95": [round(ci[0], 4), round(ci[1], 4)] if ci else None,
+            "mean_clv_cents": round(stats.fmean(clvs), 4) if clvs else None,
+            "n_clv": len(clvs),
+            "share_clv_positive": (round(sum(1 for v in clvs if v > 0) / len(clvs), 4)
+                                    if clvs else None),
+            "excluded_legacy_total_rows": legacy_by_sport.get(sport, 0),
+            "qualifies_for_edge_claim": sport_qualifies,
+            "has_edge_claim": sport_qualifies,
+            "why_not_yet": (_why_not_yet(
+                unique_reasons,
+                n_settled=len(settled),
+                min_settled=gate_cfg["min_settled"],
+                has_shadow_only=bool(sport_rows) and all(r.get("kind") == KIND_SHADOW
+                                                        for r in sport_rows),
+            ) if not sport_qualifies else None),
+        }
+    return out
+
+
 def build(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict) -> dict:
     n_legacy = sum(1 for r in rows if _is_legacy_total(r))
+    # How many of the set-aside rows each sport had, so a sport can say so.
+    legacy_by_sport: dict[str, int] = {}
+    for r in rows:
+        if _is_legacy_total(r) and r.get("sport"):
+            legacy_by_sport[str(r["sport"])] = legacy_by_sport.get(str(r["sport"]), 0) + 1
     rows = [r for r in rows if not _is_legacy_total(r)]
     # Group by (segment, model_fingerprint) so an updated model starts a fresh
     # sample. The gate applies to each group independently.
@@ -180,6 +325,8 @@ def build(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict) -> dict
     for agg in per_segment.values():
         agg["fingerprints"] = sorted(agg["fingerprints"], key=lambda x: (x is None, str(x)))
 
+    per_sport = _per_sport(rows, table, gate_cfg, legacy_by_sport)
+
     return {
         "schema_version": 1,
         "gate": gate_cfg,
@@ -194,6 +341,7 @@ def build(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict) -> dict
             "excluded_legacy_total_rows": n_legacy,
         },
         "per_segment": per_segment,
+        "per_sport": per_sport,
         "segments": table,
     }
 
@@ -277,10 +425,23 @@ def main(argv: list[str] | None = None) -> int:
     report = build(rows, closing=closing, gate_cfg=segments_mod.gate(config))
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    out.write_text(json.dumps(_public(report), indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(render(report))
     print(f"\nwrote {out}")
     return 0
+
+
+def _public(report: dict) -> dict:
+    """The report as it is written: without the internal intermediates.
+
+    The segment summaries carry `_clv_values` so the per-sport roll-up can
+    combine them. That is a working value, not a figure, and the file the page
+    reads should carry only figures.
+    """
+    out = dict(report)
+    out["segments"] = {k: {sk: sv for sk, sv in v.items() if not sk.startswith("_")}
+                       for k, v in (report.get("segments") or {}).items()}
+    return out
 
 
 if __name__ == "__main__":
