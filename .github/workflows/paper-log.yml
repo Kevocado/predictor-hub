@@ -55,6 +55,15 @@ jobs:
         # SITE_FOR_SPORT), so a sport added there is added here by the test
         # tests/paper-workflows.test.mjs rather than by remembering.
         #
+        # EVERY one of these repos must HAVE a collector, or the run below fails
+        # rather than silently skipping a sport: a sport whose collector is
+        # missing reads as "no markets today", which is a different claim from
+        # "no collector", and the ledger's counts are then wrong in a way
+        # nothing shows. That is why the collectors land FIRST -- if this
+        # workflow reaches a repo with no data/lines, paper_log.py exits 3 and
+        # the ledger freezes. All five have both a collector workflow and
+        # committed data/lines.
+        #
         # Shallow on purpose and tracking main on purpose: this reads what those
         # repos ship, not a pinned commit, so a new committed ladder is picked up
         # the next time this runs. All are public.
