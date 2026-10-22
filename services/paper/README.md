@@ -81,9 +81,31 @@ skip reason by count, so the gap is visible rather than silent. Injecting a
 per-game probability for the real NBA games and nothing else produces 19 correctly
 sized candidates, which is how the pipeline was verified.
 
-Player props (WR/TE receptions, QB passing TDs) need a calibrated per-prop
-probability that no site publishes yet; the NFL API deliberately strips quantiles
-before responding. That is a separate change in the NFL repo, not a hub one.
+Player props (WR/TE receptions, QB passing TDs) are a separate change in the NFL
+repo, not a hub one, and what is missing there is a calibrated probability per
+rung rather than a model at all: the site's committed `public_snapshot.json`
+already carries a `receptions_p_over` for 269 of week 6's 415 player rows and a
+`passing_td_over_prob` for 46, and its `market-lines` endpoint already attaches a
+`model_p` to the receptions and passing-TD rungs it can match, but that number
+is the probability at the model's own line (`receptions_line_source` is
+`model_line`) copied onto every rung of the ladder, which is the same defect
+`paper/log.py::p_over_line` calls out for totals, and the rows behind it carry
+no `generated_at` (the endpoint falls back to the request time), no model
+version and no game, so nothing today can price a rung at that rung's own line
+or prove the probability predates the price it would be paired with. For
+`nfl:receptions` and `nfl:passing_tds` to become loggable candidates, the NFL
+repo would have to publish, in the committed snapshot this ledger already reads,
+one row per counted prop carrying the game the prop belongs to, a player id
+the ledger can match to a rung (the Kalshi player token, `NETHENDERSON32` in
+`KXNFLREC-26OCT22NECHI-NETHENDERSON32-4`, since the two sides spell the
+player's name differently), the rung's own line, the probability that the
+player reaches that line as a number in [0,1] and not a projection of the
+stat, the timestamp the probability was made, and the model version, so
+results can be grouped by model. Receptions prices are already collected (the
+21 October `data/lines` file holds 2,524 `KXNFLREC` rows), but `KXNFLPASSTDS`
+is not in the collector's series list, so QB passing TDs have no collected
+price either; until both halves land, both segments stay blocked and can only
+ever be shadows.
 
 `segments.json` is the place to change the pre-stated 4-point edge threshold, and
 `tests/test_gate.py` fails if the 300-bet floor is ever lowered. A gate that can
