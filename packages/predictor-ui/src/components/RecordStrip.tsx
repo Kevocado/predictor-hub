@@ -83,10 +83,10 @@ export function RecordStrip({
         <span className="font-pr-display text-sm font-semibold text-pr-text-faint">—</span>
       )}
       {rebuilt && rebuilt > 0 && (
-        <span className="text-xs text-pr-text-dim">{rebuilt} of them made after tip-off</span>
+        <span className="text-sm text-pr-text-dim">{rebuilt} of them made after tip-off</span>
       )}
       {preTip && preTip.settled > 0 && (
-        <span className="text-xs text-pr-text-dim">Before tip-off: {preTip.hits} of {preTip.settled}</span>
+        <span className="text-sm text-pr-text-dim">Before tip-off: {preTip.hits} of {preTip.settled}</span>
       )}
     </div>
   );

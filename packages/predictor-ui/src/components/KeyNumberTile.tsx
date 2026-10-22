@@ -72,7 +72,7 @@ export function KeyNumberTile({ tile, highlighted }: { tile: MarketTile; highlig
        *  anywhere. A key printed where a label belongs is the general shape of
        *  this bug; the words are the fix and they come from the caller's
        *  `label`, which is what that field is for. */}
-      <dt className="text-xs leading-snug text-pr-text-dim">{sub ?? tile.label}</dt>
+      <dt className="text-sm leading-snug text-pr-text-dim">{sub ?? tile.label}</dt>
     </dl>
   );
 }

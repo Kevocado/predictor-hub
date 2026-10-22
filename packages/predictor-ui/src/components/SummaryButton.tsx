@@ -115,7 +115,7 @@ export function SummaryButton({
       onClick={handleClick}
       disabled={loading}
       aria-busy={loading}
-      className="self-start rounded-pr border border-pr-rule bg-pr-panel-2 px-3 py-1.5 text-xs font-semibold text-pr-text transition-colors hover:border-pr-accent disabled:opacity-60"
+      className="self-start rounded-pr border border-pr-rule bg-pr-panel-2 px-3 py-1.5 text-sm font-semibold text-pr-text transition-colors hover:border-pr-accent disabled:opacity-60"
     >
       {loading ? "Writing…" : label}
     </button>

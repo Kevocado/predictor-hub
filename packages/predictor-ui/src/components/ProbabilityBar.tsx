@@ -118,7 +118,7 @@ function marketSplit(segments: Segment[], legend: Segment[]): Segment[] {
  *  the only thing that differs between a label that is a control and a label
  *  that is text is the element and its handlers — not one pixel of it. */
 const LABEL_CLASS =
-  "min-w-0 rounded-pr text-xs tabular-nums text-pr-text-dim underline-offset-4 transition-opacity duration-150 hover:text-pr-text focus-visible:text-pr-text";
+  "min-w-0 rounded-pr text-sm tabular-nums text-pr-text-dim underline-offset-4 transition-opacity duration-150 hover:text-pr-text focus-visible:text-pr-text";
 
 /** One segment's figures: a control when somebody is listening for it, and text
  *  when nobody is.
@@ -420,7 +420,7 @@ export function ProbabilityBar({
                 <span
                   key={s.label}
                   data-market={s.label}
-                  className="min-w-0 text-xs tabular-nums text-pr-text-faint"
+                  className="min-w-0 text-sm tabular-nums text-pr-text-faint"
                 >
                   {s.label} {pct(s.prob)}
                 </span>
