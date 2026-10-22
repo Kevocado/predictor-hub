@@ -100,7 +100,7 @@ function SummaryView({ summary, extras }: { summary: Summary; extras?: FixtureEx
         moment={extras?.moment}
       />
       {summary.news_date && (
-        <p className="text-xs text-pr-text-faint" data-testid="news-date">
+        <p className="text-sm text-pr-text-faint" data-testid="news-date">
           Team news from {summary.news_date}
         </p>
       )}
@@ -155,7 +155,7 @@ export function FixtureExplainer({ sport, state, bundle, request, extras, promis
             onUnavailable={handleUnavailable}
             label={panelState === "unavailable" ? "Try again" : "Get the AI summary"}
           />
-          <p className="max-w-[70ch] text-xs text-pr-text-faint" data-testid="ai-promise">{promise}</p>
+          <p className="max-w-[70ch] text-sm text-pr-text-faint" data-testid="ai-promise">{promise}</p>
         </div>
       )}
     </div>

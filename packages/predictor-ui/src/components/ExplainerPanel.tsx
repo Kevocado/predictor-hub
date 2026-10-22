@@ -333,7 +333,7 @@ export function ExplainerPanel({
               <span className="text-xs font-semibold uppercase tracking-wide text-pr-text-dim">Top projections</span>
               <ul className="flex flex-col gap-0.5">
                 {players.slice(0, 3).map((pl) => (
-                  <li key={pl.name} className="flex items-baseline justify-between gap-4 text-xs">
+                  <li key={pl.name} className="flex items-baseline justify-between gap-4 text-sm">
                     <span className="truncate text-pr-text">{pl.name}</span>
                     <span className="shrink-0 tabular-nums text-pr-text-dim">{pl.projection}</span>
                   </li>
@@ -345,7 +345,7 @@ export function ExplainerPanel({
         </div>
       )}
 
-      <p className="mt-1 text-xs text-pr-text-faint">{footer(data, now)}</p>
+      <p className="mt-1 text-sm text-pr-text-faint">{footer(data, now)}</p>
     </section>
   );
 }
