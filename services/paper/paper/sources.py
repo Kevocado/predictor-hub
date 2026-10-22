@@ -25,16 +25,21 @@ from __future__ import annotations
 
 import gzip
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 # Kalshi series whose ladder is about a game rather than a player. Only these can
 # ever pair with a game-level probability from a public snapshot.
-GAME_LEVEL_STATS = frozenset({"moneyline", "winner", "total", "btts"})
+#
+# "spread" and "btts" are here for the same reason "total" is: the rung is
+# about the game, not about a player. Kalshi's spread ladder is "<Team> wins by
+# over N points", so the rung is priced from the model's predicted margin at the
+# rung's own line; "btts" is priced from PL's published btts_yes_prob.
+GAME_LEVEL_STATS = frozenset({"moneyline", "winner", "total", "btts", "spread"})
 
-# Which sibling repo holds which sport's lines. The collectors only exist for
-# these two: there is no CFB collector at all, which is why CFB is shadow-only.
-SITE_FOR_SPORT = {"nfl": "NFL_Predictor", "nba": "NBA_Predictor", "pl": "PL_Predictor"}
+# Which sibling repo holds which sport's lines.
+SITE_FOR_SPORT = {"nfl": "NFL_Predictor", "nba": "NBA_Predictor",
+                  "pl": "PL_Predictor", "cfb": "CFB_Predictor"}
 
 _SPORT_FOR_SERIES_PREFIX = {
     "KXNFL": "nfl",
@@ -270,6 +275,14 @@ def snapshot_games(snapshot: dict | None, sport: str) -> dict[str, dict]:
     game has a final score. Those unplayed games are the only ones a candidate
     can come from.
 
+    CFB publishes the same shape (`weeks.<w>.predictions[<game_id>]` with
+    home_win_prob, away_win_prob, predicted_margin, predicted_total and the
+    two sigmas), but its teams are CFBD's NAMES while Kalshi's event ticker
+    carries the league's CODES. `cfb_games` therefore resolves the codes from
+    the Kalshi market titles and matches on those, because the codes do not
+    have the ambiguity the names do ("Appalachian St." and "App State" are one
+    school, "San José State" is spelled two ways).
+
     NBA publishes `schedule` (results) and `manifest.metrics` (aggregate
     accuracy, sigma, n) and nothing per-game, so this returns {} for NBA. That
     is a real gap and not a parsing failure — see the PR description.
@@ -285,6 +298,8 @@ def snapshot_games(snapshot: dict | None, sport: str) -> dict[str, dict]:
     if not snapshot:
         return {}
     games: dict[str, dict] = {}
+    if sport == "cfb":
+        return cfb_games(snapshot)
     if sport == "nfl":
         generated_at = snapshot.get("generated_at")
         for week in (snapshot.get("weeks") or {}).values():
@@ -413,6 +428,351 @@ def _latest_pick_per_game(picks: list[dict]) -> dict[str, dict]:
     return latest
 
 
+#: Each CFBD team name -> (Kalshi league code, the name Kalshi uses).
+#:
+#: Kalshi's CFB event ticker names the two teams by code
+#: (`KXNCAAFGAME-26OCT24BUFFMOH`) and the codes are not a fixed width -- `BUFF`
+#: is four letters and `MOH` is three -- so the ticker's team string cannot be
+#: split without knowing the two teams. The snapshot carries CFBD's names, so
+#: the codes have to be mapped to them somewhere.
+#:
+#: This is an explicit table rather than a fuzzy match on purpose. "App State"
+#: and "Appalachian St." are one school, "San José State" is spelled two ways
+#: across the two sources, and five codes (CSU, KSU, NCST, WSU, WEB) are shared
+#: between an FBS school and an FCS one of the same initials. A normalising
+#: match would silently pair the wrong games, and a wrong pairing is a wrong
+#: probability on a real bet.
+#:
+#: The second element of each pair is the name KALSHI uses, which is not always
+#: the name CFBD uses: Kalshi writes "Northern Colorado" where CFBD writes
+#: "Northern Colo.", and "Ohio St." where CFBD writes "Ohio State". The
+#: ledger matches Kalshi's own market titles, so it needs Kalshi's spelling.
+#:
+#: Every entry is a fact about Kalshi's own published market titles, not a
+#: guess: each code was read off the `<Team> wins` title of the market that
+#: carries it, and each Kalshi name was checked to be a real title for that
+#: code. A team missing from the table simply does not join, and the ledger
+#: says so rather than guessing.
+CFB_TEAM_CODES: dict[str, tuple[str, str]] = {
+    "Abilene Christian": ("AC", "Abilene Christian"),
+    "Air Force": ("AFA", "Air Force"),
+    "Akron": ("AKR", "Akron"),
+    "Alabama": ("ALA", "Alabama"),
+    "Alabama State": ("ALST", "Alabama St."),
+    "Alcorn State": ("ALCN", "Alcorn St."),
+    "App State": ("APP", "Appalachian St."),
+    "Arizona": ("ARIZ", "Arizona"),
+    "Arizona State": ("ASU", "Arizona St."),
+    "Arkansas": ("ARK", "Arkansas"),
+    "Arkansas State": ("ARST", "Arkansas St."),
+    "Arkansas-Pine Bluff": ("ARPB", "Arkansas-Pine Bluff"),
+    "Army": ("ARMY", "Army"),
+    "Auburn": ("AUB", "Auburn"),
+    "Austin Peay": ("PEAY", "Austin Peay"),
+    "BYU": ("BYU", "BYU"),
+    "Ball State": ("BALL", "Ball St."),
+    "Baylor": ("BAY", "Baylor"),
+    "Bethune-Cookman": ("COOK", "Bethune-Cookman"),
+    "Boise State": ("BSU", "Boise St."),
+    "Boston College": ("BC", "Boston College"),
+    "Bowling Green": ("BGSU", "Bowling Green"),
+    "Bryant": ("BRY", "Bryant"),
+    "Bucknell": ("BUCK", "Bucknell"),
+    "Buffalo": ("BUFF", "Buffalo"),
+    "Cal Poly": ("CP", "Cal Poly"),
+    "California": ("CAL", "California"),
+    "Campbell": ("CAMP", "Campbell"),
+    "Central Arkansas": ("CARK", "Central Arkansas"),
+    "Central Connecticut": ("CCSU", "Central Connecticut St."),
+    "Central Michigan": ("CMU", "Central Michigan"),
+    "Charleston Southern": ("CHSO", "Charleston Southern"),
+    "Charlotte": ("CHAR", "Charlotte"),
+    "Chattanooga": ("CHAT", "Chattanooga"),
+    "Cincinnati": ("CIN", "Cincinnati"),
+    "Clemson": ("CLEM", "Clemson"),
+    "Coastal Carolina": ("CCAR", "Coastal Carolina"),
+    "Colgate": ("COLG", "Colgate"),
+    "Colorado": ("COLO", "Colorado"),
+    "Colorado State": ("CSU", "Colorado St."),
+    "Delaware": ("DEL", "Delaware"),
+    "Delaware State": ("DSU", "Delaware St."),
+    "Duke": ("DUKE", "Duke"),
+    "Duquesne": ("DUQ", "Duquesne"),
+    "East Carolina": ("ECU", "East Carolina"),
+    "East Tennessee State": ("ETSU", "East Tennessee St."),
+    "East Texas A&M": ("ETAM", "East Texas A&M"),
+    "Eastern Illinois": ("EIU", "Eastern Illinois"),
+    "Eastern Kentucky": ("EKY", "Eastern Kentucky"),
+    "Eastern Michigan": ("EMU", "Eastern Michigan"),
+    "Eastern Washington": ("EWU", "Eastern Washington"),
+    "Elon": ("ELON", "Elon"),
+    "Florida": ("FLA", "Florida"),
+    "Florida A&M": ("FAMU", "Florida A&M"),
+    "Florida Atlantic": ("FAU", "Florida Atlantic"),
+    "Florida International": ("FIU", "Florida International"),
+    "Florida State": ("FSU", "Florida St."),
+    "Fordham": ("FOR", "Fordham"),
+    "Fresno State": ("FRES", "Fresno St."),
+    "Furman": ("FUR", "Furman"),
+    "Gardner-Webb": ("WEBB", "Gardner-Webb"),
+    "Georgia": ("UGA", "Georgia"),
+    "Georgia Southern": ("GASO", "Georgia Southern"),
+    "Georgia State": ("GAST", "Georgia St."),
+    "Georgia Tech": ("GT", "Georgia Tech"),
+    "Grambling": ("GRAM", "Grambling St."),
+    "Hampton": ("HAMP", "Hampton"),
+    "Hawai'i": ("HAW", "Hawai'i"),
+    "Holy Cross": ("HC", "Holy Cross"),
+    "Houston": ("HOU", "Houston"),
+    "Houston Christian": ("HCU", "Houston Christian"),
+    "Howard": ("HOW", "Howard"),
+    "Idaho": ("IDHO", "Idaho"),
+    "Idaho State": ("IDST", "Idaho St."),
+    "Illinois": ("ILL", "Illinois"),
+    "Illinois State": ("ILST", "Illinois St."),
+    "Incarnate Word": ("IW", "Incarnate Word"),
+    "Indiana": ("IND", "Indiana"),
+    "Indiana State": ("INST", "Indiana St."),
+    "Iowa": ("IOWA", "Iowa"),
+    "Iowa State": ("ISU", "Iowa St."),
+    "Jacksonville State": ("JVST", "Jacksonville St."),
+    "James Madison": ("JMU", "James Madison"),
+    "Kansas": ("KU", "Kansas"),
+    "Kansas State": ("KSU", "Kansas St."),
+    "Kennesaw State": ("KENN", "Kennesaw St."),
+    "Kent State": ("KENT", "Kent St."),
+    "Kentucky": ("UK", "Kentucky"),
+    "LSU": ("LSU", "LSU"),
+    "Lafayette": ("LAF", "Lafayette"),
+    "Lamar": ("LAM", "Lamar"),
+    "Liberty": ("LIB", "Liberty"),
+    "Lindenwood": ("LINW", "Lindenwood"),
+    "Long Island University": ("LIU", "LIU"),
+    "Louisiana": ("ULL", "Louisiana"),
+    "Louisiana Tech": ("LT", "Louisiana Tech"),
+    "Louisville": ("LOU", "Louisville"),
+    "Maine": ("ME", "Maine"),
+    "Marshall": ("MRSH", "Marshall"),
+    "Maryland": ("MD", "Maryland"),
+    "Massachusetts": ("MASS", "UMass"),
+    "McNeese": ("MCNS", "McNeese"),
+    "Memphis": ("MEM", "Memphis"),
+    "Mercer": ("MER", "Mercer"),
+    "Mercyhurst": ("MHU", "Mercyhurst"),
+    "Merrimack": ("MRMK", "Merrimack"),
+    "Miami": ("MIA", "Miami (FL)"),
+    "Miami (OH)": ("MOH", "Miami (OH)"),
+    "Michigan": ("MICH", "Michigan"),
+    "Michigan State": ("MSU", "Michigan St."),
+    "Middle Tennessee": ("MTU", "Middle Tennessee"),
+    "Minnesota": ("MINN", "Minnesota"),
+    "Mississippi State": ("MSST", "Mississippi St."),
+    "Mississippi Valley State": ("MVSU", "Mississippi Valley St."),
+    "Missouri": ("MIZZ", "Missouri"),
+    "Missouri State": ("MOSU", "Missouri St."),
+    "Monmouth": ("MONM", "Monmouth"),
+    "Montana": ("MONT", "Montana"),
+    "Montana State": ("MTST", "Montana St."),
+    "Morgan State": ("MORG", "Morgan St."),
+    "Murray State": ("MURR", "Murray St."),
+    "NC State": ("NCST", "NC St."),
+    "Navy": ("NAVY", "Navy"),
+    "Nebraska": ("NEB", "Nebraska"),
+    "Nevada": ("NEV", "Nevada"),
+    "New Hampshire": ("UNH", "New Hampshire"),
+    "New Mexico": ("UNM", "New Mexico"),
+    "New Mexico State": ("NMSU", "New Mexico St."),
+    "Nicholls": ("NICH", "Nicholls St."),
+    "Norfolk State": ("NORF", "Norfolk St."),
+    "North Alabama": ("UNA", "North Alabama"),
+    "North Carolina": ("UNC", "North Carolina"),
+    "North Carolina A&T": ("NCAT", "North Carolina A&T"),
+    "North Carolina Central": ("NCCU", "North Carolina Central"),
+    "North Dakota": ("UND", "North Dakota"),
+    "North Dakota State": ("NDSU", "North Dakota St."),
+    "North Texas": ("UNT", "North Texas"),
+    "Northern Arizona": ("NAU", "Northern Arizona"),
+    "Northern Colorado": ("UNCO", "Northern Colorado"),
+    "Northern Illinois": ("NIU", "Northern Illinois"),
+    "Northern Iowa": ("UNI", "Northern Iowa"),
+    "Northwestern": ("NW", "Northwestern"),
+    "Northwestern State": ("NWST", "Northwestern St."),
+    "Notre Dame": ("ND", "Notre Dame"),
+    "Ohio": ("OHIO", "Ohio"),
+    "Ohio State": ("OSU", "Ohio St."),
+    "Oklahoma": ("OKLA", "Oklahoma"),
+    "Oklahoma State": ("OKST", "Oklahoma St."),
+    "Old Dominion": ("ODU", "Old Dominion"),
+    "Ole Miss": ("MISS", "Ole Miss"),
+    "Oregon": ("ORE", "Oregon"),
+    "Oregon State": ("ORST", "Oregon St."),
+    "Penn State": ("PSU", "Penn St."),
+    "Pittsburgh": ("PITT", "Pittsburgh"),
+    "Portland State": ("PRST", "Portland St."),
+    "Prairie View A&M": ("PV", "Prairie View A&M"),
+    "Purdue": ("PUR", "Purdue"),
+    "Rhode Island": ("URI", "Rhode Island"),
+    "Rice": ("RICE", "Rice"),
+    "Richmond": ("RICH", "Richmond"),
+    "Robert Morris": ("RMU", "Robert Morris"),
+    "Rutgers": ("RUTG", "Rutgers"),
+    "SE Louisiana": ("SELA", "Southeastern Louisiana"),
+    "SMU": ("SMU", "SMU"),
+    "Sacramento State": ("SAC", "Sacramento St."),
+    "Sacred Heart": ("SHU", "Sacred Heart"),
+    "Sam Houston": ("SHSU", "Sam Houston"),
+    "Samford": ("SAM", "Samford"),
+    "San Diego State": ("SDSU", "San Diego St."),
+    "San José State": ("SJSU", "San Jose St."),
+    "South Alabama": ("USA", "South Alabama"),
+    "South Carolina": ("SCAR", "South Carolina"),
+    "South Dakota": ("SDAK", "South Dakota"),
+    "South Dakota State": ("SDST", "South Dakota St."),
+    "South Florida": ("USF", "South Florida"),
+    "Southeast Missouri State": ("SEMO", "Southeast Missouri St."),
+    "Southern": ("SOU", "Southern University"),
+    "Southern Illinois": ("SIU", "Southern Illinois"),
+    "Southern Miss": ("USM", "Southern Miss"),
+    "Southern Utah": ("SUU", "Southern Utah"),
+    "Stanford": ("STAN", "Stanford"),
+    "Stonehill": ("STNH", "Stonehill"),
+    "Stony Brook": ("STON", "Stony Brook"),
+    "Syracuse": ("SYR", "Syracuse"),
+    "TCU": ("TCU", "TCU"),
+    "Tarleton State": ("TARL", "Tarleton St."),
+    "Temple": ("TEM", "Temple"),
+    "Tennessee": ("TENN", "Tennessee"),
+    "Tennessee State": ("TNST", "Tennessee St."),
+    "Tennessee Tech": ("TNTC", "Tennessee Tech"),
+    "Texas": ("TEX", "Texas"),
+    "Texas A&M": ("TXAM", "Texas A&M"),
+    "Texas Southern": ("TXSO", "Texas Southern"),
+    "Texas State": ("TXST", "Texas St."),
+    "Texas Tech": ("TTU", "Texas Tech"),
+    "The Citadel": ("CIT", "The Citadel"),
+    "Toledo": ("TOL", "Toledo"),
+    "Towson": ("TOWS", "Towson"),
+    "Troy": ("TROY", "Troy"),
+    "Tulane": ("TULN", "Tulane"),
+    "Tulsa": ("TLSA", "Tulsa"),
+    "UAB": ("UAB", "UAB"),
+    "UAlbany": ("ALBY", "University at Albany"),
+    "UC Davis": ("UCD", "UC Davis"),
+    "UCF": ("UCF", "UCF"),
+    "UCLA": ("UCLA", "UCLA"),
+    "UConn": ("CONN", "UConn"),
+    "UL Monroe": ("ULM", "Louisiana-Monroe"),
+    "UNLV": ("UNLV", "UNLV"),
+    "USC": ("USC", "USC"),
+    "UT Martin": ("UTM", "Tennessee-Martin"),
+    "UT Rio Grande Valley": ("UTRGV", "UT Rio Grande Valley"),
+    "UTEP": ("UTEP", "UTEP"),
+    "UTSA": ("UTSA", "UTSA"),
+    "Utah": ("UTAH", "Utah"),
+    "Utah State": ("USU", "Utah St."),
+    "Utah Tech": ("UTU", "Utah Tech"),
+    "VMI": ("VMI", "VMI"),
+    "Vanderbilt": ("VAN", "Vanderbilt"),
+    "Villanova": ("VILL", "Villanova"),
+    "Virginia": ("UVA", "Virginia"),
+    "Virginia Tech": ("VT", "Virginia Tech"),
+    "Wagner": ("WAG", "Wagner"),
+    "Wake Forest": ("WAKE", "Wake Forest"),
+    "Washington": ("WASH", "Washington"),
+    "Washington State": ("WSU", "Washington St."),
+    "Weber State": ("WEB", "Weber St."),
+    "West Georgia": ("UWGA", "West Georgia"),
+    "West Virginia": ("WVU", "West Virginia"),
+    "Western Carolina": ("WCU", "Western Carolina"),
+    "Western Illinois": ("WIU", "Western Illinois"),
+    "Western Kentucky": ("WKU", "Western Kentucky"),
+    "Western Michigan": ("WMU", "Western Michigan"),
+    "William & Mary": ("WM", "William & Mary"),
+    "Wisconsin": ("WIS", "Wisconsin"),
+    "Wofford": ("WOF", "Wofford"),
+    "Wyoming": ("WYO", "Wyoming"),
+    "Youngstown State": ("YSU", "Youngstown St."),
+}
+
+#: How far apart a Kalshi event date and a snapshot game date may be and still
+#: be the same game.
+#:
+#: Kalshi's event ticker carries the game's LOCAL date and the snapshot's
+#: `gameday` is a UTC instant, so an evening kickoff is the 24th in New York
+#: and the 25th in UTC. One day either way covers that. Two days would start
+#: admitting a different game on the same weekend, so it is one.
+CFB_DATE_TOLERANCE_DAYS = 1
+
+
+def cfb_games(snapshot: dict | None) -> dict[str, dict]:
+    """CFB games from the snapshot, keyed by game_id, with Kalshi's team codes.
+
+    The snapshot's `weeks.<w>.games` carries CFBD's team names and the
+    `weeks.<w>.predictions[<game_id>]` entry carries the model's per-game
+    numbers. A game with a final score is over, so its probability is history
+    rather than something a candidate could have been logged against, and it
+    is left out exactly as NFL's are.
+    """
+    if not snapshot:
+        return {}
+    generated_at = snapshot.get("generated_at")
+    games: dict[str, dict] = {}
+    for week in (snapshot.get("weeks") or {}).values():
+        if not isinstance(week, dict):
+            continue
+        finals = {
+            g.get("game_id"): g
+            for g in (week.get("games") or [])
+            if isinstance(g, dict) and g.get("game_id")
+        }
+        for game_id, probs in (week.get("predictions") or {}).items():
+            if not isinstance(probs, dict):
+                continue
+            game = finals.get(game_id) or {}
+            if game.get("home_score") is not None or game.get("away_score") is not None:
+                continue
+            home_entry = CFB_TEAM_CODES.get(game.get("home_team"))
+            away_entry = CFB_TEAM_CODES.get(game.get("away_team"))
+            if not home_entry or not away_entry:
+                continue
+            home_code, home_kalshi_name = home_entry
+            away_code, away_kalshi_name = away_entry
+            games[str(game_id)] = {
+                "game_id": str(game_id),
+                "sport": "cfb",
+                "generated_at": generated_at,
+                "model_fingerprint": probs.get("model_version"),
+                "date": str(game.get("gameday") or "")[:10],
+                # The Kalshi codes, so the ticker joins on them.
+                "home": home_code,
+                "away": away_code,
+                # The team's names too: the spread rungs are named after a team
+                # ("Dartmouth wins by over 6.5 points") and the ledger has to
+                # know which side a rung is about. The Kalshi spelling is the
+                # one the rung's own title uses.
+                "home_name": game.get("home_team"),
+                "away_name": game.get("away_team"),
+                "home_kalshi_name": home_kalshi_name,
+                "away_kalshi_name": away_kalshi_name,
+                "total_mu": probs.get("predicted_total"),
+                "total_sigma": probs.get("total_sigma"),
+                # The model's predicted margin and its sigma: Kalshi's spread
+                # ladder is a margin market ("<Team> wins by over N points"),
+                # so a rung's probability is P(that team's margin > N).
+                "margin_mu": probs.get("predicted_margin"),
+                "margin_sigma": probs.get("sigma"),
+                "probs": {
+                    "home_win": probs.get("home_win_prob"),
+                    "away_win": probs.get("away_win_prob"),
+                    "over": None,
+                    "under": None,
+                    "home_cover": None,
+                    "away_cover": None,
+                },
+            }
+    return games
+
+
 def _nba_pick_snapshot(pick: dict) -> dict:
     """One game's latest pick, shaped like a snapshot game entry.
 
@@ -522,13 +882,19 @@ def join_games(parts: dict, games: dict[str, dict]) -> dict | None:
 
     Resolves the team-code ambiguity by trying both orderings against a
     specific game's two known codes rather than guessing a split length.
+
+    The date is compared with a one-day tolerance, because Kalshi's event
+    ticker carries the game's LOCAL date while the snapshot's `gameday` is a
+    UTC instant: an evening kickoff is the 24th in New York and the 25th in
+    UTC. Two teams can only be within a day of each other once in a season, so
+    the tolerance cannot pair two different games.
     """
     teams, date = parts["teams"], parts["date"]
     for game in games.values():
         home, away = game.get("home"), game.get("away")
         if not home or not away:
             continue
-        if game.get("date") != date:
+        if not _dates_within(game.get("date"), date, CFB_DATE_TOLERANCE_DAYS):
             continue
         pair = f"{home}{away}"
         if teams == pair:
@@ -536,6 +902,20 @@ def join_games(parts: dict, games: dict[str, dict]) -> dict | None:
         if teams == f"{away}{home}":
             return game
     return None
+
+
+def _dates_within(game_date, ticker_date, tolerance_days: int) -> bool:
+    """True when two ISO dates are the same day, or within `tolerance_days`."""
+    if not isinstance(game_date, str) or not isinstance(ticker_date, str):
+        return False
+    if game_date == ticker_date:
+        return True
+    try:
+        parsed_game = date.fromisoformat(game_date[:10])
+        parsed_ticker = date.fromisoformat(ticker_date[:10])
+    except ValueError:
+        return False
+    return abs((parsed_game - parsed_ticker).days) <= tolerance_days
 
 
 def selection(row: dict) -> str | None:

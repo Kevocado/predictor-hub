@@ -76,6 +76,57 @@ SCORE_GRID_MODEL_BASIS = "score_grid at the rung line"
 #: The basis recorded on a row priced from PL's published BTTS probability.
 BTTS_MODEL_BASIS = "published btts_yes_prob"
 
+#: The basis recorded on a row priced from the model's margin.
+SPREAD_MODEL_BASIS = "normal(predicted_margin, sigma) at the rung line"
+
+
+def p_covers_line(mu, sigma, line) -> float | None:
+    """P(margin > line) for a Normal(mu, sigma) margin; None if unusable.
+
+    Kalshi's spread ladder is a MARGIN market -- "Dartmouth wins by over 6.5
+    points" -- so the probability is the chance the team's margin exceeds the
+    rung's own line. Every rung has its own line, so one figure cannot price
+    the ladder.
+    """
+    return p_over_line(mu, sigma, line)
+
+
+def _negate(value):
+    """The negative of a number, or None if it is not one."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return -float(value)
+
+
+def spread_side(row: dict, game: dict) -> str | None:
+    """Which side of the game a spread rung is about, or None.
+
+    A spread rung is named after a TEAM in its title ("Dartmouth wins by over
+    6.5 points"), not after a side, and its ticker suffix carries the team's
+    code with the line appended ("DART7" for 6.5 points), so the suffix cannot
+    be read as a code either. The title is the only field that names the team
+    plainly, so it is what this matches on.
+
+    The comparison is against the game's team names AS KALSHI SPELLS THEM, not
+    as the model's own snapshot spells them: Kalshi writes "Northern Colorado"
+    where CFBD writes "Northern Colo.", and "Ohio St." where CFBD writes "Ohio
+    State". Matching the title against the model's spelling would refuse most
+    of the spread ladder over a spelling difference.
+
+    A rung about a team that is not in the game matches neither and is refused.
+    """
+    title = row.get("title")
+    if not isinstance(title, str):
+        return None
+    subject = title.split(" wins by over", 1)[0].strip()
+    if not subject:
+        return None
+    for side in ("home", "away"):
+        for name in (game.get(f"{side}_kalshi_name"), game.get(f"{side}_name")):
+            if name and subject == name:
+                return side
+    return None
+
 
 def _iso(stamp: datetime | None) -> str | None:
     return stamp.isoformat() if stamp else None
@@ -153,6 +204,20 @@ def candidate_rows(rows: list[dict], games_by_sport: dict[str, dict], config: di
             # outright by PL. No side is inferred from the grid.
             model_p = probs.get("btts_yes")
             model_basis = BTTS_MODEL_BASIS
+        elif market == "spread":
+            # "<Team> wins by over X points" YES contract: P(that team's margin
+            # > X), from the model's predicted margin and sigma, at THIS rung's
+            # line. The away team's margin is the negative of the model's home
+            # margin, so the sign follows the side the rung is about.
+            side_of_rung = spread_side(row, game)
+            if side_of_rung == "home":
+                model_p = p_covers_line(game.get("margin_mu"), game.get("margin_sigma"), row.get("line"))
+            elif side_of_rung == "away":
+                model_p = p_covers_line(
+                    _negate(game.get("margin_mu")), game.get("margin_sigma"), row.get("line"))
+            else:
+                model_p = None
+            model_basis = SPREAD_MODEL_BASIS
         elif sport == "pl":
             # PL moneylines have three outcomes: home win, tie, away win. Each is
             # its own market (YES = that outcome), so the model probability is
