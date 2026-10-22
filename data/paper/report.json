@@ -7,15 +7,15 @@
   },
   "per_segment": {
     "nfl:moneyline:0.50-0.60": {
-      "all_time_n": 1,
-      "current_model_n": 1,
+      "all_time_n": 2,
+      "current_model_n": 2,
       "fingerprints": [
         null
       ]
     },
     "nfl:moneyline:0.60-0.70": {
-      "all_time_n": 2,
-      "current_model_n": 2,
+      "all_time_n": 3,
+      "current_model_n": 3,
       "fingerprints": [
         null
       ]
@@ -35,8 +35,8 @@
       ]
     },
     "nfl:total:0.60-0.70": {
-      "all_time_n": 4,
-      "current_model_n": 4,
+      "all_time_n": 5,
+      "current_model_n": 5,
       "fingerprints": [
         null
       ]
@@ -103,8 +103,8 @@
       "mean_model_p": 0.5917,
       "model_fingerprint": null,
       "n_clv": 0,
-      "n_logged": 1,
-      "n_open": 0,
+      "n_logged": 2,
+      "n_open": 1,
       "n_settled": 1,
       "n_void": 0,
       "pnl": -0.42,
@@ -142,8 +142,8 @@
       "mean_model_p": 0.6372,
       "model_fingerprint": null,
       "n_clv": 0,
-      "n_logged": 2,
-      "n_open": 1,
+      "n_logged": 3,
+      "n_open": 2,
       "n_settled": 1,
       "n_void": 0,
       "pnl": -0.53,
@@ -242,7 +242,6 @@
         "widening": null
       },
       "disqualifying": [
-        "shadow rows carry no stake and cannot support an edge claim",
         "only 0 settled bets, need 300",
         "no settled bets to put an interval on",
         "calibration trend needs 100 settled bets, have 0"
@@ -256,8 +255,8 @@
       "mean_model_p": null,
       "model_fingerprint": null,
       "n_clv": 0,
-      "n_logged": 4,
-      "n_open": 4,
+      "n_logged": 5,
+      "n_open": 5,
       "n_settled": 0,
       "n_void": 0,
       "pnl": 0,
@@ -451,8 +450,8 @@
   },
   "totals": {
     "excluded_legacy_total_rows": 116,
-    "n_candidates": 16,
-    "n_logged": 28,
+    "n_candidates": 19,
+    "n_logged": 31,
     "n_settled": 3,
     "n_shadow": 12,
     "segment_groups": 10,
