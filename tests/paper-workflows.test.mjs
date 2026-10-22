@@ -33,6 +33,29 @@ test("the ledger knows about every sport the workflows clone", () => {
   assert.ok(Object.keys(siteForSport).length >= 3, "sources.py lists no sports");
 });
 
+// The sports the ledger reads ladders for, and the repo each one's ladders live
+// in. This is the list the workflows clone, and it is written out here rather
+// than only derived, so that a sport added to sources.py without its repo
+// being cloned is caught. The F1 and CFB entries come from the PRs that add
+// those sports; the workflows have to know about them from the start.
+const EXPECTED_SITES = {
+  nfl: "NFL_Predictor",
+  nba: "NBA_Predictor",
+  pl: "PL_Predictor",
+  cfb: "CFB_Predictor",
+  f1: "F1_Predictor",
+};
+
+test("the workflows clone every sport the ledger can read, including F1 and CFB", () => {
+  for (const [sport, repo] of Object.entries(EXPECTED_SITES)) {
+    assert.equal(
+      siteForSport[sport] ?? null,
+      repo,
+      `sources.py maps ${sport} to ${siteForSport[sport] ?? "(nothing)"}, expected ${repo}`
+    );
+  }
+});
+
 for (const [name, yml] of [["paper-log.yml", logYml], ["paper-settle.yml", settleYml]]) {
   test(`${name} clones every repo the ledger reads lines from`, () => {
     const cloned = [...yml.matchAll(/for repo in ([\w ]+); do/g)]
