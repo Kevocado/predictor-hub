@@ -39,15 +39,37 @@ def _won(row: dict) -> bool:
     return row.get("outcome") == "yes"
 
 
+# The bucket a row with no game id shares with the other such rows of its
+# segment. It is not a game id, and it never counts as a game.
+NO_GAME_ID = "\x00no_game_id:"
+
+
+def game_id_of(row: dict) -> str:
+    """The row's game id, or "" when it has none.
+
+    `game_id` is the site's own game identifier for NFL, NBA, CFB and PL, and
+    the RACE for F1 (whose contracts are one per driver per race).
+    """
+    return str(row.get("game_id") or "").strip()
+
+
 def cluster_key(row: dict) -> str:
     """The key a ledger row's evidence is clustered by: one game, one race.
 
-    `game_id` is the site's own game identifier for NFL, NBA, CFB and PL, and
-    the RACE for F1 (whose contracts are one per driver per race). A row with
-    no game_id clusters on its ticker, which is at least stable and still
-    groups the rungs of one market.
+    A row WITH a game id clusters on it. A row WITHOUT one must NOT fall back
+    to its ticker: a ladder's rung tickers are unique per rung -- a 12-rung CFB
+    spread game holds 12 distinct tickers -- so a ticker fallback would make
+    every rung its own "game". That inflates the game count and narrows the
+    interval, which is the exact bug the clustering exists to fix. It is
+    fail-open, and it was fail-open here until a reviewer caught it.
+
+    So rows with no game id share ONE bucket per segment instead. They count
+    as no games at all, and the report says how many rows they were.
     """
-    return str(row.get("game_id") or row.get("ticker") or "")
+    gid = game_id_of(row)
+    if gid:
+        return gid
+    return NO_GAME_ID + str(row.get("segment") or "")
 
 
 def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
@@ -73,8 +95,9 @@ def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
     # thirteen independent observations, which makes the interval far too
     # narrow.
     #
-    settled_games = {cluster_key(r) for r in settled}
-    all_games = {cluster_key(r) for r in rows}
+    settled_games = {game_id_of(r) for r in settled} - {""}
+    all_games = {game_id_of(r) for r in rows} - {""}
+    n_settled_no_game_id = sum(1 for r in settled if not game_id_of(r))
 
     # The interval is on the mean pnl PER GAME, which is a different quantity
     # from the old per-bet interval and a larger number.
@@ -105,6 +128,12 @@ def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
     min_settled_games = int(gate_cfg.get("min_settled_games", MIN_SETTLED_GAMES_FLOOR))
     if len(settled_games) < min_settled_games:
         reasons.append(f"only {len(settled_games)} settled games, need {min_settled_games}")
+    if n_settled_no_game_id:
+        # A row that cannot be attributed to a game is evidence we cannot
+        # count, and the interval lumps it into one bucket, so the counts and
+        # the interval are not describing the same population. Fail closed.
+        reasons.append(f"{n_settled_no_game_id} settled rows have no game id, "
+                       "so their games are not counted")
     if gate_cfg["require_ci_excludes_zero"]:
         if ci is None:
             reasons.append("no settled bets to put an interval on")
@@ -134,6 +163,10 @@ def summarise(rows: list[dict], *, closing: dict[str, dict], gate_cfg: dict,
         "n_games": len(all_games),
         "n_settled_bets": len(settled),
         "n_settled_games": len(settled_games),
+        # Rows that cannot be attributed to a game. They are counted as no
+        # games, and the gate says so.
+        "n_rows_no_game_id": sum(1 for r in rows if not game_id_of(r)),
+        "n_settled_no_game_id": n_settled_no_game_id,
         "hit_rate": round(sum(outcomes) / len(outcomes), 4) if outcomes else None,
         "mean_model_p": round(stats.fmean(r["model_p"] for r in settled), 4) if settled else None,
         "mean_market_price": round(stats.fmean(r["market_price"] for r in settled), 4) if settled else None,
@@ -274,8 +307,9 @@ def _per_sport(rows: list[dict], table: dict[str, dict], gate_cfg: dict,
         ci = stats.bootstrap_mean_ci_clustered(
             [(cluster_key(r), float(r.get("pnl_per_contract") or 0.0)) for r in settled]
         )
-        settled_games = {cluster_key(r) for r in settled}
-        all_games = {cluster_key(r) for r in sport_rows}
+        settled_games = {game_id_of(r) for r in settled} - {""}
+        all_games = {game_id_of(r) for r in sport_rows} - {""}
+        n_settled_no_game_id = sum(1 for r in settled if not game_id_of(r))
         clvs = []
         for key, s in table.items():
             if not key.startswith(f"{sport}:"):
@@ -310,6 +344,8 @@ def _per_sport(rows: list[dict], table: dict[str, dict], gate_cfg: dict,
             "n_games": len(all_games),
             "n_settled_bets": len(settled),
             "n_settled_games": len(settled_games),
+            "n_rows_no_game_id": sum(1 for r in sport_rows if not game_id_of(r)),
+            "n_settled_no_game_id": n_settled_no_game_id,
             "segments": len({r.get("segment") for r in sport_rows if r.get("segment")}),
             "segment_groups": len(qualifies),
             "pnl": round(sum(pnls), 4),

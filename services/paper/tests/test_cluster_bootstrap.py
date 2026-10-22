@@ -29,7 +29,7 @@ import pytest
 from conftest import config
 
 from paper import stats
-from paper.report import build, summarise
+from paper.report import build, cluster_key, summarise
 from paper.segments import gate as gate_of
 
 GATE = gate_of(config())
@@ -298,3 +298,93 @@ def test_the_per_sport_row_also_carries_both_counts_and_both_floors():
     assert per_sport["n_games"] == 3
     assert per_sport["n_settled_bets"] == 120
     assert per_sport["n_settled_games"] == 3
+
+
+# --- a row with no game id --------------------------------------------------
+#
+# The cluster key must NOT fall back to the ticker. A ladder's rung tickers
+# are unique per rung -- a 12-rung CFB spread game holds 12 distinct tickers
+# -- so a ticker fallback makes every rung its own "game". That INFLATES the
+# game count and NARROWS the interval: the exact bug the clustering exists to
+# fix, in the opposite direction. It is fail-open, and it was fail-open here
+# until a reviewer caught it.
+
+def _strip_game_id(rows: list[dict]) -> list[dict]:
+    """The same rows, with no game id on any of them."""
+    for r in rows:
+        r.pop("game_id", None)
+    return rows
+
+
+def test_the_rung_tickers_really_are_distinct():
+    """The premise of the bug: a ticker cannot stand in for a game id."""
+    rows = ladder_rows(1, 12)
+    assert len({r["ticker"] for r in rows}) == 12
+
+
+def test_rows_without_a_game_id_share_one_bucket_per_segment():
+    rows = _strip_game_id(ladder_rows(1, 12))
+    keys = {cluster_key(r) for r in rows}
+    assert len(keys) == 1, f"gameless rows must share one bucket, got {len(keys)}"
+
+
+def test_rows_without_a_game_id_do_not_narrow_the_interval():
+    """40 winning rungs with no game id are ONE cluster, not 40.
+
+    Each being its own cluster would give a tight interval and make the
+    segment look like decisive evidence.
+    """
+    rows = _strip_game_id(ladder_rows(1, 40))
+    ci = stats.bootstrap_mean_ci_clustered(
+        [(cluster_key(r), float(r["pnl_per_contract"])) for r in rows]
+    )
+    assert ci is not None
+    # One cluster holding all 40 rungs: the interval is that cluster's total.
+    assert ci[0] == pytest.approx(40 * 0.48, abs=1e-6)
+
+
+def test_a_ladder_whose_rows_all_lack_a_game_id_does_not_qualify():
+    """40 rungs, no game id on any of them.
+
+    It must NOT qualify, and it must NOT report 40 games.
+    """
+    rows = _strip_game_id(ladder_rows(1, 40))
+    report = build(rows, closing={}, gate_cfg=GATE)
+    s = report["segments"]["nfl:moneyline:0.60-0.70 :: unknown"]
+    assert s["n_bets"] == 40
+    assert s["n_games"] == 0, "rows with no game id are not games"
+    assert s["n_settled_games"] == 0
+    assert s["n_settled_no_game_id"] == 40
+    assert s["qualifies_for_edge_claim"] is False
+    joined = " ".join(s["disqualifying"])
+    assert "40 settled rows have no game id" in joined
+
+
+def test_a_gameless_row_counts_as_no_game_in_a_mixed_segment():
+    """The rows that DO have a game id still count; the rest count as none."""
+    rows = ladder_rows(4, 3)            # 12 bets over 4 games
+    for r in rows[:6]:                   # the first two games lose their id
+        r.pop("game_id", None)
+    s = summarise(rows, closing={}, gate_cfg=GATE)
+    assert s["n_bets"] == 12
+    assert s["n_games"] == 2, "only the two games that still have an id"
+    assert s["n_rows_no_game_id"] == 6
+    assert s["n_settled_no_game_id"] == 6
+
+
+def test_the_reason_names_how_many_rows_have_no_game_id():
+    rows = _strip_game_id(ladder_rows(1, 40))
+    report = build(rows, closing={}, gate_cfg=GATE)
+    s = report["segments"]["nfl:moneyline:0.60-0.70 :: unknown"]
+    assert any("40 settled rows have no game id" in r for r in s["disqualifying"])
+
+
+def test_a_segment_with_every_row_gameled_is_never_called_an_edge():
+    """Even with 3000 bets, a ladder nobody can attribute to a game is not
+    evidence. The old ticker fallback would have called this 3000 games."""
+    rows = _strip_game_id(ladder_rows(1, 3000))
+    report = build(rows, closing={}, gate_cfg=GATE)
+    s = report["segments"]["nfl:moneyline:0.60-0.70 :: unknown"]
+    assert s["n_bets"] == 3000
+    assert s["n_games"] == 0
+    assert s["qualifies_for_edge_claim"] is False

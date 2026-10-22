@@ -126,6 +126,13 @@ Three things follow, and all three are in the report:
 - **Every segment reports `n_games` next to `n_bets`.** `game_id` is the cluster
   key everywhere: the site's own game identifier for NFL, NBA, CFB and PL, and
   the *race* for F1.
+
+  A row with **no** `game_id` does not fall back to its ticker. A ladder's rung
+  tickers are unique per rung — a 12-rung CFB spread game holds 12 distinct
+  tickers — so a ticker fallback makes every rung its own "game", which
+  *inflates* the game count and *narrows* the interval: the same bug, in the
+  opposite direction. Rows with no game id instead share one bucket per segment,
+  count as **no games at all**, and the gate says how many rows they were.
 - **The pnl interval is a CLUSTER bootstrap.** Each game's rungs are summed
   into one value and the GAMES are resampled. Resampling bets instead would
   treat thirteen rungs of one game as thirteen independent observations, which
