@@ -30,7 +30,7 @@ from pathlib import Path
 
 # Kalshi series whose ladder is about a game rather than a player. Only these can
 # ever pair with a game-level probability from a public snapshot.
-GAME_LEVEL_STATS = frozenset({"moneyline", "winner", "total"})
+GAME_LEVEL_STATS = frozenset({"moneyline", "winner", "total", "btts"})
 
 # Which sibling repo holds which sport's lines. The collectors only exist for
 # these two: there is no CFB collector at all, which is why CFB is shadow-only.
@@ -360,7 +360,17 @@ def snapshot_games(snapshot: dict | None, sport: str) -> dict[str, dict]:
                     "home_win": float(hw),
                     "draw": float(dr),
                     "away_win": float(aw),
+                    # P(btts) is published outright, so it is read rather than
+                    # derived. A fixture that does not publish one has no BTTS
+                    # probability, and none is guessed from the grid.
+                    "btts_yes": _num_or_none(detail.get("btts_yes_prob")),
                 },
+                # The joint (home goals, away goals) distribution. The totals
+                # ladder is a threshold on the sum of the two, so the grid is
+                # what prices it: a Normal fit of a skewed, discrete goal
+                # distribution was wrong by up to four points at the middle
+                # rungs, which is the size of the edge threshold itself.
+                "score_grid": _score_grid(detail.get("score_grid")),
             }
     if sport == "nba":
         root = discover_sites_root()
@@ -431,6 +441,65 @@ def _nba_pick_snapshot(pick: dict) -> dict:
         "total_mu": pick.get("predicted_total"),
         "total_sigma": pick.get("total_sigma"),
     }
+
+
+def _num_or_none(value) -> float | None:
+    """A number, or None. Booleans are not numbers here."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _score_grid(grid) -> list[list[float]] | None:
+    """The joint (home goals, away goals) distribution, or None.
+
+    A rectangular grid of non-negative numbers. The mass does not have to sum
+    to one: PL's grid stops at six goals a side, so a little probability sits
+    outside it, and the tail is what the ladder's top rungs ask about. The
+    caller normalises by the grid's own mass, which is the best this
+    distribution can say; a rung above the grid's reach is priced as the
+    remainder, not as zero.
+    """
+    if not isinstance(grid, list) or not grid:
+        return None
+    rows: list[list[float]] = []
+    width = None
+    for row in grid:
+        if not isinstance(row, list) or not row:
+            return None
+        if width is None:
+            width = len(row)
+        elif len(row) != width:
+            return None  # ragged: not a joint distribution
+        cells: list[float] = []
+        for cell in row:
+            value = _num_or_none(cell)
+            if value is None or value < 0:
+                return None
+            cells.append(value)
+        rows.append(cells)
+    return rows
+
+
+def grid_p_over(grid: list[list[float]], line: float) -> float | None:
+    """P(total goals > line) from the joint grid, or None if it cannot be said.
+
+    The ladder's threshold is on the SUM of the two teams' goals, so the
+    probability is the mass of every cell above that sum, divided by the
+    grid's own mass.
+    """
+    try:
+        threshold = float(line)
+    except (TypeError, ValueError):
+        return None
+    if not grid:
+        return None
+    mass = sum(sum(row) for row in grid)
+    if mass <= 0:
+        return None
+    over = sum(grid[i][j] for i in range(len(grid)) for j in range(len(grid[i]))
+               if i + j > threshold)
+    return over / mass
 
 
 def snapshot_positions(snapshot: dict | None) -> dict[str, str]:
