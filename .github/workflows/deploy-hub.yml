@@ -22,7 +22,8 @@ permissions:
 jobs:
   deploy:
     name: Deploy hub to the VPS
-    if: vars.VPS_HOST != ''
+    # A manual run from another branch would deploy that branch's code to production.
+    if: github.ref == 'refs/heads/main' && vars.VPS_HOST != ''
     runs-on: ubuntu-latest
     # One hub deploy at a time; bin/deploy also takes its own lock on the box.
     concurrency: vps-deploy-hub
