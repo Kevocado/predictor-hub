@@ -138,8 +138,8 @@
       ]
     },
     "f1:race_win:0.05-0.10": {
-      "all_time_n": 1,
-      "current_model_n": 1,
+      "all_time_n": 2,
+      "current_model_n": 2,
       "fingerprints": [
         null
       ]
@@ -159,8 +159,8 @@
       ]
     },
     "f1:top10:0.20-0.30": {
-      "all_time_n": 1,
-      "current_model_n": 1,
+      "all_time_n": 3,
+      "current_model_n": 3,
       "fingerprints": [
         null
       ]
@@ -320,8 +320,8 @@
       ]
     },
     "nfl:total:0.90+": {
-      "all_time_n": 3,
-      "current_model_n": 3,
+      "all_time_n": 4,
+      "current_model_n": 4,
       "fingerprints": [
         null
       ]
@@ -404,12 +404,12 @@
       "excluded_legacy_total_rows": 0,
       "has_edge_claim": false,
       "mean_clv_cents": null,
-      "n_bets": 10,
-      "n_candidates": 4,
+      "n_bets": 13,
+      "n_candidates": 7,
       "n_clv": 0,
       "n_games": 1,
-      "n_logged": 10,
-      "n_open": 10,
+      "n_logged": 13,
+      "n_open": 13,
       "n_rows_no_game_id": 0,
       "n_settled": 0,
       "n_settled_bets": 0,
@@ -461,12 +461,12 @@
       "excluded_legacy_total_rows": 116,
       "has_edge_claim": false,
       "mean_clv_cents": null,
-      "n_bets": 49,
-      "n_candidates": 25,
+      "n_bets": 50,
+      "n_candidates": 26,
       "n_clv": 0,
       "n_games": 16,
-      "n_logged": 49,
-      "n_open": 45,
+      "n_logged": 50,
+      "n_open": 46,
       "n_rows_no_game_id": 0,
       "n_settled": 4,
       "n_settled_bets": 4,
@@ -1837,7 +1837,6 @@
         "widening": null
       },
       "disqualifying": [
-        "shadow rows carry no stake and cannot support an edge claim",
         "only 0 settled bets, need 300",
         "only 0 settled games, need 100",
         "no settled bets to put an interval on",
@@ -1851,11 +1850,11 @@
       "mean_market_price": null,
       "mean_model_p": null,
       "model_fingerprint": null,
-      "n_bets": 1,
+      "n_bets": 2,
       "n_clv": 0,
       "n_games": 1,
-      "n_logged": 1,
-      "n_open": 1,
+      "n_logged": 2,
+      "n_open": 2,
       "n_rows_no_game_id": 0,
       "n_settled": 0,
       "n_settled_bets": 0,
@@ -1974,7 +1973,6 @@
         "widening": null
       },
       "disqualifying": [
-        "shadow rows carry no stake and cannot support an edge claim",
         "only 0 settled bets, need 300",
         "only 0 settled games, need 100",
         "no settled bets to put an interval on",
@@ -1988,11 +1986,11 @@
       "mean_market_price": null,
       "mean_model_p": null,
       "model_fingerprint": null,
-      "n_bets": 1,
+      "n_bets": 3,
       "n_clv": 0,
       "n_games": 1,
-      "n_logged": 1,
-      "n_open": 1,
+      "n_logged": 3,
+      "n_open": 3,
       "n_rows_no_game_id": 0,
       "n_settled": 0,
       "n_settled_bets": 0,
@@ -3936,11 +3934,11 @@
       "mean_market_price": null,
       "mean_model_p": null,
       "model_fingerprint": null,
-      "n_bets": 3,
+      "n_bets": 4,
       "n_clv": 0,
-      "n_games": 2,
-      "n_logged": 3,
-      "n_open": 3,
+      "n_games": 3,
+      "n_logged": 4,
+      "n_open": 4,
       "n_rows_no_game_id": 0,
       "n_settled": 0,
       "n_settled_bets": 0,
@@ -4243,8 +4241,8 @@
   },
   "totals": {
     "excluded_legacy_total_rows": 116,
-    "n_candidates": 541,
-    "n_logged": 601,
+    "n_candidates": 545,
+    "n_logged": 605,
     "n_settled": 186,
     "n_shadow": 60,
     "segment_groups": 79,
