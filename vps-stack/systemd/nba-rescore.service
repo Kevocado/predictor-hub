@@ -1,7 +1,10 @@
 [Unit]
 Description=NBA predictor: refresh data, retrain and re-score upcoming games
-After=docker.service
+After=docker.service nba-db-backup.service
 Requires=docker.service
+# A catch-up run after downtime (Persistent=true on both timers) must still copy the DB first. Wants, not
+# Requires: a failed backup (a damaged live DB) must not stop the rescore, systemctl --failed raises the alarm.
+Wants=nba-db-backup.service
 
 [Service]
 Type=oneshot

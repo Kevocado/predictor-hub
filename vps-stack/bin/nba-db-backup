@@ -19,7 +19,7 @@
 set -euo pipefail
 STACK_DIR=${STACK_DIR:-/opt/stack}
 CONTAINER=${CONTAINER:-stack-nba-1}
-KEEP=${KEEP:-7}
+KEEP=${KEEP:-14}
 
 docker exec -i "$CONTAINER" python - "$KEEP" <<'PY'
 import os
@@ -39,17 +39,23 @@ verdict = live.execute("pragma quick_check").fetchone()[0]
 if verdict != "ok":
     raise SystemExit(f"live tracking DB is damaged: {verdict}")
 
+# Write under a name rotation does not count; it only becomes tracking-*.db once the copy
+# passed quick_check, so a failed or timed-out run can never push out a verified backup.
 dst = out_dir / f"tracking-{time.strftime('%Y%m%dT%H%M%S')}.db"
-copy = sqlite3.connect(dst)
-live.backup(copy)
-copy.close()
-live.close()
-
-check = sqlite3.connect(f"file:{dst}?mode=ro", uri=True)
-verdict = check.execute("pragma quick_check").fetchone()[0]
-check.close()
-if verdict != "ok":
-    raise SystemExit(f"backup is damaged: {dst}")
+tmp = dst.with_suffix(".db.partial")
+try:
+    copy = sqlite3.connect(tmp)
+    live.backup(copy)
+    copy.close()
+    live.close()
+    check = sqlite3.connect(f"file:{tmp}?mode=ro", uri=True)
+    verdict = check.execute("pragma quick_check").fetchone()[0]
+    check.close()
+    if verdict != "ok":
+        raise SystemExit(f"backup is damaged: {tmp}")
+    tmp.rename(dst)
+finally:
+    tmp.unlink(missing_ok=True)
 
 # The volume is owned by deploy (uid 1001) on the host; this runs as root in the
 # container, so hand the files back or every future inspection needs sudo.
