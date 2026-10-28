@@ -61,7 +61,7 @@ for svc in "${!REPOS[@]}"; do
   # `|| true` is load-bearing: grep exits 1 when every line is filtered out
   # (i.e. nothing but the running image is present), and under `set -o
   # pipefail` that non-zero status would abort the whole script.
-  candidates=$(docker images "ghcr.io/kevocado/$repo" --format '{{.CreatedAt}}|{{.Tag}}' \
+  candidates=$(docker images "ghcr.io/kevinsigey/$repo" --format '{{.CreatedAt}}|{{.Tag}}' \
     | grep -vE "\|(${running//$/|})$" \
     | sort -r \
     | cut -d'|' -f2 || true)
@@ -77,7 +77,7 @@ for svc in "${!REPOS[@]}"; do
     if [ "$DRY_RUN" = 1 ]; then
       echo "    would remove $tag   -> recoverable: bin/rollback $svc $tag"
     else
-      docker rmi -f "ghcr.io/kevocado/$repo:$tag" >/dev/null 2>&1 \
+      docker rmi -f "ghcr.io/kevinsigey/$repo:$tag" >/dev/null 2>&1 \
         && echo "    removed $tag   -> recoverable: bin/rollback $svc $tag" \
         || echo "    FAILED to remove $tag"
     fi
