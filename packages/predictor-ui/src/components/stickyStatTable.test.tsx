@@ -139,4 +139,49 @@ describe("TeamSwitch", () => {
     fireEvent.click(screen.getByRole("button", { name: "MIL" }));
     expect(picked).toBe("MIL");
   });
+
+  describe("sorting", () => {
+    const sortable: StickySection[] = [
+      {
+        rows: [
+          { key: "a", header: "Anna", cells: [10, 4, 1], sortValues: ["Anna", 10, 4, 1] },
+          { key: "b", header: "Bea", cells: [31.4, null, 7], sortValues: ["Bea", 31.4, null, 7] },
+          { key: "c", header: "Cy", cells: [24, 9, 3], sortValues: ["Cy", 24, 9, 3] },
+        ],
+      },
+    ];
+    const names = () => screen.getAllByRole("rowheader").map((th) => th.textContent);
+
+    it("is not sortable when no row carries sort values", () => {
+      render(<StickyStatTable columns={columns} sections={home} caption="Bucks" />);
+      expect(screen.queryByRole("button", { name: /PTS/ })).toBeNull();
+    });
+
+    it("sorts a stat high-to-low, then low-to-high, then restores the order", () => {
+      render(<StickyStatTable columns={columns} sections={sortable} caption="t" />);
+      const pts = screen.getByRole("button", { name: /PTS/ });
+      fireEvent.click(pts);
+      expect(names()).toEqual(["Bea", "Cy", "Anna"]);
+      expect(screen.getByRole("columnheader", { name: /PTS/ }).getAttribute("aria-sort")).toBe("descending");
+      fireEvent.click(pts);
+      expect(names()).toEqual(["Anna", "Cy", "Bea"]);
+      fireEvent.click(pts);
+      expect(names()).toEqual(["Anna", "Bea", "Cy"]);
+    });
+
+    it("keeps a missing value last in both directions", () => {
+      render(<StickyStatTable columns={columns} sections={sortable} caption="t" />);
+      const reb = screen.getByRole("button", { name: /REB/ });
+      fireEvent.click(reb);
+      expect(names()[2]).toBe("Bea");
+      fireEvent.click(reb);
+      expect(names()[2]).toBe("Bea");
+    });
+
+    it("sorts the name column A to Z first", () => {
+      render(<StickyStatTable columns={columns} sections={[{ rows: [...sortable[0].rows].reverse() }]} caption="t" />);
+      fireEvent.click(screen.getByRole("button", { name: /Player/ }));
+      expect(names()).toEqual(["Anna", "Bea", "Cy"]);
+    });
+  });
 });
