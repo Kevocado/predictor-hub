@@ -142,7 +142,7 @@ class Settings(BaseSettings):
     #: Bumped to `v9` for the matchup summary: the model now returns `{verdict,
     #: read}` (no factors), so a cached `v8` row would serve the Edge/Risk/Price
     #: shape under a frame that no longer asks for it.
-    prompt_version: str = "v10"
+    prompt_version: str = "v11"
     sport_api_pl: str | None = None
     sport_api_f1: str | None = None
     sport_api_nfl: str | None = None

@@ -93,6 +93,9 @@ RECORDED_PROMPT_DIGEST = {
     # Availability: the NFL starting quarterback and the official Out list join the tactical inputs, and rule 6
     # lets the read name them (never anyone not listed). Recorded, not folded into v9.
     "v10": "f85cab5319b33a0fcd15ace6e7eca8bc1aff429918e987467a026badd795dbdd",
+    # AIS-3: the read leads with the matchup story and never repeats the headline
+    # probability, pick or score; rating_facts joins the tactical inputs.
+    "v11": "8faedd88103531c23a7ad177523042e19fbed6f234fc32e1dbdd992b2716dafc",
 }
 
 _HEX64 = re.compile(r"[0-9a-f]{64}")

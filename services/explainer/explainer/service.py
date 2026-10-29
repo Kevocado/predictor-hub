@@ -25,7 +25,7 @@ from .llm import LLMError, complete
 from .news import headlines
 from .prompts import messages
 from .template import explain_from_template, minimal
-from .validate import validate
+from .validate import drop_restatements, validate
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +255,15 @@ class Explainer:
                         logger.info("rate limited; not retrying the fallback model")
                         break
                     continue
+                # AIS-3: drop sentences that restate the header before the validator sees them.
+                if isinstance(out, dict) and isinstance(out.get("read"), str):
+                    try:
+                        _facts = json.loads(facts_json)
+                    except (ValueError, TypeError):
+                        _facts = {}
+                    cleaned = drop_restatements(_facts, out["read"])
+                    if cleaned != out["read"]:
+                        out = {**out, "read": cleaned}
                 problems = validate(out, facts_json, news_json)
                 if not problems:
                     return _clean(out, facts), "llm", model

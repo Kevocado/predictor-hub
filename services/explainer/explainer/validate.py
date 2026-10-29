@@ -777,25 +777,122 @@ _MARKET_CONTEXT = ("rest", "spread", "total", "line", "prob", "moneyline", "odds
 #: number elsewhere in the bundle.
 _TACTICAL_CONTEXT = ("matchups", "player_context", "availability", "form_rows", "rating_facts")
 
+#: A read sentence that names the pick as the pick is restating the verdict the
+#: panel draws above it. Deliberately about the SHAPE ("X is the pick") rather
+#: than the label: the facts' label is often an abbreviation ("BAL") and the
+#: model writes the nickname ("Baltimore"), so a label-only test would miss the
+#: exact sentence this feature exists to remove.
+_PICK_RESTATE_RE = re.compile(
+    r"\b(?:is|are)\s+(?:the|my|our)\s+(?:pick|call|lean|selection|best\s+bet)\b"
+    r"|\bthe\s+(?:pick|call|lean|selection)\s+(?:is|are|remains)\b",
+    re.I,
+)
+#: A pick label (or one of its nicknames the sentence happens to share) plus one
+#: of these words, with no tactical figure in the sentence, is the pick restated
+#: in different words. With a rank or form value in the sentence it is the
+#: matchup story and is kept.
+_PICK_LEAN_RE = re.compile(r"\b(?:edge|lean|favou?r(?:s|ed|ites?)?)\b", re.I)
 
-def _restated_figures(facts: dict, read: str) -> list[str]:
-    """A read (the verdict is exempt: it names the pick) is about the matchup. A figure that is the pick probability, a
-    market number or rest days, and is not also a matchup/player/form figure,
-    restates what the fixture detail already shows, so the body is refused.
 
-    ponytail: a figure that is both (a rank 3 and a spread of 3) cannot be told
-    apart by value and is allowed; upgrade to per-clause attribution if it bites.
-    """
+def _pools(facts: dict) -> tuple[tuple[set[float], set[float], set[float]],
+                                tuple[set[float], set[float], set[float]]]:
+    """(market pool, tactical pool) for this bundle."""
     ctx = facts.get("context") if isinstance(facts.get("context"), dict) else {}
     market = {"pick": facts.get("pick"), "markets": facts.get("markets"),
               "context": {k: v for k, v in ctx.items()
                           if k not in _TACTICAL_CONTEXT and any(w in k for w in _MARKET_CONTEXT)}}
     tactical = {k: ctx.get(k) for k in _TACTICAL_CONTEXT}
-    mn, mp, mf = _pool(market)
-    tn, tp, tf = _pool(tactical)
-    bad = sorted({tok for tok in _NUM_RE.findall(read)
+    return _pool(market), _pool(tactical)
+
+
+def _score_restates(sentence: str, facts: dict) -> bool:
+    """A sentence that prints the final score restates what the detail shows."""
+    # A sentence that is itself a verdict claim is judged by the verdict rule,
+    # not by this one: it may carry the score as evidence without restating it.
+    if CLAIMS_WON.search(sentence) or CLAIMS_LOST.search(sentence):
+        return False
+    score = (facts.get("result") or {}).get("score")
+    if not score:
+        return False
+    nums = re.findall(r"\d+", str(score))
+    if len(nums) < 2:
+        return False
+    a, b = re.escape(nums[0]), re.escape(nums[1])
+    return bool(re.search(rf"{a}\s*[-–—:]\s*{b}", sentence))
+
+
+def _pick_restates(sentence: str, facts: dict, tactical_pool) -> bool:
+    """A sentence that names the pick as the pick, or the label with a lean
+    word and no tactical figure, restates the headline."""
+    if any(w in sentence.lower() for w in REBUILT_WORDS):
+        return False
+    if _PICK_RESTATE_RE.search(sentence):
+        return True
+    pick = facts.get("pick")
+    label = pick.get("label") if isinstance(pick, dict) else None
+    if not (isinstance(label, str) and label.strip()):
+        return False
+    if not re.search(rf"\b{re.escape(label)}\b", sentence, re.I):
+        return False
+    if not _PICK_LEAN_RE.search(sentence):
+        return False
+    # Market talk is not a pick restatement, even when it names the label.
+    low = sentence.lower()
+    if any(w in low for w in ("model", "market", "chance", "margin", "line",
+                              "spread", "moneyline", "price", "projection")):
+        return False
+    tn, tp, tf = tactical_pool
+    # A sentence that also cites a tactical figure is the matchup story, not a
+    # restatement: "Bills' edge comes from the #3 passing offence".
+    return not any(_known(tok, tn, tp, tf) for tok in _NUM_RE.findall(sentence))
+
+
+def restating_sentences(facts: dict, read: str) -> list[str]:
+    """Sentences in `read` that restate what the fixture detail already shows.
+
+    A restatement is one of: a market/pick/rest figure not also a tactical
+    figure; the final score; the pick named as the pick; or the pick's label
+    with a lean word and no tactical figure. Each sentence is returned verbatim
+    (with its trailing punctuation) so callers can drop it and join the rest.
+    """
+    market_pool, tactical_pool = _pools(facts)
+    mn, mp, mf = market_pool
+    tn, tp, tf = tactical_pool
+    out = []
+    for sentence in _sentences(read):
+        market_tokens = [tok for tok in _NUM_RE.findall(sentence)
+                         if _known(tok, mn, mp, mf) and not _known(tok, tn, tp, tf)]
+        if (market_tokens or _score_restates(sentence, facts)
+                or _pick_restates(sentence, facts, tactical_pool)):
+            out.append(sentence)
+    return out
+
+
+def drop_restatements(facts: dict, read: str) -> str:
+    """Drop the sentences `restating_sentences` marks, keeping the rest."""
+    marked = set(restating_sentences(facts, read))
+    kept = [s for s in _sentences(read) if s not in marked]
+    return " ".join(kept)
+
+
+def _restated_figures(facts: dict, read: str) -> list[str]:
+    """Thin wrapper: the validator still refuses a body that reaches it with a
+    restatement. The service drops first; this is the backstop."""
+    market_pool, tactical_pool = _pools(facts)
+    mn, mp, mf = market_pool
+    tn, tp, tf = tactical_pool
+    bad = sorted({tok for s in restating_sentences(facts, read)
+                  for tok in _NUM_RE.findall(s)
                   if _known(tok, mn, mp, mf) and not _known(tok, tn, tp, tf)})
-    return ["restates a market or rest figure: " + ", ".join(bad)] if bad else []
+    phrases = [s for s in restating_sentences(facts, read)
+               if not any(_known(tok, mn, mp, mf) and not _known(tok, tn, tp, tf)
+                          for tok in _NUM_RE.findall(s))]
+    problems = []
+    if bad:
+        problems.append("restates a market or rest figure: " + ", ".join(bad))
+    if phrases:
+        problems.append("restates the pick or the score: " + " / ".join(phrases))
+    return problems
 
 
 def validate(output: dict, facts_json: str, news_json: str) -> list[str]:
