@@ -12,8 +12,8 @@ Measured against the validator as it stood (rebuilt final, no `pick_won`):
      right anyway."                                               -> PASSED
     "This was rebuilt after kickoff and it picked the winner."    -> PASSED
     "There is no pick. The pick was right all the same."          -> PASSED
-    pre_kickoff, pick_won FALSE, "The pick was right: BAL 27-20." -> PASSED
-    pre_kickoff, pick_won FALSE, "The pick was wrong: BAL 27-20." -> PASSED
+    pre_kickoff, pick_won FALSE, "The pick was right." -> PASSED
+    pre_kickoff, pick_won FALSE, "The pick was wrong." -> PASSED
 
 Every body below is built to satisfy ALL the other rules — 2-4 factors, 35 words
 per factor text, no banned word, every number present in the facts, and every
@@ -120,14 +120,14 @@ def test_no_pick_cannot_be_called_right():
 
 def test_a_lost_pick_cannot_be_called_right():
     facts = {**FACTS, "pick_timing": "pre_kickoff", "result": {"score": "BAL 27-20", "pick_won": False}}
-    problems = _validate(facts, _body("The pick was right: BAL 27-20."))
+    problems = _validate(facts, _body("The pick was right."))
     assert any("verdict" in p for p in problems), \
         f"a pick the facts say lost was allowed to be called right: {problems}"
 
 
 def test_a_won_pick_cannot_be_called_wrong():
     facts = {**FACTS, "pick_timing": "pre_kickoff", "result": {"score": "BAL 27-20", "pick_won": True}}
-    problems = _validate(facts, _body("The pick was wrong: BAL 27-20."))
+    problems = _validate(facts, _body("The pick was wrong."))
     assert any("verdict" in p for p in problems), \
         f"a pick the facts say won was allowed to be called wrong: {problems}"
 
@@ -135,12 +135,12 @@ def test_a_won_pick_cannot_be_called_wrong():
 def test_a_lost_pick_may_be_called_wrong():
     """The negative case: the fix must not reject an honest loss."""
     facts = {**FACTS, "pick_timing": "pre_kickoff", "result": {"score": "BAL 27-20", "pick_won": False}}
-    assert _validate(facts, _body("The pick was wrong: BAL 27-20.")) == []
+    assert _validate(facts, _body("The pick was wrong.")) == []
 
 
 def test_a_won_pick_may_be_called_right():
     facts = {**FACTS, "pick_timing": "pre_kickoff", "result": {"score": "BAL 27-20", "pick_won": True}}
-    assert _validate(facts, _body("The pick was right: BAL 27-20.")) == []
+    assert _validate(facts, _body("The pick was right.")) == []
 
 
 # ---------------------------------------------------------------------------
@@ -172,14 +172,14 @@ def test_a_rebuilt_pick_may_still_be_described_without_a_verdict():
 
 
 def test_a_lost_pick_may_be_described_in_words_other_than_right_and_wrong():
-    problems = _validate(LOST, _body("The pick was wrong: BAL 27-20."))
+    problems = _validate(LOST, _body("The pick was wrong."))
     assert problems == [], f"an honest loss was rejected: {problems}"
 
 
 def test_the_word_right_about_the_reading_is_not_a_verdict_claim():
     """"Right" is also an ordinary adjective. Only a claim about the PICK counts."""
     problems = _validate(WON, _body(
-        "The pick was right: BAL 27-20.",
+        "The pick was right.",
         "It is worth asking whether the model had the right read on the weather.",
     ))
     assert problems == [], f"a won pick described with 'right read' was rejected: {problems}"

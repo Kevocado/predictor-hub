@@ -806,11 +806,11 @@ def _pools(facts: dict) -> tuple[tuple[set[float], set[float], set[float]],
 
 
 def _score_restates(sentence: str, facts: dict) -> bool:
-    """A sentence that prints the final score restates what the detail shows."""
-    # A sentence that is itself a verdict claim is judged by the verdict rule,
-    # not by this one: it may carry the score as evidence without restating it.
-    if CLAIMS_WON.search(sentence) or CLAIMS_LOST.search(sentence):
-        return False
+    """A sentence that prints the final score restates what the detail shows.
+
+    Checked independently of the verdict rule: a verdict claim that also prints
+    the score still restates the displayed scoreline.
+    """
     score = (facts.get("result") or {}).get("score")
     if not score:
         return False
@@ -818,7 +818,9 @@ def _score_restates(sentence: str, facts: dict) -> bool:
     if len(nums) < 2:
         return False
     a, b = re.escape(nums[0]), re.escape(nums[1])
-    return bool(re.search(rf"{a}\s*[-–—:]\s*{b}", sentence))
+    # Digits may be written with a separator (-, –, :, "to") or as words; the
+    # facts carry the digits, so any of these phrasings restates the score.
+    return bool(re.search(rf"{a}\s*(?:[-–—:]|to)\s*{b}", sentence, re.I))
 
 
 def _pick_restates(sentence: str, facts: dict, tactical_pool) -> bool:
@@ -838,7 +840,7 @@ def _pick_restates(sentence: str, facts: dict, tactical_pool) -> bool:
         return False
     # Market talk is not a pick restatement, even when it names the label.
     low = sentence.lower()
-    if any(w in low for w in ("model", "market", "chance", "margin", "line",
+    if any(w in low for w in ("market", "chance", "margin", "line",
                               "spread", "moneyline", "price", "projection")):
         return False
     tn, tp, tf = tactical_pool
@@ -860,8 +862,14 @@ def restating_sentences(facts: dict, read: str) -> list[str]:
     tn, tp, tf = tactical_pool
     out = []
     for sentence in _sentences(read):
-        market_tokens = [tok for tok in _NUM_RE.findall(sentence)
-                         if _known(tok, mn, mp, mf) and not _known(tok, tn, tp, tf)]
+        # A rest-day sentence cites rest-day values, even when one of them
+        # happens to equal a tactical rank in the same bundle.
+        if re.search(r"\brest\b", sentence, re.I):
+            market_tokens = [tok for tok in _NUM_RE.findall(sentence)
+                             if _known(tok, mn, mp, mf)]
+        else:
+            market_tokens = [tok for tok in _NUM_RE.findall(sentence)
+                             if _known(tok, mn, mp, mf) and not _known(tok, tn, tp, tf)]
         if (market_tokens or _score_restates(sentence, facts)
                 or _pick_restates(sentence, facts, tactical_pool)):
             out.append(sentence)
