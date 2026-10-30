@@ -176,8 +176,8 @@
       ]
     },
     "f1:top10:0.20-0.30": {
-      "all_time_n": 6,
-      "current_model_n": 6,
+      "all_time_n": 7,
+      "current_model_n": 7,
       "fingerprints": [
         null
       ]
@@ -219,7 +219,7 @@
       ]
     },
     "nba:moneyline:0.60-0.70": {
-      "all_time_n": 12,
+      "all_time_n": 13,
       "current_model_n": 1,
       "fingerprints": [
         "v20261020230522",
@@ -229,7 +229,8 @@
         "v20261024134431",
         "v20261025134419",
         "v20261027134328",
-        "v20261028134325"
+        "v20261028134325",
+        "v20261029134253"
       ]
     },
     "nba:moneyline:0.70-0.80": {
@@ -256,8 +257,8 @@
       ]
     },
     "nba:spread:0.50-0.60": {
-      "all_time_n": 78,
-      "current_model_n": 11,
+      "all_time_n": 82,
+      "current_model_n": 4,
       "fingerprints": [
         "v20261020230522",
         "v20261021140946",
@@ -268,12 +269,13 @@
         "v20261025134419",
         "v20261026134252",
         "v20261027134328",
-        "v20261028134325"
+        "v20261028134325",
+        "v20261029134253"
       ]
     },
     "nba:spread:0.60-0.70": {
-      "all_time_n": 39,
-      "current_model_n": 7,
+      "all_time_n": 42,
+      "current_model_n": 3,
       "fingerprints": [
         "v20261020230522",
         "v20261021140946",
@@ -282,7 +284,8 @@
         "v20261024134431",
         "v20261025134419",
         "v20261027134328",
-        "v20261028134325"
+        "v20261028134325",
+        "v20261029134253"
       ]
     },
     "nba:spread:0.70-0.80": {
@@ -307,14 +310,15 @@
       ]
     },
     "nba:total:0.60-0.70": {
-      "all_time_n": 26,
-      "current_model_n": 4,
+      "all_time_n": 27,
+      "current_model_n": 1,
       "fingerprints": [
         "v20261023134330",
         "v20261025134419",
         "v20261026134252",
         "v20261027134328",
-        "v20261028134325"
+        "v20261028134325",
+        "v20261029134253"
       ]
     },
     "nba:total:0.70-0.80": {
@@ -372,15 +376,15 @@
       ]
     },
     "nfl:total:0.50-0.60": {
-      "all_time_n": 15,
-      "current_model_n": 15,
+      "all_time_n": 16,
+      "current_model_n": 16,
       "fingerprints": [
         null
       ]
     },
     "nfl:total:0.60-0.70": {
-      "all_time_n": 17,
-      "current_model_n": 17,
+      "all_time_n": 18,
+      "current_model_n": 18,
       "fingerprints": [
         null
       ]
@@ -498,12 +502,12 @@
       "excluded_legacy_total_rows": 0,
       "has_edge_claim": false,
       "mean_clv_cents": null,
-      "n_bets": 25,
-      "n_candidates": 19,
+      "n_bets": 26,
+      "n_candidates": 20,
       "n_clv": 0,
       "n_games": 2,
-      "n_logged": 25,
-      "n_open": 11,
+      "n_logged": 26,
+      "n_open": 12,
       "n_rows_no_game_id": 0,
       "n_settled": 14,
       "n_settled_bets": 14,
@@ -528,18 +532,18 @@
       "excluded_legacy_total_rows": 0,
       "has_edge_claim": false,
       "mean_clv_cents": null,
-      "n_bets": 270,
-      "n_candidates": 249,
+      "n_bets": 279,
+      "n_candidates": 257,
       "n_clv": 0,
-      "n_games": 52,
-      "n_logged": 270,
-      "n_open": 12,
+      "n_games": 53,
+      "n_logged": 279,
+      "n_open": 21,
       "n_rows_no_game_id": 0,
       "n_settled": 258,
       "n_settled_bets": 258,
       "n_settled_games": 44,
       "n_settled_no_game_id": 0,
-      "n_shadow": 21,
+      "n_shadow": 22,
       "pnl": -26.26,
       "pnl_ci95": [
         -1.2609,
@@ -547,7 +551,7 @@
       ],
       "qualifies_for_edge_claim": false,
       "roi": -0.0515,
-      "segment_groups": 68,
+      "segment_groups": 72,
       "segments": 12,
       "share_clv_positive": null,
       "sport": "nba",
@@ -558,12 +562,12 @@
       "excluded_legacy_total_rows": 116,
       "has_edge_claim": false,
       "mean_clv_cents": null,
-      "n_bets": 98,
-      "n_candidates": 58,
+      "n_bets": 100,
+      "n_candidates": 60,
       "n_clv": 0,
-      "n_games": 25,
-      "n_logged": 98,
-      "n_open": 45,
+      "n_games": 26,
+      "n_logged": 100,
+      "n_open": 47,
       "n_rows_no_game_id": 0,
       "n_settled": 53,
       "n_settled_bets": 53,
@@ -2360,11 +2364,11 @@
       "mean_market_price": 0.14,
       "mean_model_p": 0.2655,
       "model_fingerprint": null,
-      "n_bets": 6,
+      "n_bets": 7,
       "n_clv": 0,
       "n_games": 2,
-      "n_logged": 6,
-      "n_open": 2,
+      "n_logged": 7,
+      "n_open": 3,
       "n_rows_no_game_id": 0,
       "n_settled": 4,
       "n_settled_bets": 4,
@@ -3324,6 +3328,53 @@
       "mean_market_price": null,
       "mean_model_p": null,
       "model_fingerprint": "v20261028134325",
+      "n_bets": 1,
+      "n_clv": 0,
+      "n_games": 1,
+      "n_logged": 1,
+      "n_open": 1,
+      "n_rows_no_game_id": 0,
+      "n_settled": 0,
+      "n_settled_bets": 0,
+      "n_settled_games": 0,
+      "n_settled_no_game_id": 0,
+      "n_void": 0,
+      "pnl": 0,
+      "pnl_ci95": null,
+      "qualifies_for_edge_claim": false,
+      "realised_edge_points": null,
+      "roi": null,
+      "segment": "nba:moneyline:0.60-0.70",
+      "share_clv_positive": null,
+      "sport": "nba",
+      "staked": 0
+    },
+    "nba:moneyline:0.60-0.70 :: v20261029134253": {
+      "calibration_gap_points": null,
+      "calibration_trend": {
+        "gap_early": null,
+        "gap_late": null,
+        "measurable": false,
+        "min_n": 100,
+        "n_settled": 0,
+        "widening": null
+      },
+      "disqualifying": [
+        "shadow rows carry no stake and cannot support an edge claim",
+        "superseded by a newer model; a fresh sample is required",
+        "only 0 settled bets, need 300",
+        "only 0 settled games, need 100",
+        "no settled bets to put an interval on",
+        "calibration trend needs 100 settled bets, have 0"
+      ],
+      "hit_rate": null,
+      "is_current_model": false,
+      "max_drawdown": 0.0,
+      "mean_clv_cents": null,
+      "mean_edge_points": null,
+      "mean_market_price": null,
+      "mean_model_p": null,
+      "model_fingerprint": "v20261029134253",
       "n_bets": 1,
       "n_clv": 0,
       "n_games": 1,
@@ -4327,13 +4378,14 @@
         "widening": null
       },
       "disqualifying": [
+        "superseded by a newer model; a fresh sample is required",
         "only 11 settled bets, need 300",
         "only 4 settled games, need 100",
         "pnl interval [-1.4700, -0.6200] is entirely below zero",
         "calibration trend needs 100 settled bets, have 11"
       ],
       "hit_rate": 0.0,
-      "is_current_model": true,
+      "is_current_model": false,
       "max_drawdown": 4.18,
       "mean_clv_cents": null,
       "mean_edge_points": 16.9499,
@@ -4363,6 +4415,51 @@
       "share_clv_positive": null,
       "sport": "nba",
       "staked": 20.0
+    },
+    "nba:spread:0.50-0.60 :: v20261029134253": {
+      "calibration_gap_points": null,
+      "calibration_trend": {
+        "gap_early": null,
+        "gap_late": null,
+        "measurable": false,
+        "min_n": 100,
+        "n_settled": 0,
+        "widening": null
+      },
+      "disqualifying": [
+        "only 0 settled bets, need 300",
+        "only 0 settled games, need 100",
+        "no settled bets to put an interval on",
+        "calibration trend needs 100 settled bets, have 0"
+      ],
+      "hit_rate": null,
+      "is_current_model": true,
+      "max_drawdown": 0.0,
+      "mean_clv_cents": null,
+      "mean_edge_points": null,
+      "mean_market_price": null,
+      "mean_model_p": null,
+      "model_fingerprint": "v20261029134253",
+      "n_bets": 4,
+      "n_clv": 0,
+      "n_games": 2,
+      "n_logged": 4,
+      "n_open": 4,
+      "n_rows_no_game_id": 0,
+      "n_settled": 0,
+      "n_settled_bets": 0,
+      "n_settled_games": 0,
+      "n_settled_no_game_id": 0,
+      "n_void": 0,
+      "pnl": 0,
+      "pnl_ci95": null,
+      "qualifies_for_edge_claim": false,
+      "realised_edge_points": null,
+      "roi": null,
+      "segment": "nba:spread:0.50-0.60",
+      "share_clv_positive": null,
+      "sport": "nba",
+      "staked": 0
     },
     "nba:spread:0.60-0.70 :: v20261020230522": {
       "calibration_gap_points": 21.601919999999996,
@@ -4718,13 +4815,14 @@
         "widening": null
       },
       "disqualifying": [
+        "superseded by a newer model; a fresh sample is required",
         "only 7 settled bets, need 300",
         "only 4 settled games, need 100",
         "pnl interval [-0.9350, 0.4375] includes zero",
         "calibration trend needs 100 settled bets, have 7"
       ],
       "hit_rate": 0.2857,
-      "is_current_model": true,
+      "is_current_model": false,
       "max_drawdown": 1.78,
       "mean_clv_cents": null,
       "mean_edge_points": 22.3899,
@@ -4754,6 +4852,51 @@
       "share_clv_positive": null,
       "sport": "nba",
       "staked": 0.0
+    },
+    "nba:spread:0.60-0.70 :: v20261029134253": {
+      "calibration_gap_points": null,
+      "calibration_trend": {
+        "gap_early": null,
+        "gap_late": null,
+        "measurable": false,
+        "min_n": 100,
+        "n_settled": 0,
+        "widening": null
+      },
+      "disqualifying": [
+        "only 0 settled bets, need 300",
+        "only 0 settled games, need 100",
+        "no settled bets to put an interval on",
+        "calibration trend needs 100 settled bets, have 0"
+      ],
+      "hit_rate": null,
+      "is_current_model": true,
+      "max_drawdown": 0.0,
+      "mean_clv_cents": null,
+      "mean_edge_points": null,
+      "mean_market_price": null,
+      "mean_model_p": null,
+      "model_fingerprint": "v20261029134253",
+      "n_bets": 3,
+      "n_clv": 0,
+      "n_games": 1,
+      "n_logged": 3,
+      "n_open": 3,
+      "n_rows_no_game_id": 0,
+      "n_settled": 0,
+      "n_settled_bets": 0,
+      "n_settled_games": 0,
+      "n_settled_no_game_id": 0,
+      "n_void": 0,
+      "pnl": 0,
+      "pnl_ci95": null,
+      "qualifies_for_edge_claim": false,
+      "realised_edge_points": null,
+      "roi": null,
+      "segment": "nba:spread:0.60-0.70",
+      "share_clv_positive": null,
+      "sport": "nba",
+      "staked": 0
     },
     "nba:spread:0.70-0.80 :: v20261021140946": {
       "calibration_gap_points": 27.193224999999998,
@@ -5399,12 +5542,13 @@
         "widening": null
       },
       "disqualifying": [
+        "superseded by a newer model; a fresh sample is required",
         "only 2 settled bets, need 300",
         "only 1 settled games, need 100",
         "calibration trend needs 100 settled bets, have 2"
       ],
       "hit_rate": 1.0,
-      "is_current_model": true,
+      "is_current_model": false,
       "max_drawdown": 0.0,
       "mean_clv_cents": null,
       "mean_edge_points": 7.8011,
@@ -5434,6 +5578,51 @@
       "share_clv_positive": null,
       "sport": "nba",
       "staked": 0.0
+    },
+    "nba:total:0.60-0.70 :: v20261029134253": {
+      "calibration_gap_points": null,
+      "calibration_trend": {
+        "gap_early": null,
+        "gap_late": null,
+        "measurable": false,
+        "min_n": 100,
+        "n_settled": 0,
+        "widening": null
+      },
+      "disqualifying": [
+        "only 0 settled bets, need 300",
+        "only 0 settled games, need 100",
+        "no settled bets to put an interval on",
+        "calibration trend needs 100 settled bets, have 0"
+      ],
+      "hit_rate": null,
+      "is_current_model": true,
+      "max_drawdown": 0.0,
+      "mean_clv_cents": null,
+      "mean_edge_points": null,
+      "mean_market_price": null,
+      "mean_model_p": null,
+      "model_fingerprint": "v20261029134253",
+      "n_bets": 1,
+      "n_clv": 0,
+      "n_games": 1,
+      "n_logged": 1,
+      "n_open": 1,
+      "n_rows_no_game_id": 0,
+      "n_settled": 0,
+      "n_settled_bets": 0,
+      "n_settled_games": 0,
+      "n_settled_no_game_id": 0,
+      "n_void": 0,
+      "pnl": 0,
+      "pnl_ci95": null,
+      "qualifies_for_edge_claim": false,
+      "realised_edge_points": null,
+      "roi": null,
+      "segment": "nba:total:0.60-0.70",
+      "share_clv_positive": null,
+      "sport": "nba",
+      "staked": 0
     },
     "nba:total:0.70-0.80 :: v20261023134330": {
       "calibration_gap_points": 24.607599999999998,
@@ -6035,11 +6224,11 @@
       "mean_market_price": 0.4267,
       "mean_model_p": 0.5429,
       "model_fingerprint": null,
-      "n_bets": 15,
+      "n_bets": 16,
       "n_clv": 0,
-      "n_games": 9,
-      "n_logged": 15,
-      "n_open": 9,
+      "n_games": 10,
+      "n_logged": 16,
+      "n_open": 10,
       "n_rows_no_game_id": 0,
       "n_settled": 6,
       "n_settled_bets": 6,
@@ -6083,11 +6272,11 @@
       "mean_market_price": 0.5422,
       "mean_model_p": 0.6472,
       "model_fingerprint": null,
-      "n_bets": 17,
+      "n_bets": 18,
       "n_clv": 0,
-      "n_games": 10,
-      "n_logged": 17,
-      "n_open": 8,
+      "n_games": 11,
+      "n_logged": 18,
+      "n_open": 9,
       "n_rows_no_game_id": 0,
       "n_settled": 9,
       "n_settled_bets": 9,
@@ -6641,11 +6830,11 @@
   },
   "totals": {
     "excluded_legacy_total_rows": 116,
-    "n_candidates": 1002,
-    "n_logged": 1090,
+    "n_candidates": 1013,
+    "n_logged": 1102,
     "n_settled": 774,
-    "n_shadow": 88,
-    "segment_groups": 125,
+    "n_shadow": 89,
+    "segment_groups": 129,
     "segments": 55,
     "segments_qualifying": 0
   }
