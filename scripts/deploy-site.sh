@@ -37,10 +37,12 @@ rollback() {
 }
 sed -i "s|^$var=.*|$var=$sha|" .env
 grep -q "^$var=$sha\$" .env || { echo "FAILED: could not set $var"; rollback; exit 1; }
-if ! docker compose --project-directory /opt/stack up -d --no-deps $svc >/var/tmp/compose-$svc-$$.log 2>&1; then
-  echo "FAILED: compose could not start $svc on $sha, rolling back to $prev"; tail -5 /var/tmp/compose-$svc-$$.log
+compose_log=$(mktemp /var/tmp/predictor-compose.XXXXXX.log) || { echo "cannot create compose log"; rollback; exit 1; }
+if ! docker compose --project-directory /opt/stack up -d --no-deps $svc >"$compose_log" 2>&1; then
+  echo "FAILED: compose could not start $svc on $sha, rolling back to $prev"; tail -5 "$compose_log"; rm -f -- "$compose_log"
   rollback; exit 1
 fi
+rm -f -- "$compose_log"
 # The healthy container must be the NEW image, not the previous one still answering.
 cid=$(docker compose --project-directory /opt/stack ps -q $svc)
 img=$(docker inspect --format '{{.Config.Image}}' "$cid" 2>/dev/null)
