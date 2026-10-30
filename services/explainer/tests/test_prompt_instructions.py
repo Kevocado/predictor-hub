@@ -27,6 +27,13 @@ def test_the_input_is_the_three_context_lists():
     for key in ("context.matchups", "context.player_context", "context.form_rows"):
         assert key in SYSTEM, key
 
+def test_the_read_leads_with_the_matchup_story():
+    low = SYSTEM.lower()
+    assert "leads with the matchup story" in low
+    assert "never name the pick as the pick" in low
+    assert "never write the score" in low
+    assert "rating_facts" in SYSTEM
+
 
 def test_market_numbers_are_background_and_must_not_be_repeated():
     low = SYSTEM.lower()
