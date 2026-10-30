@@ -33,7 +33,7 @@ case "${1:-}" in
     # answer to "what can I roll back to" without consulting any local list.
     for repo in pl-predictor f1-predictor nfl-predictor cfb-predictor nba-predictor-deploy; do
       echo "== $repo"
-      docker images "ghcr.io/kevocado/$repo" --format '  {{.CreatedAt}}  {{.Tag}}' | sort -r | head -3
+      docker images "ghcr.io/kevinsigey/$repo" --format '  {{.CreatedAt}}  {{.Tag}}' | sort -r | head -3
     done
     exit 0
     ;;

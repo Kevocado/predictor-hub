@@ -44,7 +44,7 @@ services:
 
   pl:
     <<: *app
-    image: ghcr.io/kevocado/pl-predictor:${PL_TAG:-latest}
+    image: ghcr.io/kevinsigey/pl-predictor:${PL_TAG:-latest}
     environment:
       PUBLIC_MODE: "true"
       GITHUB_ACTIONS_TOKEN: ${PL_GITHUB_ACTIONS_TOKEN:-}
@@ -63,13 +63,13 @@ services:
 
   f1:
     <<: *app
-    image: ghcr.io/kevocado/f1-predictor:${F1_TAG:-latest}
+    image: ghcr.io/kevinsigey/f1-predictor:${F1_TAG:-latest}
     environment:
       PUBLIC_MODE: "true"
 
   nba:
     <<: *app
-    image: ghcr.io/kevocado/nba-predictor-deploy:${NBA_TAG:-latest}
+    image: ghcr.io/kevinsigey/nba-predictor-deploy:${NBA_TAG:-latest}
     environment:
       TRACKING_DB_PATH: /app/data/tracking/tracking.db
       ODDS_API_KEY: ${ODDS_API_KEY:-}
@@ -86,7 +86,7 @@ services:
 
   nfl:
     <<: *app
-    image: ghcr.io/kevocado/nfl-predictor:${NFL_TAG:-latest}
+    image: ghcr.io/kevinsigey/nfl-predictor:${NFL_TAG:-latest}
     environment:
       PUBLIC_MODE: "true"
       ODDS_API_KEY: ${ODDS_API_KEY:-}
@@ -101,7 +101,7 @@ services:
 
   cfb:
     <<: *app
-    image: ghcr.io/kevocado/cfb-predictor:${CFB_TAG:-latest}
+    image: ghcr.io/kevinsigey/cfb-predictor:${CFB_TAG:-latest}
     environment:
       PUBLIC_MODE: "true"
       CFBD_API_KEY: ${CFBD_API_KEY:-}
@@ -124,7 +124,7 @@ services:
   # frontend calls them same-origin.
   sports:
     <<: *app
-    image: ghcr.io/kevocado/sports-predictor:${SPORTS_TAG:-latest}
+    image: ghcr.io/kevinsigey/sports-predictor:${SPORTS_TAG:-latest}
     mem_limit: 128m
     environment:
       # The image's own Caddy proxies /api/nfl, /api/cfb and /api/explain; its
@@ -183,7 +183,7 @@ services:
   tradehub:
     <<: *app
     profiles: [tradehub]
-    image: ghcr.io/kevocado/tradehub:${TRADEHUB_TAG:-latest}
+    image: ghcr.io/kevinsigey/tradehub:${TRADEHUB_TAG:-latest}
     mem_limit: 700m
     environment:
       SUPABASE_URL: ${SUPABASE_URL:-}
