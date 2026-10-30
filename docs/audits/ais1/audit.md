@@ -50,7 +50,9 @@ check or a real spread can hide behind one.
 
 ## Results
 
-| sport | reads | read sentences | sentences that restate a displayed field | restate-rate |
+Scope: the metric counts repeats of pick, market and rest figures only. The Matchup section also displays the rank rows that `tactical_read()` cites, so rank comparisons in a read do repeat displayed information; those are not tallied here, so a 0% below does not mean the read adds no new matchup information.
+
+| sport | reads | read sentences | sentences that restate a pick, market or rest figure | restate-rate |
 |---|---:|---:|---:|---:|
 | PL | 5 | 10 | 0 | 0% |
 | F1 | 5 | 5 | 0 | 0% |
