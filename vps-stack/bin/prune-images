@@ -48,7 +48,7 @@ declare -A REPOS=(
 KEEP=1
 
 running_tags() {
-  docker ps --format '{{.Image}}' | sed -n "s|.*kevocado/$1:||p" | sort -u
+  docker ps --format '{{.Image}}' | sed -n "s|.*kevinsigey/$1:||p" | sort -u
 }
 
 removed_any=0

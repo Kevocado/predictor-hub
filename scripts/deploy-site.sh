@@ -23,7 +23,9 @@ repo=$1; img=$2; svc=$3; var=$4; port=$5; hp=$6
 cd /home/ubuntu/src/$repo || exit 1
 sudo -u ubuntu git fetch -q origin main && sudo -u ubuntu git checkout -q --force main && sudo -u ubuntu git reset -q --hard origin/main || { echo "git failed"; exit 1; }
 sha=$(git rev-parse HEAD)
-docker build -q -t ghcr.io/kevinsigey/$img:$sha . >/var/tmp/build-$repo-$$.log 2>&1 || { echo "build failed"; tail -5 /var/tmp/build-$repo-$$.log; exit 1; }
+build_log=$(mktemp /var/tmp/predictor-build.XXXXXX.log) || { echo "cannot create build log"; exit 1; }
+docker build -q -t ghcr.io/kevinsigey/$img:$sha . >"$build_log" 2>&1 || { echo "build failed"; tail -5 "$build_log"; rm -f -- "$build_log"; exit 1; }
+rm -f -- "$build_log"
 cd /opt/stack
 # The tag line must already exist: sed on a missing line changes nothing and compose would silently
 # fall back to the service's default tag while the health check passes against the old container.
